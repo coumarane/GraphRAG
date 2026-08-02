@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.venv/
+venv/
+ENV/
+
+# Tooling / IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+.cursor/
+!.cursor/rules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+secrets/
+
+# Runtime data
+data/
+tmp/
+temp/
+*.log
+logs/
+
+# Local infrastructure volumes
+.docker-data/
+postgres-data/
+redis-data/
+minio-data/
+qdrant-data/
+neo4j-data/
+
+# uv
+uv.lock.bak
+
+# Evaluation artifacts
+evaluation/outputs/
+
+sample_data/

@@ -1,0 +1,62 @@
+[
+  {
+    "case_id": "viscosity-chart",
+    "question": "Which chart supports the claim about viscosity?",
+    "modality": "chart",
+    "expected_document_ids": ["charts.pdf"],
+    "expected_chunk_ids": ["charts.pdf"],
+    "expected_citation_ids": ["C1"],
+    "gold_answer_contains": ["Figure 1", "viscosity", "temperature"],
+    "unsupported_terms": ["uranium enrichment"]
+  },
+  {
+    "case_id": "supplier-tables",
+    "question": "Compare the values in the two supplier tables.",
+    "modality": "table",
+    "expected_document_ids": ["complex_tables.pdf", "shared_entities_a.pdf", "shared_entities_b.pdf"],
+    "expected_chunk_ids": ["complex_tables.pdf"],
+    "expected_citation_ids": ["C1", "C2"],
+    "gold_answer_contains": ["Supplier", "density"],
+    "unsupported_terms": ["bitcoin"]
+  },
+  {
+    "case_id": "regulation-ingredient",
+    "question": "Which regulation is connected to Ingredient X?",
+    "modality": "graph",
+    "expected_document_ids": ["text_heavy.pdf", "shared_entities_a.pdf"],
+    "expected_entities": ["Ingredient X", "Regulation EU-1234"],
+    "expected_graph_nodes": ["Ingredient X", "Regulation EU-1234"],
+    "expected_citation_ids": ["C1"],
+    "gold_answer_contains": ["EU-1234", "Ingredient X"],
+    "unsupported_terms": ["FDA-9999"]
+  },
+  {
+    "case_id": "equation-4",
+    "question": "What does Equation 4 calculate?",
+    "modality": "equation",
+    "expected_document_ids": ["scientific_equations.pdf"],
+    "expected_chunk_ids": ["scientific_equations.pdf"],
+    "expected_citation_ids": ["C1"],
+    "gold_answer_contains": ["viscosity", "eta"],
+    "unsupported_terms": ["entropy of black holes"]
+  },
+  {
+    "case_id": "packaging-image",
+    "question": "Find the image that illustrates the packaging process.",
+    "modality": "image",
+    "expected_document_ids": ["text_heavy.pdf"],
+    "expected_chunk_ids": ["text_heavy.pdf"],
+    "gold_answer_contains": ["packaging", "HDPE"],
+    "unsupported_terms": ["orbital launch"]
+  },
+  {
+    "case_id": "density-conflict",
+    "question": "Which documents provide conflicting values for density?",
+    "modality": "cross-document",
+    "expected_document_ids": ["shared_entities_a.pdf", "shared_entities_b.pdf"],
+    "expected_entities": ["Ingredient X"],
+    "expected_citation_ids": ["C1", "C2"],
+    "gold_answer_contains": ["0.970", "0.940"],
+    "unsupported_terms": ["identical density"]
+  }
+]

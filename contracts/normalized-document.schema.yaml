@@ -1,0 +1,53 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: NormalizedDocument
+$type: object
+required:
+  - tenant_id
+  - document_id
+  - version_id
+  - source_filename
+  - mime_type
+  - page_count
+  - pages
+  - elements
+  - sections
+  - assets
+  - parser_info
+properties:
+  tenant_id: {type: string, format: uuid}
+  document_id: {type: string, format: uuid}
+  version_id: {type: string, format: uuid}
+  title: {type: [string, 'null']}
+  source_filename: {type: string, minLength: 1}
+  mime_type: {type: string, minLength: 1}
+  language: {type: [string, 'null']}
+  page_count: {type: integer, minimum: 0}
+  metadata: {type: object}
+  pages: {type: array, items: {type: object}}
+  elements: {type: array, items: {$ref: '#/$defs/element'}}
+  sections: {type: array, items: {type: object}}
+  assets: {type: array, items: {type: object}}
+  references: {type: array, items: {type: object}}
+  parser_info: {type: object}
+$defs:
+  element:
+    type: object
+    required:
+      - element_id
+      - element_type
+      - page_start
+      - page_end
+      - reading_order
+      - section_path
+      - content_hash
+    properties:
+      element_id: {type: string, format: uuid}
+      element_type:
+        enum: [text, heading, list, table, image, chart, diagram, equation, caption, footnote, code, page_header, page_footer]
+      page_start: {type: integer, minimum: 1}
+      page_end: {type: integer, minimum: 1}
+      reading_order: {type: integer, minimum: 0}
+      section_path: {type: array, items: {type: string}}
+      raw_content: {type: [string, 'null']}
+      normalized_content: {type: [string, 'null']}
+      content_hash: {type: string, minLength: 64, maxLength: 64}

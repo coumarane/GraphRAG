@@ -1,0 +1,132 @@
+"""Retrieval, query and graph-search routes."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from enterprise_rag.api.dependencies import ContainerDep, TenantDep
+from enterprise_rag.api.schemas import (
+    GraphSearchRequest,
+    GraphSearchResponse,
+    QueryApiRequest,
+    QueryApiResponse,
+    RetrievalSearchRequest,
+    RetrievalSearchResponse,
+)
+from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters, RetrievalRequest
+from enterprise_rag.shared.exceptions import ConfigurationError
+
+router = APIRouter(tags=["retrieval"])
+
+
+@router.post("/retrieval/search", response_model=RetrievalSearchResponse)
+async def retrieval_search(
+    body: RetrievalSearchRequest,
+    tenant: TenantDep,
+    container: ContainerDep,
+) -> RetrievalSearchResponse:
+    service = container.require_retrieve()
+    outcome = await service.retrieve(
+        tenant,
+        RetrievalRequest(
+            question=body.question,
+            mode=body.mode,
+            filters=RetrievalFilters(
+                document_ids=list(body.document_ids),
+                modalities=list(body.modalities),
+                tags=list(body.tags),
+                security_labels=list(body.security_labels),
+            ),
+            top_k=body.top_k,
+            graph_depth=body.graph_depth,
+            include_graph_paths=body.include_graph_paths,
+            rerank=body.rerank,
+        ),
+    )
+    result = outcome.result
+    return RetrievalSearchResponse(
+        mode=result.mode,
+        retrieval_trace_id=result.retrieval_trace_id,
+        evidence=list(result.evidence),
+        graph_paths=list(result.graph_paths),
+        warnings=list(result.warnings),
+    )
+
+
+@router.post("/query", response_model=QueryApiResponse)
+async def query_documents(
+    body: QueryApiRequest,
+    tenant: TenantDep,
+    container: ContainerDep,
+) -> QueryApiResponse:
+    service = container.require_query()
+    outcome = await service.query(
+        tenant,
+        QueryRequest(
+            question=body.question,
+            mode=body.mode,
+            filters=RetrievalFilters(
+                document_ids=list(body.document_ids),
+                modalities=list(body.modalities),
+                tags=list(body.tags),
+                security_labels=list(body.security_labels),
+            ),
+            top_k=body.top_k,
+            graph_depth=body.graph_depth,
+            include_graph_paths=body.include_graph_paths,
+            rerank=body.rerank,
+            answer_model_override=body.answer_model_override,
+        ),
+    )
+    return outcome.response
+
+
+@router.post("/graph/search", response_model=GraphSearchResponse)
+async def graph_search(
+    body: GraphSearchRequest,
+    tenant: TenantDep,
+    container: ContainerDep,
+) -> GraphSearchResponse:
+    graph = container.graph_store
+    if graph is None:
+        raise ConfigurationError("Graph store is not configured")
+    entities = await graph.resolve_entities(tenant, names=body.names, limit=body.limit)
+    entity_ids = [item.entity_id for item in entities]
+    neighbors = (
+        await graph.neighborhood(
+            tenant,
+            seed_node_ids=entity_ids,
+            depth=body.depth,
+            limit=body.limit,
+        )
+        if entity_ids
+        else []
+    )
+    claims = (
+        await graph.find_claims(tenant, entity_ids=entity_ids or None, limit=body.limit)
+        if body.include_claims
+        else []
+    )
+    topics = (
+        await graph.find_topics(
+            tenant,
+            query_terms=body.query_terms or body.names,
+            limit=body.limit,
+        )
+        if body.include_topics
+        else []
+    )
+    node_ids = [
+        *entity_ids,
+        *[item.node_id for item in neighbors],
+        *[item.claim_id for item in claims],
+        *[item.topic_id for item in topics],
+    ]
+    chunk_ids = await graph.chunk_ids_for_nodes(tenant, node_ids=node_ids, limit=body.limit)
+    return GraphSearchResponse(
+        entities=[item.model_dump(mode="json") for item in entities],
+        neighbors=[item.model_dump(mode="json") for item in neighbors],
+        claims=[item.model_dump(mode="json") for item in claims],
+        topics=[item.model_dump(mode="json") for item in topics],
+        chunk_ids=chunk_ids,
+    )

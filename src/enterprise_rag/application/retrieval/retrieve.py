@@ -1,0 +1,537 @@
+"""Retrieve evidence across vector, lexical and graph branches."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from uuid import UUID
+
+from enterprise_rag.domain.chunks.models import ChunkBase, ChunkType
+from enterprise_rag.domain.chunks.protocols import ChunkVectorStore
+from enterprise_rag.domain.chunks.vectors import VectorSearchHit, VectorSearchRequest
+from enterprise_rag.domain.graph.protocols import GraphStore
+from enterprise_rag.domain.ids import new_id
+from enterprise_rag.domain.modality import Modality
+from enterprise_rag.domain.models.contracts import RerankItem, RerankRequest
+from enterprise_rag.domain.models.protocols import EmbeddingModel, Reranker
+from enterprise_rag.domain.retrieval.assembly import (
+    assemble_context,
+    chunk_to_evidence,
+    hit_to_evidence,
+)
+from enterprise_rag.domain.retrieval.enums import RetrievalMode
+from enterprise_rag.domain.retrieval.expansion import expand_parents_and_neighbors
+from enterprise_rag.domain.retrieval.fusion import (
+    apply_normalized_component,
+    reciprocal_rank_fusion,
+)
+from enterprise_rag.domain.retrieval.intent import QueryAnalysis, analyze_query
+from enterprise_rag.domain.retrieval.models import (
+    GraphPath,
+    RetrievalRequest,
+    RetrievalResult,
+    RetrievedEvidence,
+)
+from enterprise_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
+from enterprise_rag.domain.tenant import TenantContext
+from enterprise_rag.shared.logging import get_logger
+
+logger = get_logger(__name__)
+
+_MULTIMODAL_MODALITIES = (
+    Modality.IMAGE,
+    Modality.CHART,
+    Modality.DIAGRAM,
+    Modality.TABLE,
+    Modality.EQUATION,
+    Modality.COMPOSITE,
+)
+
+
+@dataclass
+class RetrieveEvidenceResult:
+    """Service result wrapping the fused retrieval bundle."""
+
+    result: RetrievalResult
+    analysis: QueryAnalysis
+    branch_counts: dict[str, int] = field(default_factory=dict)
+
+
+class RetrieveEvidenceService:
+    """Application-owned retrieval orchestration (no answer generation)."""
+
+    def __init__(
+        self,
+        *,
+        embedding_model: EmbeddingModel,
+        vector_store: ChunkVectorStore,
+        chunk_store: ChunkLookupStore,
+        graph_store: GraphStore | None = None,
+        lexical_store: LexicalSearchStore | None = None,
+        reranker: Reranker | None = None,
+        document_names: Mapping[UUID, str] | None = None,
+    ) -> None:
+        self._embedder = embedding_model
+        self._vectors = vector_store
+        self._chunks = chunk_store
+        self._graph = graph_store
+        self._lexical = lexical_store
+        self._reranker = reranker
+        self._document_names = dict(document_names or {})
+
+    async def retrieve(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+    ) -> RetrieveEvidenceResult:
+        from enterprise_rag.infrastructure.observability import get_metrics, start_span
+
+        metrics = get_metrics()
+        with (
+            start_span(
+                "retrieval.retrieve",
+                attributes={
+                    "mode": request.mode.value,
+                    "tenant_id": str(tenant.tenant_id),
+                },
+            ),
+            metrics.timer(
+                "retrieval_latency_seconds",
+                labels={"mode": request.mode.value},
+            ),
+        ):
+            result = await self._retrieve_inner(tenant, request)
+        metrics.incr("retrieval_requests_total", labels={"mode": result.result.mode.value})
+        return result
+
+    async def _retrieve_inner(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+    ) -> RetrieveEvidenceResult:
+        analysis = analyze_query(request.question, mode=request.mode)
+        trace_id = new_id()
+        warnings: list[str] = []
+        branch_lists: list[list[RetrievedEvidence]] = []
+        branch_counts: dict[str, int] = {}
+        graph_paths: list[GraphPath] = []
+
+        tasks = [
+            self._run_mode(
+                tenant=tenant,
+                mode=mode,
+                request=request,
+                analysis=analysis,
+            )
+            for mode in analysis.selected_modes
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for mode, outcome in zip(analysis.selected_modes, results, strict=True):
+            if isinstance(outcome, BaseException):
+                warnings.append(f"{mode.value}_branch_failed:{type(outcome).__name__}")
+                logger.warning(
+                    "retrieval_branch_failed",
+                    mode=mode.value,
+                    error=str(outcome),
+                )
+                continue
+            evidence, paths = outcome
+            branch_lists.append(evidence)
+            branch_counts[mode.value] = len(evidence)
+            graph_paths.extend(paths)
+
+        if not branch_lists:
+            warnings.append("no_evidence_retrieved")
+            fused: list[RetrievedEvidence] = []
+        elif len(branch_lists) == 1:
+            fused = apply_normalized_component(branch_lists[0], component_name="normalized")
+        else:
+            fused = reciprocal_rank_fusion(branch_lists)
+            fused = apply_normalized_component(fused, component_name="normalized")
+
+        if request.rerank and self._reranker is not None and fused:
+            fused = await self._maybe_rerank(request.question, fused, top_k=request.top_k)
+
+        chunk_map = await self._load_chunk_map(tenant, fused)
+        expanded = expand_parents_and_neighbors(
+            fused,
+            chunk_map,
+            include_parents=True,
+            include_neighbors=True,
+            document_names=self._document_names,
+        )
+        assembled = assemble_context(
+            expanded,
+            top_k=request.top_k,
+            prefer_modality_diversity=True,
+        )
+
+        effective_mode = (
+            request.mode
+            if request.mode is not RetrievalMode.AUTO
+            else (
+                analysis.selected_modes[0]
+                if len(analysis.selected_modes) == 1
+                else RetrievalMode.MIX
+            )
+        )
+        if not assembled:
+            warnings.append("weak_evidence")
+
+        result = RetrievalResult(
+            mode=effective_mode,
+            retrieval_trace_id=trace_id,
+            evidence=assembled,
+            graph_paths=graph_paths if request.include_graph_paths else [],
+            warnings=warnings,
+        )
+        logger.info(
+            "retrieval_completed",
+            mode=effective_mode.value,
+            branches=list(branch_counts.keys()),
+            evidence_count=len(assembled),
+            trace_id=str(trace_id),
+        )
+        return RetrieveEvidenceResult(
+            result=result,
+            analysis=analysis,
+            branch_counts=branch_counts,
+        )
+
+    async def _run_mode(
+        self,
+        *,
+        tenant: TenantContext,
+        mode: RetrievalMode,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> tuple[list[RetrievedEvidence], list[GraphPath]]:
+        if mode is RetrievalMode.NAIVE:
+            return await self._naive(tenant, request, analysis), []
+        if mode is RetrievalMode.LOCAL:
+            return await self._local(tenant, request, analysis)
+        if mode is RetrievalMode.GLOBAL:
+            return await self._global(tenant, request, analysis)
+        if mode is RetrievalMode.HYBRID:
+            return await self._hybrid(tenant, request, analysis), []
+        if mode is RetrievalMode.MULTIMODAL:
+            return await self._multimodal(tenant, request, analysis), []
+        if mode is RetrievalMode.MIX:
+            # Mix is expanded into concrete modes by intent.select_modes.
+            return await self._naive(tenant, request, analysis), []
+        return await self._naive(tenant, request, analysis), []
+
+    async def _naive(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> list[RetrievedEvidence]:
+        query_vector = await self._embedder.embed_query(analysis.normalized_question)
+        hits = await self._vectors.search(
+            tenant,
+            VectorSearchRequest(
+                tenant_id=tenant.tenant_id,
+                query_vector=query_vector,
+                top_k=request.top_k,
+                document_ids=list(request.filters.document_ids),
+                modalities=list(request.filters.modalities),
+            ),
+        )
+        return await self._hits_to_evidence(tenant, hits, score_component="dense")
+
+    async def _multimodal(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> list[RetrievedEvidence]:
+        modalities = list(request.filters.modalities) or list(
+            analysis.modality_hints or _MULTIMODAL_MODALITIES
+        )
+        query_vector = await self._embedder.embed_query(analysis.normalized_question)
+        hits = await self._vectors.search(
+            tenant,
+            VectorSearchRequest(
+                tenant_id=tenant.tenant_id,
+                query_vector=query_vector,
+                top_k=request.top_k,
+                document_ids=list(request.filters.document_ids),
+                modalities=modalities,
+            ),
+        )
+        return await self._hits_to_evidence(tenant, hits, score_component="multimodal_dense")
+
+    async def _hybrid(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> list[RetrievedEvidence]:
+        dense_task = self._naive(tenant, request, analysis)
+        lexical_task = self._lexical_branch(tenant, request, analysis)
+        dense, lexical = await asyncio.gather(dense_task, lexical_task)
+        if dense and lexical:
+            return reciprocal_rank_fusion([dense, lexical])
+        return dense or lexical
+
+    async def _lexical_branch(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> list[RetrievedEvidence]:
+        if self._lexical is None:
+            return []
+        hits = await self._lexical.search(
+            tenant,
+            query=analysis.normalized_question,
+            top_k=request.top_k,
+            document_ids=list(request.filters.document_ids) or None,
+            modalities=list(request.filters.modalities) or None,
+        )
+        if not hits:
+            return []
+        chunks = await self._chunks.get_chunks(tenant, [hit.chunk_id for hit in hits])
+        by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        evidence: list[RetrievedEvidence] = []
+        for hit in hits:
+            chunk = by_id.get(hit.chunk_id)
+            if chunk is None:
+                continue
+            evidence.append(
+                chunk_to_evidence(
+                    chunk,
+                    score=hit.score,
+                    score_components={"lexical": hit.score},
+                    document_name=self._document_names.get(chunk.document_id),
+                )
+            )
+        return evidence
+
+    async def _local(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> tuple[list[RetrievedEvidence], list[GraphPath]]:
+        if self._graph is None:
+            return [], []
+        entities = await self._graph.resolve_entities(
+            tenant,
+            names=analysis.entity_mentions,
+            limit=20,
+        )
+        if not entities:
+            # Fall back to dense so local mode is not empty for unit tests without entities.
+            return await self._naive(tenant, request, analysis), []
+
+        entity_ids = [entity.entity_id for entity in entities]
+        neighbors = await self._graph.neighborhood(
+            tenant,
+            seed_node_ids=entity_ids,
+            depth=request.graph_depth,
+            limit=50,
+        )
+        claims = await self._graph.find_claims(tenant, entity_ids=entity_ids, limit=20)
+        node_ids = [
+            *entity_ids,
+            *[hit.node_id for hit in neighbors],
+            *[claim.claim_id for claim in claims],
+        ]
+        chunk_ids = await self._graph.chunk_ids_for_nodes(
+            tenant,
+            node_ids=node_ids,
+            limit=request.top_k * 3,
+        )
+        for claim in claims:
+            if claim.source_chunk_id is not None:
+                chunk_ids.append(claim.source_chunk_id)
+
+        evidence = await self._chunks_to_evidence(
+            tenant,
+            list(dict.fromkeys(chunk_ids)),
+            score=0.8,
+            component="graph_local",
+        )
+        paths: list[GraphPath] = []
+        if request.include_graph_paths and entities:
+            paths.append(
+                GraphPath(
+                    nodes=[entity.canonical_name for entity in entities[:8]],
+                    relationships=[
+                        hit.via_relationship
+                        for hit in neighbors
+                        if hit.via_relationship is not None
+                    ][:12],
+                    supporting_citations=[str(item.chunk_id) for item in evidence[:8]],
+                    metadata={"entity_count": len(entities), "neighbor_count": len(neighbors)},
+                )
+            )
+        return evidence[: request.top_k], paths
+
+    async def _global(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+    ) -> tuple[list[RetrievedEvidence], list[GraphPath]]:
+        evidence: list[RetrievedEvidence] = []
+        paths: list[GraphPath] = []
+        if self._graph is not None:
+            topics = await self._graph.find_topics(
+                tenant,
+                query_terms=analysis.tokens,
+                limit=20,
+            )
+            topic_chunk_ids = await self._graph.chunk_ids_for_nodes(
+                tenant,
+                node_ids=[topic.topic_id for topic in topics],
+                limit=request.top_k * 2,
+            )
+            evidence.extend(
+                await self._chunks_to_evidence(
+                    tenant,
+                    topic_chunk_ids,
+                    score=0.7,
+                    component="graph_topic",
+                )
+            )
+            if request.include_graph_paths and topics:
+                paths.append(
+                    GraphPath(
+                        nodes=[topic.name for topic in topics[:8]],
+                        relationships=["MENTIONS"],
+                        supporting_citations=[str(cid) for cid in topic_chunk_ids[:8]],
+                        metadata={"topic_count": len(topics)},
+                    )
+                )
+
+        # Prefer document / community summary chunks via dense search then filter.
+        query_vector = await self._embedder.embed_query(analysis.normalized_question)
+        hits = await self._vectors.search(
+            tenant,
+            VectorSearchRequest(
+                tenant_id=tenant.tenant_id,
+                query_vector=query_vector,
+                top_k=max(request.top_k, 20),
+                document_ids=list(request.filters.document_ids),
+            ),
+        )
+        summary_hits = [
+            hit
+            for hit in hits
+            if hit.payload.chunk_type
+            in {ChunkType.DOCUMENT_SUMMARY, ChunkType.COMMUNITY_SUMMARY, ChunkType.SECTION}
+        ]
+        if not summary_hits:
+            summary_hits = hits[: request.top_k]
+        evidence.extend(
+            await self._hits_to_evidence(tenant, summary_hits, score_component="global_dense")
+        )
+        # Deduplicate while preserving order via assemble later; keep branch unique-ish.
+        seen: set[UUID] = set()
+        unique: list[RetrievedEvidence] = []
+        for item in evidence:
+            if item.chunk_id in seen:
+                continue
+            seen.add(item.chunk_id)
+            unique.append(item)
+        return unique[: request.top_k], paths
+
+    async def _hits_to_evidence(
+        self,
+        tenant: TenantContext,
+        hits: Sequence[VectorSearchHit],
+        *,
+        score_component: str,
+    ) -> list[RetrievedEvidence]:
+        if not hits:
+            return []
+        chunk_ids = [hit.payload.chunk_id for hit in hits]
+        chunks = await self._chunks.get_chunks(tenant, chunk_ids)
+        by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        evidence: list[RetrievedEvidence] = []
+        for hit in hits:
+            chunk = by_id.get(hit.payload.chunk_id)
+            evidence.append(
+                hit_to_evidence(
+                    hit,
+                    chunk=chunk,
+                    document_name=self._document_names.get(hit.payload.document_id),
+                    score_component=score_component,
+                )
+            )
+        return evidence
+
+    async def _chunks_to_evidence(
+        self,
+        tenant: TenantContext,
+        chunk_ids: Sequence[UUID],
+        *,
+        score: float,
+        component: str,
+    ) -> list[RetrievedEvidence]:
+        if not chunk_ids:
+            return []
+        chunks = await self._chunks.get_chunks(tenant, list(chunk_ids))
+        return [
+            chunk_to_evidence(
+                chunk,
+                score=score,
+                score_components={component: score},
+                document_name=self._document_names.get(chunk.document_id),
+            )
+            for chunk in chunks
+        ]
+
+    async def _load_chunk_map(
+        self,
+        tenant: TenantContext,
+        evidence: Sequence[RetrievedEvidence],
+    ) -> dict[UUID, ChunkBase]:
+        # Load seed chunks plus a broader tenant map via requested IDs only;
+        # neighbor expansion needs siblings — fetch parents and then siblings by parent.
+        seed_ids = [item.chunk_id for item in evidence]
+        seeds = await self._chunks.get_chunks(tenant, seed_ids)
+        parent_ids = [chunk.parent_chunk_id for chunk in seeds if chunk.parent_chunk_id]
+        parents = await self._chunks.get_chunks(tenant, parent_ids) if parent_ids else []
+        # For sibling expansion, also load all known chunks for the involved documents
+        # when the lookup store exposes a map helper; otherwise seeds+parents only.
+        chunk_map: dict[UUID, ChunkBase] = {chunk.chunk_id: chunk for chunk in [*seeds, *parents]}
+        as_map = getattr(self._chunks, "as_map", None)
+        if callable(as_map):
+            chunk_map.update(as_map(tenant))
+        return chunk_map
+
+    async def _maybe_rerank(
+        self,
+        question: str,
+        evidence: list[RetrievedEvidence],
+        *,
+        top_k: int,
+    ) -> list[RetrievedEvidence]:
+        assert self._reranker is not None
+        response = await self._reranker.rerank(
+            RerankRequest(
+                query=question,
+                items=[
+                    RerankItem(id=str(item.chunk_id), text=item.text)
+                    for item in evidence
+                ],
+                top_n=top_k,
+            )
+        )
+        by_id = {str(item.chunk_id): item for item in evidence}
+        reranked: list[RetrievedEvidence] = []
+        for result in response.results:
+            item = by_id.get(result.id)
+            if item is None:
+                continue
+            components = dict(item.score_components)
+            components["rerank"] = result.score
+            reranked.append(
+                item.model_copy(update={"score": result.score, "score_components": components})
+            )
+        return reranked or evidence

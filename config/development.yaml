@@ -1,0 +1,8 @@
+app:
+  environment: development
+  log_level: DEBUG
+  json_logs: false
+
+concurrency:
+  global_jobs: 4
+  parser_jobs: 1

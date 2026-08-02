@@ -1,0 +1,56 @@
+"""Shared cross-cutting utilities (exceptions, logging, typing helpers)."""
+
+from enterprise_rag.shared.exceptions import (
+    AuthorizationError,
+    CitationValidationError,
+    ConfigurationError,
+    ConflictError,
+    EnterpriseRagError,
+    GraphError,
+    IngestionError,
+    ModelError,
+    NotFoundError,
+    ParserError,
+    PermanentError,
+    RetrievalError,
+    StorageError,
+    TenantError,
+    TransientError,
+    UnsupportedDocumentError,
+    ValidationError,
+)
+from enterprise_rag.shared.logging import (
+    bind_context,
+    clear_context,
+    configure_logging,
+    get_logger,
+)
+from enterprise_rag.shared.redaction import redact_mapping, redact_string, redact_url, redact_value
+
+__all__ = [
+    "AuthorizationError",
+    "CitationValidationError",
+    "ConfigurationError",
+    "ConflictError",
+    "EnterpriseRagError",
+    "GraphError",
+    "IngestionError",
+    "ModelError",
+    "NotFoundError",
+    "ParserError",
+    "PermanentError",
+    "RetrievalError",
+    "StorageError",
+    "TenantError",
+    "TransientError",
+    "UnsupportedDocumentError",
+    "ValidationError",
+    "bind_context",
+    "clear_context",
+    "configure_logging",
+    "get_logger",
+    "redact_mapping",
+    "redact_string",
+    "redact_url",
+    "redact_value",
+]

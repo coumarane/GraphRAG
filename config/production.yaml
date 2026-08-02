@@ -1,0 +1,17 @@
+app:
+  environment: production
+  log_level: INFO
+  json_logs: true
+
+concurrency:
+  global_jobs: 16
+  parser_jobs: 4
+  ocr_pages: 8
+  vision_calls: 8
+  text_llm_calls: 16
+  embeddings: 16
+  storage_writes: 32
+
+security:
+  max_upload_bytes: 104857600
+  max_pages: 2000

@@ -1,0 +1,59 @@
+app:
+  environment: development
+  log_level: INFO
+
+models:
+  implementation: langchain
+  provider: openai
+  text_model: ${OPENAI_TEXT_MODEL}
+  vision_model: ${OPENAI_VISION_MODEL}
+  extraction_model: ${OPENAI_EXTRACTION_MODEL}
+  summarization_model: ${OPENAI_SUMMARIZATION_MODEL}
+  query_model: ${OPENAI_QUERY_MODEL}
+  answer_model: ${OPENAI_ANSWER_MODEL}
+  embedding_model: ${OPENAI_EMBEDDING_MODEL}
+
+parsing:
+  default_profile: balanced
+  failure_mode: fallback
+  profiles:
+    balanced:
+      primary: docling
+      fallbacks: [mineru, marker, paddleocr]
+    scientific:
+      primary: mineru
+      fallbacks: [docling, marker]
+    scanned:
+      primary: paddleocr
+      fallbacks: [mineru]
+
+ocr:
+  mode: auto
+  engine: paddleocr
+  language: en
+  minimum_confidence: 0.70
+
+multimodal:
+  enabled: true
+  process_images: true
+  process_charts: true
+  process_tables: true
+  process_equations: true
+  context_before_elements: 3
+  context_after_elements: 3
+  maximum_context_tokens: 1800
+
+chunking:
+  strategy: multimodal_hierarchical
+  parent_target_tokens: 2500
+  child_target_tokens: 600
+  overlap_tokens: 80
+  preserve_tables: true
+  preserve_equations: true
+  generate_composite_chunks: true
+
+retrieval:
+  default_mode: auto
+  top_k: 12
+  graph_depth: 2
+  rerank: true

@@ -1,0 +1,126 @@
+app:
+  environment: development
+  log_level: INFO
+  service_name: enterprise-rag
+  json_logs: false
+
+postgres:
+  host: localhost
+  port: 5432
+  db: enterprise_rag
+  user: enterprise_rag
+  ssl_mode: prefer
+  pool_size: 10
+  max_overflow: 20
+
+redis:
+  url: redis://localhost:6379/0
+
+minio:
+  endpoint: localhost:9000
+  secure: false
+  bucket: enterprise-rag
+
+qdrant:
+  url: http://localhost:6333
+  collection_chunks: rag_chunks
+  collection_entities: rag_entities
+  collection_communities: rag_communities
+
+neo4j:
+  uri: bolt://localhost:7687
+  user: neo4j
+
+models:
+  implementation: langchain
+  provider: openai
+  text_model: gpt-4.1
+  vision_model: gpt-4.1
+  extraction_model: gpt-4.1
+  summarization_model: gpt-4.1
+  query_model: gpt-4.1
+  answer_model: gpt-4.1
+  embedding_model: text-embedding-3-large
+  request_timeout_seconds: 60
+  max_retries: 3
+
+parsing:
+  default_profile: balanced
+  failure_mode: fallback
+  profiles:
+    fast:
+      primary: docling
+      fallbacks: [marker]
+    balanced:
+      primary: docling
+      fallbacks: [mineru, marker, paddleocr]
+    scientific:
+      primary: mineru
+      fallbacks: [docling, marker]
+    scanned:
+      primary: paddleocr
+      fallbacks: [mineru]
+    accurate:
+      primary: mineru
+      fallbacks: [docling, marker, paddleocr]
+
+ocr:
+  mode: auto
+  engine: paddleocr
+  language: en
+  minimum_confidence: 0.70
+
+multimodal:
+  enabled: true
+  process_images: true
+  process_charts: true
+  process_tables: true
+  process_equations: true
+  context_before_elements: 3
+  context_after_elements: 3
+  maximum_context_tokens: 1800
+
+chunking:
+  strategy: multimodal_hierarchical
+  parent_target_tokens: 2500
+  child_target_tokens: 600
+  overlap_tokens: 80
+  preserve_tables: true
+  preserve_equations: true
+  preserve_figure_context: true
+  generate_table_row_chunks: true
+  generate_image_chunks: true
+  generate_composite_chunks: true
+
+retrieval:
+  default_mode: auto
+  top_k: 12
+  graph_depth: 2
+  rerank: true
+
+security:
+  max_upload_bytes: 104857600
+  max_pages: 2000
+  max_zip_entries: 10000
+  max_zip_uncompressed_bytes: 536870912
+  max_zip_compression_ratio: 100.0
+  parser_timeout_seconds: 120
+  malware_scan_enabled: false
+  audit_retention_days: 30
+
+concurrency:
+  global_jobs: 8
+  parser_jobs: 2
+  ocr_pages: 4
+  vision_calls: 4
+  text_llm_calls: 8
+  embeddings: 8
+  storage_writes: 16
+
+worker:
+  max_stage_attempts: 3
+  retry_base_delay_seconds: 0.5
+  retry_max_delay_seconds: 30.0
+  retry_jitter: true
+  poll_interval_seconds: 1.0
+  lease_seconds: 60.0
