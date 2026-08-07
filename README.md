@@ -11,22 +11,29 @@ uv run ruff check .
 uv run mypy src
 uv run pytest tests/unit
 
-# API (in-memory adapters)
+# API (in-memory object store by default)
 uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
+
+# Persist uploads to MinIO (requires MinIO running)
+# OBJECT_STORE_BACKEND=minio uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
 
 # CLI against local container
 uv run enterprise-rag ingest examples/sample.pdf --tenant-id demo --wait --output json
 uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
+
+# Web UI (proxies to the API; http://localhost:3000)
+cd frontend && npm install && npm run dev
 ```
 
 ## Docker Compose
 
-Starts PostgreSQL, Redis, MinIO, Qdrant, Neo4j, API, worker, and a one-shot migration job.
+Starts PostgreSQL, Redis, MinIO, Qdrant, Neo4j, API, worker, frontend, and a one-shot migration job. Compose sets `OBJECT_STORE_BACKEND=minio`, `VECTOR_STORE_BACKEND=qdrant`, and `GRAPH_STORE_BACKEND=neo4j`. For a local `uvicorn` process, set the same vars in `.env` (requires those containers healthy and enough Docker disk).
 
 ```bash
 cp .env.example .env
 docker compose config
 docker compose up -d --wait
+# UI: http://localhost:3000  · API docs: http://localhost:8000/docs
 uv run enterprise-rag ingest examples/sample.pdf --tenant-id demo --wait
 uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 ```
@@ -42,6 +49,7 @@ docker compose --profile gpu up -d worker-gpu
 | Path | Role |
 |---|---|
 | `src/enterprise_rag/` | Application, domain, infrastructure |
+| `frontend/` | Next.js upload / query / graph UI |
 | `config/` | Default / development / production YAML |
 | `alembic/` | PostgreSQL migrations |
 | `evaluation/` | Versioned corpus + question set |

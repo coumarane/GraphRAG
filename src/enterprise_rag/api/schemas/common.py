@@ -41,6 +41,41 @@ class DocumentResponse(BaseModel):
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class DocumentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[DocumentResponse]
+    total: int
+    offset: int
+    limit: int
+
+
+class ChunkPreviewItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: UUID
+    document_id: UUID
+    version_id: UUID
+    chunk_type: str
+    modality: Modality
+    page_start: int
+    page_end: int
+    section_path: list[str] = Field(default_factory=list)
+    text: str
+    token_count: int = 0
+
+
+class ChunkListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ChunkPreviewItem]
+    total: int
+    offset: int
+    limit: int
+    document_id: UUID
+    version_id: UUID | None = None
+
+
 class ElementItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -81,6 +116,20 @@ class DeletionAcceptedResponse(BaseModel):
     vectors_deleted: int | None = None
     graph_deleted: int | None = None
     objects_deleted: int | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ReprocessAcceptedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: UUID
+    document_id: UUID
+    version_id: UUID
+    ingestion_run_id: UUID | None = None
+    scope: str = "full"
+    status: str = "accepted"
+    vectors_cleared: int = 0
+    graph_cleared: int = 0
     warnings: list[str] = Field(default_factory=list)
 
 

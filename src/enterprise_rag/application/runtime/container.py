@@ -78,9 +78,12 @@ class ServiceContainer:
     query: QueryDocumentsService | None = None
     graph_store: GraphStore | None = None
     vector_store: ChunkVectorStore | None = None
+    chunk_store: Any | None = None
     delete_document: DeleteDocumentService | None = None
     reindex_document: ReindexDocumentService | None = None
     audit_store: Any | None = None
+    process_ingestion: Any | None = None
+    auto_process_ingest: bool = False
     elements: dict[tuple[UUID, UUID], list[ElementView]] = field(default_factory=dict)
     deletions: dict[UUID, DeletionOperation] = field(default_factory=dict)
     assets: dict[tuple[UUID, UUID], str] = field(default_factory=dict)
@@ -116,6 +119,11 @@ class ServiceContainer:
         if self.object_store is None:
             raise ConfigurationError("Object store is not configured")
         return self.object_store
+
+    def require_process_ingestion(self) -> Any:
+        if self.process_ingestion is None:
+            raise ConfigurationError("Ingestion processor is not configured")
+        return self.process_ingestion
 
     async def resolve_tenant(
         self,
@@ -167,6 +175,39 @@ class ServiceContainer:
             items = [item for item in items if item.modality is modality]
         if element_type is not None:
             items = [item for item in items if item.element_type == element_type]
+        total = len(items)
+        return items[offset : offset + limit], total
+
+    async def list_chunks(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+        *,
+        version_id: UUID | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Any], int]:
+        """List indexed chunks for a document (for UI preview)."""
+        document = await self.require_document_repo().get_document(tenant, document_id)
+        if document is None:
+            raise NotFoundError(
+                "Document not found",
+                details={"document_id": str(document_id)},
+            )
+        resolved_version = version_id or document.current_version_id
+        if resolved_version is None or self.chunk_store is None:
+            return [], 0
+        list_fn = getattr(self.chunk_store, "list_for_version", None)
+        if list_fn is None:
+            return [], 0
+        items = list(
+            list_fn(
+                tenant,
+                document_id=document_id,
+                version_id=resolved_version,
+            )
+        )
+        items.sort(key=lambda chunk: (chunk.page_start, chunk.page_end, str(chunk.chunk_id)))
         total = len(items)
         return items[offset : offset + limit], total
 

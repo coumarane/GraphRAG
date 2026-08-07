@@ -55,6 +55,16 @@ class DocumentRepository(Protocol):
         """Fetch a tenant-scoped document."""
         ...
 
+    async def list_documents(
+        self,
+        tenant: TenantContext,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[DocumentRecord], int]:
+        """List tenant-scoped documents (newest first when timestamps exist)."""
+        ...
+
     async def update_document(
         self,
         tenant: TenantContext,

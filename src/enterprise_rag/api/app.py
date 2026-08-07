@@ -2,18 +2,32 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from enterprise_rag.api.errors import register_exception_handlers
 from enterprise_rag.api.routes import assets, documents, health, ingestion, retrieval
 from enterprise_rag.application.runtime.container import ServiceContainer
-from enterprise_rag.application.runtime.local import build_local_container
+from enterprise_rag.application.runtime.runtime import build_runtime_container
+from enterprise_rag.config.settings import get_settings
 from enterprise_rag.infrastructure.observability import (
     ObservabilityMiddleware,
     configure_tracing,
     get_metrics,
 )
 from enterprise_rag.shared.logging import configure_logging
+
+
+def _cors_origins() -> list[str]:
+    raw = os.environ.get("CORS_ORIGINS")
+    if raw:
+        return [part.strip() for part in raw.split(",") if part.strip()]
+    try:
+        return list(get_settings().app.cors_origins)
+    except Exception:
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 
 def create_app(container: ServiceContainer | None = None) -> FastAPI:
@@ -26,7 +40,14 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
-    app.state.container = container or build_local_container()
+    app.state.container = container or build_runtime_container()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.add_middleware(ObservabilityMiddleware)
     register_exception_handlers(app)
 
@@ -48,4 +69,4 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
 
 def get_app() -> FastAPI:
     """Uvicorn entrypoint target."""
-    return create_app()
+    return create_app(build_runtime_container())

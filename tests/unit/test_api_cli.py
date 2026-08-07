@@ -65,6 +65,24 @@ def test_ingest_upload_and_get_document(client, container, tenant_headers, tmp_p
     assert got.status_code == 200
     assert got.json()["title"] == "Sample"
 
+    listed = client.get("/api/v1/documents", headers=tenant_headers)
+    assert listed.status_code == 200
+    listed_body = listed.json()
+    assert listed_body["total"] >= 1
+    assert any(item["document_id"] == document_id for item in listed_body["items"])
+
+    chunks = client.get(f"/api/v1/documents/{document_id}/chunks", headers=tenant_headers)
+    assert chunks.status_code == 200
+    assert "items" in chunks.json()
+
+    reprocess = client.post(
+        f"/api/v1/documents/{document_id}/reprocess?scope=full",
+        headers=tenant_headers,
+    )
+    assert reprocess.status_code == 202, reprocess.text
+    assert reprocess.json()["document_id"] == document_id
+    assert reprocess.json()["ingestion_run_id"]
+
     run = client.get(
         f"/api/v1/ingestion-runs/{body['ingestion_run_id']}",
         headers=tenant_headers,

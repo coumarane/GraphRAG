@@ -3,6 +3,9 @@ app:
   log_level: INFO
   service_name: enterprise-rag
   json_logs: false
+  cors_origins:
+    - http://localhost:3000
+    - http://127.0.0.1:3000
 
 postgres:
   host: localhost

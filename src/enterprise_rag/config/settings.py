@@ -64,6 +64,12 @@ class AppSettings(BaseModel):
     log_level: str = "INFO"
     service_name: str = "enterprise-rag"
     json_logs: bool = False
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
 
 
 class PostgresSettings(BaseModel):
@@ -390,6 +396,20 @@ class Settings(BaseSettings):
             init_data["app"] = {}
         if isinstance(init_data["app"], dict):
             init_data["app"].setdefault("environment", env_name)
+
+        # Ensure flat .env keys are visible even when the shell did not export them.
+        # pydantic-settings loads `_env_file` later; OpenAI mapping needs os.environ now.
+        if env_file:
+            env_path = Path(env_file)
+            if env_path.is_file():
+                for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip().strip("'").strip('"')
+                    os.environ.setdefault(key, value)
 
         # Map conventional OpenAI env vars into models.* when present.
         openai_key = os.environ.get("OPENAI_API_KEY")

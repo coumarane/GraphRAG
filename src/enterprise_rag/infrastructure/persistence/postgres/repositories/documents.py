@@ -118,6 +118,28 @@ class SqlAlchemyDocumentRepository:
         model = result.scalar_one_or_none()
         return document_to_record(model) if model is not None else None
 
+    async def list_documents(
+        self,
+        tenant: TenantContext,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[DocumentRecord], int]:
+        tenant.ensure_authorized()
+        await set_tenant_context(self._session, tenant)
+        base = select(DocumentModel).where(DocumentModel.tenant_id == tenant.tenant_id)
+        total_result = await self._session.execute(
+            select(DocumentModel.document_id).where(
+                DocumentModel.tenant_id == tenant.tenant_id
+            )
+        )
+        total = len(list(total_result.scalars().all()))
+        result = await self._session.execute(
+            base.order_by(DocumentModel.updated_at.desc().nullslast()).offset(offset).limit(limit)
+        )
+        models = list(result.scalars().all())
+        return [document_to_record(model) for model in models], total
+
     async def update_document(
         self,
         tenant: TenantContext,
