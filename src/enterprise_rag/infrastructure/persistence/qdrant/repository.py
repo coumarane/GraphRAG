@@ -42,7 +42,10 @@ class QdrantChunkVectorStore:
                 details={"extra": "qdrant", "module": "qdrant_client"},
                 cause=exc,
             ) from exc
-        kwargs: dict[str, Any] = {"url": self._settings.url}
+        kwargs: dict[str, Any] = {
+            "url": self._settings.url,
+            "check_compatibility": False,
+        }
         if self._settings.api_key is not None:
             kwargs["api_key"] = self._settings.api_key.get_secret_value()
         self._client = QdrantClient(**kwargs)
@@ -150,13 +153,25 @@ class QdrantChunkVectorStore:
                 )
             )
         try:
-            results = client.search(
-                collection_name=self._collection,
-                query_vector=(request.vector_name, request.query_vector),
-                query_filter=qm.Filter(must=must),
-                limit=request.top_k,
-                with_payload=True,
-            )
+            # qdrant-client >=1.14 uses query_points; older clients expose search().
+            if hasattr(client, "query_points"):
+                response = client.query_points(
+                    collection_name=self._collection,
+                    query=list(request.query_vector),
+                    using=request.vector_name,
+                    query_filter=qm.Filter(must=must),
+                    limit=request.top_k,
+                    with_payload=True,
+                )
+                results = list(getattr(response, "points", []) or [])
+            else:
+                results = client.search(
+                    collection_name=self._collection,
+                    query_vector=(request.vector_name, request.query_vector),
+                    query_filter=qm.Filter(must=must),
+                    limit=request.top_k,
+                    with_payload=True,
+                )
         except Exception as exc:
             raise StorageError("Qdrant search failed", cause=exc) from exc
 
