@@ -14,6 +14,13 @@ from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.shared.exceptions import CitationValidationError
 
 _CITATION_REF_RE = re.compile(r"\[(C\d+)\]")
+_METAL_CLAIM_RE = re.compile(
+    r"(?i)\b(lead|pb|cadmium|cd|arsenic|as|mercury|hg|chromium|cr|antimony|sb|"
+    r"barium|ba|nickel|ni|zinc|zn|tin|sn)\b"
+    r"(?:\s*\([^)]*\))?\s*[:\-]\s*([^\n\[]{1,80})"
+)
+_LESS_THAN_RE = re.compile(r"(?i)less\s+than\s+(\d+(?:\.\d+)?)")
+_PPM_RE = re.compile(r"(?i)(\d+(?:\.\d+)?)\s*ppm")
 
 
 @dataclass(frozen=True)
@@ -50,6 +57,93 @@ def strip_unknown_citation_refs(answer: str, *, allowed_ids: set[str]) -> str:
 
     cleaned = _CITATION_REF_RE.sub(_replace, answer)
     return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
+def validate_numeric_grounding(
+    *,
+    answer: str,
+    citations: Sequence[Citation],
+) -> list[str]:
+    """Flag quantitative metal claims unsupported by cited evidence text."""
+    if not answer.strip() or not citations:
+        return []
+    corpus = "\n".join((citation.evidence or "").casefold() for citation in citations)
+    if not corpus.strip():
+        return []
+    warnings: list[str] = []
+    for match in _METAL_CLAIM_RE.finditer(answer):
+        metal = match.group(1).casefold()
+        value = match.group(2).strip()
+        if not value or value.lower() in {"see evidence", "not listed", "not provided"}:
+            continue
+        if not _claim_supported_in_corpus(metal=metal, value=value, corpus=corpus):
+            warnings.append(f"ungrounded_numeric:{metal}:{value[:48]}")
+    return warnings
+
+
+def _claim_supported_in_corpus(*, metal: str, value: str, corpus: str) -> bool:
+    value_cf = value.casefold()
+    metal_aliases = {
+        "lead": ("lead", "pb"),
+        "pb": ("lead", "pb"),
+        "cadmium": ("cadmium", "cd"),
+        "cd": ("cadmium", "cd"),
+        "arsenic": ("arsenic", "as"),
+        "as": ("arsenic", "as"),
+        "mercury": ("mercury", "hg"),
+        "hg": ("mercury", "hg"),
+        "chromium": ("chromium", "cr"),
+        "cr": ("chromium", "cr"),
+        "antimony": ("antimony", "sb"),
+        "sb": ("antimony", "sb"),
+        "barium": ("barium", "ba"),
+        "ba": ("barium", "ba"),
+        "nickel": ("nickel", "ni"),
+        "ni": ("nickel", "ni"),
+        "zinc": ("zinc", "zn"),
+        "zn": ("zinc", "zn"),
+        "tin": ("tin", "sn"),
+        "sn": ("tin", "sn"),
+    }.get(metal, (metal,))
+
+    if "not detected" in value_cf or "n.d" in value_cf:
+        return _metal_near_token(corpus, metal_aliases, ("n.d", "not detected"))
+
+    less = _LESS_THAN_RE.search(value_cf)
+    if less:
+        number = less.group(1)
+        phrases = (f"less than {number}", f"<{number}", f"< {number}")
+        return any(phrase in corpus for phrase in phrases) and any(
+            alias in corpus for alias in metal_aliases
+        )
+
+    ppm = _PPM_RE.search(value_cf)
+    if ppm:
+        number = ppm.group(1)
+        return (f"{number} ppm" in corpus or f"{number}ppm" in corpus) and any(
+            alias in corpus for alias in metal_aliases
+        )
+
+    snippet = re.sub(r"\s+", " ", value_cf)[:40]
+    return bool(
+        snippet and snippet in corpus and any(alias in corpus for alias in metal_aliases)
+    )
+
+
+def _metal_near_token(
+    corpus: str,
+    metal_aliases: tuple[str, ...],
+    value_tokens: tuple[str, ...],
+) -> bool:
+    for alias in metal_aliases:
+        for token in value_tokens:
+            if re.search(
+                rf"{re.escape(alias)}.{{0,40}}{re.escape(token)}|"
+                rf"{re.escape(token)}.{{0,40}}{re.escape(alias)}",
+                corpus,
+            ):
+                return True
+    return False
 
 
 def validate_citations(
@@ -106,13 +200,24 @@ def validate_citations(
     if not citations and registry.ids():
         warnings.append("answer_missing_citations")
 
+    grounding_warnings = validate_numeric_grounding(
+        answer=cleaned_answer,
+        citations=citations,
+    )
+    if grounding_warnings and strict:
+        raise CitationValidationError(
+            "Answer contains quantitative claims not grounded in cited evidence",
+            details={"ungrounded": grounding_warnings},
+        )
+    warnings.extend(grounding_warnings)
+
     return CitationValidationResult(
         answer=cleaned_answer,
         citations=citations,
         cited_ids=known_ids,
         unknown_ids=unknown,
         warnings=warnings,
-        valid=not unknown,
+        valid=not unknown and not grounding_warnings,
     )
 
 

@@ -81,6 +81,45 @@ async def test_auto_selects_multimodal_for_chart_questions() -> None:
 
 
 @pytest.mark.asyncio
+async def test_auto_selects_assay_modes_for_heavy_metal_content() -> None:
+    analysis = analyze_query(
+        "Give me the heavy metal content",
+        mode=RetrievalMode.AUTO,
+    )
+    assert "assay" in analysis.intent_labels
+    assert Modality.TABLE in analysis.modality_hints
+    assert RetrievalMode.HYBRID in analysis.selected_modes
+    assert RetrievalMode.MULTIMODAL in analysis.selected_modes
+
+
+@pytest.mark.asyncio
+async def test_heuristic_reranker_prefers_assay_over_coating() -> None:
+    from enterprise_rag.domain.models.contracts import RerankItem, RerankRequest
+    from enterprise_rag.infrastructure.models import HeuristicReranker
+
+    reranker = HeuristicReranker()
+    response = await reranker.rerank(
+        RerankRequest(
+            query="Give me the heavy metal content",
+            items=[
+                RerankItem(
+                    id="coating",
+                    text="TC series Fe2O3 coated series deep interference effects",
+                    metadata={"modality": "text"},
+                ),
+                RerankItem(
+                    id="assay",
+                    text="Heavy metal content Cd 0.4 ppm As 0.7 ppm Pb <3 ppm N.D.",
+                    metadata={"modality": "table"},
+                ),
+            ],
+            top_n=2,
+        )
+    )
+    assert response.results[0].id == "assay"
+
+
+@pytest.mark.asyncio
 async def test_naive_retrieval_with_parent_expansion_and_rerank() -> None:
     tenant = TenantContext(tenant_id=new_id())
     document_id = new_id()

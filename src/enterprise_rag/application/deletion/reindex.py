@@ -80,22 +80,38 @@ class ReindexDocumentService:
             if self.vector_store is None:
                 warnings.append("vector_store_not_configured")
             else:
-                vectors_cleared = await self.vector_store.delete_version(
-                    tenant,
-                    document_id=document_id,
-                    version_id=version_id,
-                )
+                try:
+                    vectors_cleared = await self.vector_store.delete_version(
+                        tenant,
+                        document_id=document_id,
+                        version_id=version_id,
+                    )
+                except Exception as exc:  # noqa: BLE001 - best-effort clear
+                    warnings.append(f"vector_clear_failed:{type(exc).__name__}")
+                    logger.warning(
+                        "reindex_vector_clear_failed",
+                        document_id=str(document_id),
+                        error=str(exc),
+                    )
 
         if scope in {ReindexScope.FULL, ReindexScope.GRAPH}:
             if self.graph_store is None:
                 warnings.append("graph_store_not_configured")
             else:
-                graph_cleared = await self.graph_store.delete_version(
-                    tenant,
-                    document_id=document_id,
-                    version_id=version_id,
-                    chunk_ids=chunk_ids,
-                )
+                try:
+                    graph_cleared = await self.graph_store.delete_version(
+                        tenant,
+                        document_id=document_id,
+                        version_id=version_id,
+                        chunk_ids=chunk_ids,
+                    )
+                except Exception as exc:  # noqa: BLE001 - best-effort clear
+                    warnings.append(f"graph_clear_failed:{type(exc).__name__}")
+                    logger.warning(
+                        "reindex_graph_clear_failed",
+                        document_id=str(document_id),
+                        error=str(exc),
+                    )
 
         resume_stage = _resume_stage_for_scope(scope)
         run_id = new_id()

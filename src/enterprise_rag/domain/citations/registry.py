@@ -90,14 +90,19 @@ def evidence_to_citation(
     """Convert retrieved evidence into a domain citation."""
     source_key = item.source_object_key.strip() or "unspecified"
     evidence_text = item.text.strip() or "(empty evidence)"
+    page_start = item.page_start
+    page_end = item.page_end
+    # Prefer a precise landing page when legacy multi-page text chunks remain.
+    if page_end - page_start >= 3:
+        page_end = page_start
     return Citation(
         citation_id=citation_id,
         tenant_id=tenant.tenant_id,
         document_id=item.document_id,
         document_version_id=item.document_version_id,
         document_name=item.document_name or str(item.document_id),
-        page_start=item.page_start,
-        page_end=item.page_end,
+        page_start=page_start,
+        page_end=page_end,
         section_path=list(item.section_path),
         element_id=item.element_id,
         chunk_id=item.chunk_id,

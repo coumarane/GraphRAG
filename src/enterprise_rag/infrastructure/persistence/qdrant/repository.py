@@ -227,6 +227,41 @@ class QdrantChunkVectorStore:
         status = getattr(result, "status", None)
         return 0 if status is None else 1
 
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+    ) -> int:
+        client = self._get_client()
+        try:
+            from qdrant_client.http import models as qm
+        except ImportError as exc:
+            raise ConfigurationError("qdrant_client models unavailable", cause=exc) from exc
+        try:
+            result = client.delete(
+                collection_name=self._collection,
+                points_selector=qm.FilterSelector(
+                    filter=qm.Filter(
+                        must=[
+                            qm.FieldCondition(
+                                key="tenant_id",
+                                match=qm.MatchValue(value=str(tenant.tenant_id)),
+                            ),
+                            qm.FieldCondition(
+                                key="document_id",
+                                match=qm.MatchValue(value=str(document_id)),
+                            ),
+                        ]
+                    )
+                ),
+                wait=True,
+            )
+        except Exception as exc:
+            raise StorageError("Qdrant document delete failed", cause=exc) from exc
+        status = getattr(result, "status", None)
+        return 0 if status is None else 1
+
 
 def _payload_dict(payload: ChunkVectorPayload) -> dict[str, Any]:
     return {

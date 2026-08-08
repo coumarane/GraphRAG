@@ -5,9 +5,17 @@ import { readTenantKey } from "@/components/AppShell";
 
 type Props = {
   documentId: string;
+  /** 1-based PDF page to open when available. */
+  page?: number | null;
+  /** Fill the viewport (source viewer tab). */
+  fillViewport?: boolean;
 };
 
-export function DocumentOriginalPreview({ documentId }: Props) {
+export function DocumentOriginalPreview({
+  documentId,
+  page,
+  fillViewport = false,
+}: Props) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [contentType, setContentType] = useState("");
   const [filename, setFilename] = useState("document");
@@ -75,9 +83,21 @@ export function DocumentOriginalPreview({ documentId }: Props) {
     };
   }, [documentId]);
 
+  const frameClass = fillViewport
+    ? "h-[calc(100vh-3.5rem)] w-full bg-[#f7f8fa]"
+    : "h-[70vh] w-full bg-[#f7f8fa]";
+  const pageFragment =
+    typeof page === "number" && Number.isFinite(page) && page >= 1
+      ? `#page=${Math.floor(page)}`
+      : "";
+
   if (busy) {
     return (
-      <p className="rounded-lg border border-border bg-surface px-5 py-10 text-sm text-muted">
+      <p
+        className={`rounded-lg border border-border bg-surface px-5 py-10 text-sm text-muted ${
+          fillViewport ? "min-h-[50vh]" : ""
+        }`}
+      >
         Loading original preview…
       </p>
     );
@@ -93,7 +113,11 @@ export function DocumentOriginalPreview({ documentId }: Props) {
 
   if (textPreview != null) {
     return (
-      <pre className="max-h-[70vh] overflow-auto rounded-lg border border-border bg-surface p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+      <pre
+        className={`overflow-auto rounded-lg border border-border bg-surface p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap ${
+          fillViewport ? "max-h-[calc(100vh-3.5rem)]" : "max-h-[70vh]"
+        }`}
+      >
         {textPreview}
       </pre>
     );
@@ -101,22 +125,31 @@ export function DocumentOriginalPreview({ documentId }: Props) {
 
   if (objectUrl && (contentType.includes("pdf") || /\.pdf$/i.test(filename))) {
     return (
-      <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2">
-          <p className="font-mono text-xs text-muted">{filename}</p>
-          <a
-            href={objectUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-accent hover:underline"
-          >
-            Open in new tab
-          </a>
-        </div>
+      <div
+        className={`overflow-hidden bg-surface ${
+          fillViewport
+            ? "border-0"
+            : "rounded-lg border border-border shadow-sm"
+        }`}
+      >
+        {!fillViewport ? (
+          <div className="flex items-center justify-between border-b border-border px-4 py-2">
+            <p className="font-mono text-xs text-muted">{filename}</p>
+            <a
+              href={`${objectUrl}${pageFragment}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-accent hover:underline"
+            >
+              Open in new tab
+            </a>
+          </div>
+        ) : null}
         <iframe
-          src={objectUrl}
+          key={`${objectUrl}${pageFragment}`}
+          src={`${objectUrl}${pageFragment}`}
           title={`Preview ${filename}`}
-          className="h-[70vh] w-full bg-[#f7f8fa]"
+          className={frameClass}
         />
       </div>
     );
@@ -128,7 +161,9 @@ export function DocumentOriginalPreview({ documentId }: Props) {
       <img
         src={objectUrl}
         alt={filename}
-        className="max-h-[70vh] w-auto max-w-full rounded-lg border border-border bg-surface object-contain p-2"
+        className={`max-w-full rounded-lg border border-border bg-surface object-contain p-2 ${
+          fillViewport ? "max-h-[calc(100vh-3.5rem)]" : "max-h-[70vh]"
+        } w-auto`}
       />
     );
   }

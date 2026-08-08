@@ -172,6 +172,50 @@ def test_chunker_can_disable_row_and_composite_chunks() -> None:
     assert ChunkType.MULTIMODAL_COMPOSITE not in types
 
 
+def test_chunker_flushes_text_on_page_boundary() -> None:
+    tenant_id = new_id()
+    document_id = new_id()
+    version_id = new_id()
+    ids = {"tenant_id": tenant_id, "document_id": document_id, "version_id": version_id}
+    page_a = TextElement(
+        element_id=new_id(),
+        **ids,
+        page_start=53,
+        page_end=53,
+        reading_order=0,
+        section_path=["(document)"],
+        content_hash=_hash("p53"),
+        normalized_content="Comparison with synthetic mica Appearance Samples",
+    )
+    page_b = TextElement(
+        element_id=new_id(),
+        **ids,
+        page_start=55,
+        page_end=55,
+        reading_order=1,
+        section_path=["(document)"],
+        content_hash=_hash("p55"),
+        normalized_content="Soft-focus effect Transparent BYK-mac",
+    )
+    document = NormalizedDocument(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        title="Deck",
+        source_filename="deck.pdf",
+        mime_type="application/pdf",
+        page_count=55,
+        elements=[page_a, page_b],
+        parser_info=ParserInfo(parser_name="pdfium_multimodal"),
+    )
+    result = HierarchicalMultimodalChunker().chunk(document)
+    text_children = [
+        child for child in result.children if child.chunk_type is ChunkType.TEXT
+    ]
+    assert len(text_children) == 2
+    assert {(c.page_start, c.page_end) for c in text_children} == {(53, 53), (55, 55)}
+
+
 @pytest.mark.asyncio
 async def test_embed_and_inmemory_search_enforces_tenant() -> None:
     document = _sample_document()

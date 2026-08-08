@@ -20,6 +20,7 @@ from enterprise_rag.domain.graph.protocols import GraphStore
 from enterprise_rag.domain.ids import new_id
 from enterprise_rag.domain.ingestion.protocols import DocumentRepository
 from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
+from enterprise_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from enterprise_rag.domain.storage.protocols import ObjectStore, version_prefix
 from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.shared.exceptions import NotFoundError, ValidationError
@@ -61,6 +62,8 @@ class DeleteDocumentService:
     object_store: ObjectStore | None = None
     vector_store: ChunkVectorStore | None = None
     graph_store: GraphStore | None = None
+    chunk_store: ChunkLookupStore | None = None
+    lexical_store: LexicalSearchStore | None = None
     cache: CacheInvalidator | None = None
     chunk_id_provider: ChunkIdProvider | None = None
 
@@ -100,15 +103,36 @@ class DeleteDocumentService:
 
         chunk_ids = await self._resolve_chunk_ids(tenant, document_id, version_id)
 
-        if version_id is not None and self.vector_store is not None:
-            vectors_deleted = await self.vector_store.delete_version(
+        if self.vector_store is not None:
+            # Prefer full-document purge so prior versions cannot orphan vectors.
+            delete_document = getattr(self.vector_store, "delete_document", None)
+            if callable(delete_document):
+                vectors_deleted = await delete_document(
+                    tenant,
+                    document_id=document_id,
+                )
+            elif version_id is not None:
+                vectors_deleted = await self.vector_store.delete_version(
+                    tenant,
+                    document_id=document_id,
+                    version_id=version_id,
+                )
+            stages.append(DeletionStageName.DELETE_VECTORS)
+        else:
+            warnings.append("vector_store_not_configured")
+
+        if version_id is not None and self.chunk_store is not None:
+            await self.chunk_store.delete_version(
                 tenant,
                 document_id=document_id,
                 version_id=version_id,
             )
-            stages.append(DeletionStageName.DELETE_VECTORS)
-        elif self.vector_store is None:
-            warnings.append("vector_store_not_configured")
+        if version_id is not None and self.lexical_store is not None:
+            await self.lexical_store.delete_version(
+                tenant,
+                document_id=document_id,
+                version_id=version_id,
+            )
 
         if version_id is not None and self.graph_store is not None:
             graph_deleted = await self.graph_store.delete_version(

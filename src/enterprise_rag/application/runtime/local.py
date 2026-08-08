@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from enterprise_rag.application.deletion import DeleteDocumentService, ReindexDocumentService
@@ -13,12 +14,22 @@ from enterprise_rag.application.retrieval import RetrieveEvidenceService
 from enterprise_rag.application.runtime.container import ServiceContainer
 from enterprise_rag.domain.chunks.protocols import ChunkVectorStore
 from enterprise_rag.domain.graph.protocols import GraphStore
-from enterprise_rag.domain.models.protocols import ChatModel, EmbeddingModel
+from enterprise_rag.domain.ingestion.protocols import (
+    DocumentRepository,
+    IngestionRepository,
+    TenantRepository,
+)
+from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
+from enterprise_rag.domain.models.protocols import ChatModel, EmbeddingModel, StructuredExtractor
 from enterprise_rag.domain.storage.protocols import ObjectStore
 from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.infrastructure.cache import InMemoryCacheInvalidator
 from enterprise_rag.infrastructure.intake.source_loader import DefaultSourceLoader
-from enterprise_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel
+from enterprise_rag.infrastructure.models import (
+    FakeChatModel,
+    FakeEmbeddingModel,
+    HeuristicReranker,
+)
 from enterprise_rag.infrastructure.observability import InMemoryAuditStore
 from enterprise_rag.infrastructure.persistence.chunks import (
     InMemoryChunkLookupStore,
@@ -117,18 +128,24 @@ def build_local_container(
     chat_model: ChatModel | None = None,
     vector_store: ChunkVectorStore | None = None,
     graph_store: GraphStore | None = None,
+    tenant_repo: TenantRepository | None = None,
+    document_repo: DocumentRepository | None = None,
+    ingestion_repo: IngestionRepository | None = None,
+    structured_extractor: StructuredExtractor | None = None,
     auto_process_ingest: bool = False,
     use_live_models: bool = False,
     max_pages: int = 2_000,
+    on_commit: Callable[[], Awaitable[None]] | None = None,
+    enable_semantic_graph: bool = True,
 ) -> ServiceContainer:
     """Wire adapters for tests, CLI, and local/dev API.
 
     Defaults keep repositories and indexes in-memory. Pass MinIO / Qdrant / Neo4j
-    adapters for a fuller local stack without Postgres yet.
+    / Postgres adapters for a fuller local stack.
     """
-    tenant_repo = InMemoryTenantRepository()
-    document_repo = InMemoryDocumentRepository()
-    ingestion_repo = InMemoryIngestionRepository()
+    tenant_repo = tenant_repo or InMemoryTenantRepository()
+    document_repo = document_repo or InMemoryDocumentRepository()
+    ingestion_repo = ingestion_repo or InMemoryIngestionRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
     source_loader = DefaultSourceLoader(
         max_upload_bytes=max_upload_bytes,
@@ -150,16 +167,42 @@ def build_local_container(
         chat = chat_model or FakeChatModel(
             text='{"answer":"No indexed evidence yet.","citation_ids":[]}'
         )
+    extractor = structured_extractor
+    if extractor is None and use_live_models:
+        from enterprise_rag.infrastructure.models.openai_direct import ChatStructuredExtractor
+
+        extractor = ChatStructuredExtractor(chat)
     vectors = vector_store if vector_store is not None else InMemoryChunkVectorStore()
     chunks = InMemoryChunkLookupStore()
     lexical = InMemoryLexicalSearchStore()
     graph = graph_store if graph_store is not None else InMemoryGraphStore()
+
+    async def active_document_ids(tenant: TenantContext) -> list[UUID]:
+        items, _total = await document_repo.list_documents(tenant, offset=0, limit=500)
+        return [
+            item.document_id
+            for item in items
+            if item.status is DocumentLifecycleStatus.READY
+        ]
+
+    async def document_titles(tenant: TenantContext) -> dict[UUID, str]:
+        items, _total = await document_repo.list_documents(tenant, offset=0, limit=500)
+        titles: dict[UUID, str] = {}
+        for item in items:
+            name = (item.title or "").strip()
+            if name:
+                titles[item.document_id] = name
+        return titles
+
     retrieve = RetrieveEvidenceService(
         embedding_model=embedder,
         vector_store=vectors,
         chunk_store=chunks,
         graph_store=graph,
         lexical_store=lexical,
+        reranker=HeuristicReranker(),
+        active_document_ids=active_document_ids,
+        document_titles=document_titles,
     )
     query = QueryDocumentsService(
         retrieve,
@@ -174,7 +217,12 @@ def build_local_container(
         chunk_store=chunks,
         lexical_store=lexical,
         graph_store=graph,
+        chat_model=chat,
+        structured_extractor=extractor,
         max_pages=max_pages,
+        vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "28") or "28"),
+        semantic_graph=enable_semantic_graph,
+        on_commit=on_commit,
     )
 
     def chunk_ids_for_version(
@@ -196,6 +244,8 @@ def build_local_container(
         object_store=object_store,
         vector_store=vectors,
         graph_store=graph,
+        chunk_store=chunks,
+        lexical_store=lexical,
         cache=InMemoryCacheInvalidator(),
         chunk_id_provider=chunk_ids_for_version,
     )
@@ -205,7 +255,7 @@ def build_local_container(
         vector_store=vectors,
         graph_store=graph,
     )
-    return ServiceContainer(
+    container = ServiceContainer(
         tenant_repo=tenant_repo,
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
@@ -223,3 +273,5 @@ def build_local_container(
         auto_process_ingest=auto_process_ingest,
         ready_checks=[lambda: True],
     )
+    container.on_commit = on_commit
+    return container

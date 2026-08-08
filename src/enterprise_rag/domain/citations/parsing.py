@@ -41,7 +41,20 @@ def parse_generation_text(text: str) -> ParsedGeneration:
     candidate = _extract_json_candidate(stripped)
     if candidate is not None:
         try:
-            payload = GroundedAnswerPayload.model_validate(candidate)
+            normalized = dict(candidate)
+            warnings_raw = normalized.get("warnings")
+            if isinstance(warnings_raw, str):
+                normalized["warnings"] = [warnings_raw] if warnings_raw.strip() else []
+            elif warnings_raw is None:
+                normalized["warnings"] = []
+            elif isinstance(warnings_raw, list):
+                normalized["warnings"] = [
+                    str(item) for item in warnings_raw if str(item).strip()
+                ]
+            citation_raw = normalized.get("citation_ids")
+            if isinstance(citation_raw, str):
+                normalized["citation_ids"] = [citation_raw] if citation_raw.strip() else []
+            payload = GroundedAnswerPayload.model_validate(normalized)
             return ParsedGeneration(
                 answer=payload.answer.strip(),
                 citation_ids=list(dict.fromkeys(payload.citation_ids)),

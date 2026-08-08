@@ -94,6 +94,33 @@ def test_validate_citations_strips_unknown_ids() -> None:
     assert len(result.citations) == 1
 
 
+def test_validate_numeric_grounding_flags_column_misread() -> None:
+    from enterprise_rag.domain.citations import validate_numeric_grounding
+
+    tenant = TenantContext(tenant_id=new_id())
+    evidence = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="High purity glass Component Regular Glass TA GLASS\nPb 4-7 N.D.\nCr 5> N.D.\nSb 5> N.D.",
+    )
+    registry = CitationRegistry(tenant, [evidence])
+    result = validate_citations(
+        tenant=tenant,
+        answer=(
+            "For TA glass:\n"
+            "- Lead (Pb): Not detected (N.D.) [C1]\n"
+            "- Chromium (Cr): Less than 5 ppm [C1]\n"
+        ),
+        registry=registry,
+        claimed_ids=["C1"],
+        strict=False,
+    )
+    assert any(w.startswith("ungrounded_numeric:chromium") for w in result.warnings)
+    assert result.valid is False
+    # Supported N.D. claim should not warn for lead.
+    assert not any(w.startswith("ungrounded_numeric:lead") for w in result.warnings)
+    assert validate_numeric_grounding(answer=result.answer, citations=result.citations)
+
+
 def test_validate_citations_strict_raises() -> None:
     tenant = TenantContext(tenant_id=new_id())
     evidence = _evidence(tenant_id=tenant.tenant_id, text="fact")
@@ -117,6 +144,19 @@ def test_parse_structured_generation() -> None:
     assert parsed.structured
     assert parsed.citation_ids == ["C1"]
     assert extract_citation_ids(parsed.answer) == ["C1"]
+
+
+def test_parse_generation_coerces_string_warnings() -> None:
+    payload = {
+        "answer": "Pb is N.D. [C1].",
+        "citation_ids": ["C1"],
+        "warnings": "Units not specified in the source.",
+    }
+    parsed = parse_generation_text(json.dumps(payload))
+    assert parsed.structured
+    assert parsed.answer == "Pb is N.D. [C1]."
+    assert parsed.warnings == ["Units not specified in the source."]
+    assert "{" not in parsed.answer
 
 
 def test_remap_graph_paths_to_citation_ids() -> None:

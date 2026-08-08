@@ -9,6 +9,7 @@ from enterprise_rag.domain.citations.validation import (
     remap_graph_path_citations,
     strip_unknown_citation_refs,
     validate_citations,
+    validate_numeric_grounding,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "remap_graph_path_citations",
     "strip_unknown_citation_refs",
     "validate_citations",
+    "validate_numeric_grounding",
 ]

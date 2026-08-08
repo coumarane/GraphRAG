@@ -70,9 +70,16 @@ def _element_text(element: DocumentElement) -> str:
         ]
         return " | ".join(part for part in parts if part) or "[image]"
     if isinstance(element, ChartElement):
+        axes = ""
+        if element.axes:
+            axes = "; ".join(f"{key}={value}" for key, value in element.axes.items())
         parts = [
             element.title,
             element.visual_description,
+            element.ocr_text,
+            ("Legend: " + "; ".join(element.legend)) if element.legend else None,
+            f"Axes: {axes}" if axes else None,
+            ("Trends: " + "; ".join(element.trends)) if element.trends else None,
             element.normalized_content,
             element.raw_content,
         ]
@@ -196,6 +203,10 @@ class HierarchicalMultimodalChunker:
                 if not text:
                     index += 1
                     continue
+                # Keep text children page-local so chart/table neighbors do not bleed.
+                if buffer.elements and buffer.elements[0].page_start != element.page_start:
+                    children.append(self._flush_text_child(document, parent, buffer))
+                    buffer.clear()
                 tentative = _estimate_tokens("\n\n".join([*buffer.texts, text]))
                 if buffer.texts and tentative > self._settings.child_target_tokens:
                     overlap_text = buffer.texts[-1] if buffer.texts else ""

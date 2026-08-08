@@ -39,6 +39,7 @@ class DocumentResponse(BaseModel):
     tags: list[str] = Field(default_factory=list)
     security_labels: list[str] = Field(default_factory=list)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    page_count: int | None = None
 
 
 class DocumentListResponse(BaseModel):

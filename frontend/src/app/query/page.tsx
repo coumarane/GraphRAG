@@ -1,8 +1,27 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useState } from "react";
+import {
+  FormEvent,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { readTenantKey } from "@/components/AppShell";
+import {
+  buildConversationalQuestion,
+  createEmptyThread,
+  createMessage,
+  loadChatThreads,
+  saveChatThreads,
+  titleFromQuestion,
+  upsertThread,
+  type ChatCitation,
+  type ChatMessage,
+  type ChatThread,
+} from "@/lib/chatHistory";
 
 const MODES = [
   "auto",
@@ -14,57 +33,639 @@ const MODES = [
   "mix",
 ] as const;
 
-type Citation = {
-  citation_id?: string;
-  chunk_id?: string;
-  document_id?: string;
-  quote?: string;
-  page_start?: number | null;
-  page_end?: number | null;
-};
+type AnswerBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "heading"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "kv"; rows: Array<{ key: string; value: string }> };
 
-type QueryResult = {
+function unwrapAnswerPayload(raw: string): {
   answer: string;
-  citations?: Citation[];
-  warnings?: string[];
-  mode?: string;
-  retrieval_trace_id?: string;
-};
+  warnings: string[];
+} {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) {
+    return { answer: trimmed, warnings: [] };
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (typeof parsed.answer !== "string" || !parsed.answer.trim()) {
+      return { answer: trimmed, warnings: [] };
+    }
+    const warningsRaw = parsed.warnings;
+    const warnings = Array.isArray(warningsRaw)
+      ? warningsRaw.map(String).filter(Boolean)
+      : typeof warningsRaw === "string" && warningsRaw.trim()
+        ? [warningsRaw.trim()]
+        : [];
+    return { answer: parsed.answer.trim(), warnings };
+  } catch {
+    return { answer: trimmed, warnings: [] };
+  }
+}
 
-function QueryForm() {
+function splitValuePairs(
+  text: string,
+): Array<{ key: string; value: string }> | null {
+  const pairs = [
+    ...text.matchAll(/\b([A-Za-z][A-Za-z0-9]{0,6})\s+([^,;]+?)(?=,|;|$)/g),
+  ]
+    .map((match) => ({
+      key: match[1].trim(),
+      value: match[2].trim(),
+    }))
+    .filter((row) => row.key && row.value && /[0-9.<]/.test(row.value));
+  return pairs.length >= 3 ? pairs : null;
+}
+
+function toBlocks(answer: string): AnswerBlock[] {
+  const normalized = answer.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return [];
+
+  const blocks: AnswerBlock[] = [];
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    const lines = paragraph
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const bulletLines = lines.filter((line) => /^([-*•]|\d+\.)\s+/.test(line));
+    if (bulletLines.length >= 2 && bulletLines.length === lines.length) {
+      blocks.push({
+        type: "list",
+        items: lines.map((line) => line.replace(/^([-*•]|\d+\.)\s+/, "")),
+      });
+      continue;
+    }
+
+    const sectionChunks = paragraph
+      .split(/(?=\bFor\s+[A-Z0-9][^:]{0,80}:)/g)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (sectionChunks.length > 1) {
+      for (const chunk of sectionChunks) {
+        const headingMatch = /^(For\s+.+?)(?:\s*:\s*|\.\s+)/.exec(chunk);
+        if (headingMatch) {
+          blocks.push({
+            type: "heading",
+            text: headingMatch[1].replace(/\.$/, ""),
+          });
+          const rest = chunk.slice(headingMatch[0].length).trim();
+          const valuesMatch =
+            /(?:measured\s+)?values?\s+are\s*:\s*(.+)$/i.exec(rest);
+          if (valuesMatch) {
+            const pairs = splitValuePairs(valuesMatch[1]);
+            if (pairs) {
+              blocks.push({ type: "kv", rows: pairs });
+              continue;
+            }
+          }
+          if (rest) blocks.push({ type: "paragraph", text: rest });
+          continue;
+        }
+        blocks.push({ type: "paragraph", text: chunk });
+      }
+      continue;
+    }
+
+    const valuesMatch =
+      /(?:measured\s+)?values?\s+are\s*:\s*(.+)$/i.exec(paragraph);
+    if (valuesMatch) {
+      const intro = paragraph.slice(0, valuesMatch.index).trim();
+      if (intro) {
+        blocks.push({ type: "paragraph", text: intro.replace(/:\s*$/, "") });
+      }
+      const pairs = splitValuePairs(valuesMatch[1]);
+      if (pairs) {
+        blocks.push({ type: "kv", rows: pairs });
+        continue;
+      }
+    }
+
+    const kvLines = lines.filter((line) =>
+      /^[-*•]?\s*[A-Za-z][^:]{1,40}:\s+\S/.test(line),
+    );
+    if (kvLines.length >= 2 && kvLines.length === lines.length) {
+      blocks.push({
+        type: "kv",
+        rows: lines.map((line) => {
+          const cleaned = line.replace(/^[-*•]\s*/, "");
+          const idx = cleaned.indexOf(":");
+          return {
+            key: cleaned.slice(0, idx).trim(),
+            value: cleaned.slice(idx + 1).trim(),
+          };
+        }),
+      });
+      continue;
+    }
+
+    blocks.push({ type: "paragraph", text: paragraph });
+  }
+
+  return blocks;
+}
+
+function highlightCitations(text: string) {
+  const parts = text.split(/(\[C\d+\])/g);
+  return parts.map((part, index) => {
+    const match = /^\[(C\d+)\]$/.exec(part);
+    if (!match) return <span key={index}>{part}</span>;
+    const id = match[1];
+    return (
+      <a
+        key={index}
+        href={`#cite-${id}`}
+        className="mx-0.5 inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent hover:bg-accent/15"
+      >
+        {id}
+      </a>
+    );
+  });
+}
+
+function FormattedAnswer({ answer }: { answer: string }) {
+  const blocks = useMemo(() => toBlocks(answer), [answer]);
+
+  if (!blocks.length) {
+    return <p className="text-sm text-muted">No answer returned.</p>;
+  }
+
+  return (
+    <div className="space-y-3 text-[15px] leading-7 text-foreground">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          return (
+            <h4
+              key={index}
+              className="text-sm font-semibold tracking-tight text-foreground"
+            >
+              {highlightCitations(block.text)}
+            </h4>
+          );
+        }
+        if (block.type === "list") {
+          return (
+            <ul key={index} className="list-disc space-y-1.5 pl-5">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{highlightCitations(item)}</li>
+              ))}
+            </ul>
+          );
+        }
+        if (block.type === "kv") {
+          return (
+            <div
+              key={index}
+              className="overflow-hidden rounded-md border border-border"
+            >
+              <table className="w-full text-left text-sm">
+                <thead className="bg-background text-xs uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Element</th>
+                    <th className="px-3 py-2 font-medium">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr
+                      key={`${row.key}-${rowIndex}`}
+                      className="border-t border-border/80"
+                    >
+                      <td className="px-3 py-2 font-mono text-[13px] font-semibold">
+                        {row.key}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[13px]">
+                        {highlightCitations(row.value)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        return (
+          <p key={index} className="whitespace-pre-wrap">
+            {highlightCitations(block.text)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function looksLikeUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function sourceLabel(citation: ChatCitation, resolvedTitle?: string): string {
+  const candidates = [resolvedTitle, citation.document_name]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  for (const name of candidates) {
+    if (name !== citation.document_id && !looksLikeUuid(name)) return name;
+  }
+  return "Untitled document";
+}
+
+function sourceHrefFor(citation: ChatCitation): string | null {
+  if (!citation.document_id) return null;
+  const page =
+    typeof citation.page_start === "number" && citation.page_start >= 1
+      ? citation.page_start
+      : null;
+  const qs = page != null ? `?page=${page}` : "";
+  return `/documents/${citation.document_id}/source${qs}`;
+}
+
+function sectionLabel(citation: ChatCitation): string | null {
+  const path = (citation.section_path || []).map((part) => part.trim()).filter(Boolean);
+  if (path.length) return path[path.length - 1];
+  const evidence = (citation.evidence || citation.quote || "").trim();
+  if (!evidence) return null;
+  const firstLine = evidence.split(/\n/)[0]?.replace(/^[#*\-\s|]+/, "").trim();
+  if (!firstLine) return null;
+  return firstLine.length > 48 ? `${firstLine.slice(0, 48).trimEnd()}…` : firstLine;
+}
+
+function snippetText(citation: ChatCitation): string {
+  const raw = (citation.evidence || citation.quote || "").trim().replace(/\s+/g, " ");
+  if (!raw) return "";
+  return raw.length > 160 ? `${raw.slice(0, 160).trimEnd()}…` : raw;
+}
+
+function citationNumber(citation: ChatCitation, index: number): number {
+  const id = citation.citation_id || "";
+  const match = /^C(\d+)$/i.exec(id);
+  if (match) return Number.parseInt(match[1], 10);
+  return index + 1;
+}
+
+type DocMeta = { title: string | null; page_count: number | null };
+
+function SourcesGrid({
+  citations,
+  uploaderName,
+}: {
+  citations: ChatCitation[];
+  uploaderName: string;
+}) {
+  const [metaById, setMetaById] = useState<Record<string, DocMeta>>({});
+
+  useEffect(() => {
+    const ids = [
+      ...new Set(
+        citations
+          .map((citation) => citation.document_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (!ids.length) return;
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const res = await fetch(`/api/documents/${id}`, {
+              headers: { "X-Tenant-Key": readTenantKey() },
+              cache: "no-store",
+            });
+            if (!res.ok) return [id, { title: null, page_count: null }] as const;
+            const body = (await res.json()) as {
+              title?: string | null;
+              page_count?: number | null;
+            };
+            return [
+              id,
+              {
+                title: body.title?.trim() || null,
+                page_count:
+                  typeof body.page_count === "number" ? body.page_count : null,
+              },
+            ] as const;
+          } catch {
+            return [id, { title: null, page_count: null }] as const;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setMetaById(Object.fromEntries(entries));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [citations]);
+
+  return (
+    <div className="mt-1">
+      <p className="text-[11px] font-medium tracking-[0.14em] text-muted uppercase">
+        Sources
+      </p>
+      <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+        {citations.map((citation, index) => {
+          const meta = citation.document_id
+            ? metaById[citation.document_id]
+            : undefined;
+          const name = sourceLabel(citation, meta?.title ?? undefined);
+          const href = sourceHrefFor(citation);
+          const number = citationNumber(citation, index);
+          const page = citation.page_start;
+          const total = meta?.page_count;
+          const section = sectionLabel(citation);
+          const snippet = snippetText(citation);
+          const pageText =
+            page != null
+              ? total != null
+                ? `Page ${page} /${total}`
+                : citation.page_end != null && citation.page_end !== page
+                  ? `Page ${page}–${citation.page_end}`
+                  : `Page ${page}`
+              : null;
+
+          const card = (
+            <>
+              <div className="flex items-start gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ece7f5] text-[12px] font-semibold text-[#5b4b8a]">
+                  {number}
+                </span>
+                <p className="min-w-0 text-[13px] leading-5 font-semibold tracking-wide text-foreground uppercase">
+                  {name}
+                </p>
+              </div>
+              <div className="mt-2 space-y-1 pl-[2.125rem] text-[12px] leading-5 text-muted">
+                {pageText || section ? (
+                  <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 16 16"
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <path d="M4 2.5h5.5L12 5v8.5H4v-11z" />
+                      <path d="M9.5 2.5V5H12" />
+                    </svg>
+                    {pageText ? <span>{pageText}</span> : null}
+                    {pageText && section ? <span>·</span> : null}
+                    {section ? <span className="line-clamp-1">{section}</span> : null}
+                  </p>
+                ) : null}
+                <p className="flex items-center gap-1.5">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 16 16"
+                    className="h-3.5 w-3.5 shrink-0 opacity-70"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <circle cx="8" cy="5.5" r="2.25" />
+                    <path d="M3.5 13c.8-2 2.2-3 4.5-3s3.7 1 4.5 3" />
+                  </svg>
+                  <span>Uploaded by {uploaderName}</span>
+                </p>
+              </div>
+              {snippet ? (
+                <p className="mt-2 line-clamp-2 pl-[2.125rem] text-[12px] leading-5 text-foreground/70">
+                  {snippet}
+                </p>
+              ) : null}
+            </>
+          );
+
+          return (
+            <li key={citation.citation_id || citation.chunk_id || index}>
+              {href ? (
+                <a
+                  id={`cite-C${number}`}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block h-full rounded-xl border border-border bg-[#f3f5f7] px-3.5 py-3 transition-colors hover:border-accent/50 hover:bg-white"
+                  title={`Open ${name}${page != null ? ` at page ${page}` : ""}`}
+                >
+                  {card}
+                </a>
+              ) : (
+                <div className="h-full rounded-xl border border-border bg-[#f3f5f7] px-3.5 py-3">
+                  {card}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  uploaderName,
+}: {
+  message: ChatMessage;
+  uploaderName: string;
+}) {
+  const isUser = message.role === "user";
+  return (
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`rounded-2xl px-4 py-3 ${
+          isUser
+            ? "max-w-[min(100%,42rem)] bg-accent text-white"
+            : "w-full max-w-[min(100%,52rem)] border border-border bg-surface text-foreground shadow-sm"
+        }`}
+      >
+        <p
+          className={`mb-1 text-[11px] font-medium uppercase tracking-wide ${
+            isUser ? "text-white/70" : "text-muted"
+          }`}
+        >
+          {isUser ? "You" : "Assistant"}
+        </p>
+        {isUser ? (
+          <p className="whitespace-pre-wrap text-[15px] leading-7">
+            {message.content}
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <FormattedAnswer answer={message.content} />
+            {message.retrieval_mode ? (
+              <p className="font-mono text-[11px] text-muted">
+                mode={message.retrieval_mode}
+                {message.retrieval_trace_id
+                  ? ` · trace=${message.retrieval_trace_id}`
+                  : ""}
+              </p>
+            ) : null}
+            {message.warnings?.length ? (
+              <div className="rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+                <p className="text-xs font-medium text-amber-800">Notes</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-900/90">
+                  {message.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {message.citations?.length ? (
+              <SourcesGrid
+                citations={message.citations}
+                uploaderName={uploaderName}
+              />
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatWorkspace() {
   const searchParams = useSearchParams();
-  const [question, setQuestion] = useState("");
-  const [mode, setMode] = useState<(typeof MODES)[number]>("auto");
-  const [documentId, setDocumentId] = useState("");
+  const [tenantKey, setTenantKey] = useState("demo");
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<QueryResult | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const activeThread =
+    threads.find((thread) => thread.id === activeId) ?? threads[0] ?? null;
+
+  useEffect(() => {
+    const syncTenant = () => setTenantKey(readTenantKey());
+    syncTenant();
+    window.addEventListener("focus", syncTenant);
+    return () => window.removeEventListener("focus", syncTenant);
+  }, []);
+
+  useEffect(() => {
+    const loaded = loadChatThreads(tenantKey);
+    if (loaded.length) {
+      setThreads(loaded);
+      setActiveId(loaded[0].id);
+    } else {
+      const fresh = createEmptyThread();
+      setThreads([fresh]);
+      setActiveId(fresh.id);
+    }
+    setHydrated(true);
+  }, [tenantKey]);
 
   useEffect(() => {
     const fromUrl = searchParams.get("document_id");
-    if (fromUrl) setDocumentId(fromUrl);
-  }, [searchParams]);
+    if (!fromUrl || !hydrated || !activeThread) return;
+    if (activeThread.documentId === fromUrl) return;
+    setThreads((prev) => {
+      const next = prev.map((thread) =>
+        thread.id === activeThread.id
+          ? { ...thread, documentId: fromUrl, updatedAt: new Date().toISOString() }
+          : thread,
+      );
+      saveChatThreads(tenantKey, next);
+      return next;
+    });
+  }, [searchParams, hydrated, activeThread, tenantKey]);
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!question.trim()) {
-      setError("Enter a question.");
+  useEffect(() => {
+    if (!hydrated) return;
+    saveChatThreads(tenantKey, threads);
+  }, [threads, tenantKey, hydrated]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [activeThread?.messages.length, busy]);
+
+  function startNewChat() {
+    const fresh = createEmptyThread({
+      mode: activeThread?.mode ?? "auto",
+      documentId: activeThread?.documentId ?? "",
+    });
+    setThreads((prev) => upsertThread(prev, fresh));
+    setActiveId(fresh.id);
+    setDraft("");
+    setError(null);
+    textareaRef.current?.focus();
+  }
+
+  function deleteChat(threadId: string) {
+    setThreads((prev) => {
+      const remaining = prev.filter((thread) => thread.id !== threadId);
+      if (!remaining.length) {
+        const fresh = createEmptyThread();
+        setActiveId(fresh.id);
+        return [fresh];
+      }
+      if (activeId === threadId) setActiveId(remaining[0].id);
+      return remaining;
+    });
+  }
+
+  function updateActive(patch: Partial<ChatThread>) {
+    if (!activeThread) return;
+    setThreads((prev) =>
+      upsertThread(prev, {
+        ...activeThread,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  async function sendMessage(questionRaw: string) {
+    if (!activeThread || busy) return;
+    const question = questionRaw.trim();
+    if (!question) {
+      setError("Enter a message.");
       return;
     }
+
     setBusy(true);
     setError(null);
-    setResult(null);
+    const userMessage = createMessage("user", question);
+    const historyForContext = activeThread.messages;
+    const nextMessages = [...activeThread.messages, userMessage];
+    const titled =
+      activeThread.messages.length === 0
+        ? titleFromQuestion(question)
+        : activeThread.title;
+
+    const optimistic: ChatThread = {
+      ...activeThread,
+      title: titled,
+      messages: nextMessages,
+      updatedAt: new Date().toISOString(),
+    };
+    setThreads((prev) => upsertThread(prev, optimistic));
+    setDraft("");
+
     try {
       const response = await fetch("/api/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Tenant-Key": readTenantKey(),
+          "X-Tenant-Key": tenantKey,
         },
         body: JSON.stringify({
-          question: question.trim(),
-          mode,
-          document_ids: documentId.trim() ? [documentId.trim()] : [],
+          question: buildConversationalQuestion(historyForContext, question),
+          mode: activeThread.mode,
+          document_ids: activeThread.documentId.trim()
+            ? [activeThread.documentId.trim()]
+            : [],
           include_graph_paths: true,
           rerank: true,
         }),
@@ -77,140 +678,237 @@ function QueryForm() {
             : body.message || response.statusText,
         );
       }
-      setResult(body as QueryResult);
+      const unwrapped = unwrapAnswerPayload(
+        typeof body.answer === "string" ? body.answer : "",
+      );
+      const warnings = [
+        ...(Array.isArray(body.warnings) ? body.warnings.map(String) : []),
+        ...unwrapped.warnings,
+      ];
+      const assistantMessage = createMessage("assistant", unwrapped.answer, {
+        citations: Array.isArray(body.citations)
+          ? body.citations.map((item: ChatCitation) => ({
+              ...item,
+              document_name:
+                typeof item.document_name === "string" &&
+                item.document_name.trim() &&
+                !looksLikeUuid(item.document_name.trim())
+                  ? item.document_name.trim()
+                  : item.document_name,
+              section_path: Array.isArray(item.section_path)
+                ? item.section_path
+                : [],
+            }))
+          : [],
+        warnings: [...new Set(warnings)],
+        retrieval_mode: body.retrieval_mode || body.mode,
+        retrieval_trace_id: body.retrieval_trace_id,
+      });
+      setThreads((prev) => {
+        const current = prev.find((thread) => thread.id === activeThread.id);
+        if (!current) return prev;
+        return upsertThread(prev, {
+          ...current,
+          title: titled,
+          messages: [...current.messages, assistantMessage],
+          updatedAt: new Date().toISOString(),
+        });
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      setThreads((prev) => {
+        const current = prev.find((thread) => thread.id === activeThread.id);
+        if (!current) return prev;
+        return upsertThread(prev, {
+          ...current,
+          messages: [
+            ...current.messages,
+            createMessage(
+              "assistant",
+              `I could not complete that request: ${message}`,
+              { warnings: ["request_failed"] },
+            ),
+          ],
+          updatedAt: new Date().toISOString(),
+        });
+      });
     } finally {
       setBusy(false);
     }
   }
 
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    void sendMessage(draft);
+  }
+
+  if (!hydrated || !activeThread) {
+    return <p className="text-sm text-muted">Loading chats…</p>;
+  }
+
   return (
-    <>
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 rounded-lg border border-border bg-surface p-6 shadow-sm"
-      >
-        <label className="block text-sm">
-          <span className="text-muted">Question</span>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            rows={4}
-            className="mt-1 w-full rounded border border-border bg-background px-3 py-2 outline-none focus:border-accent"
-            placeholder="What does the document say about …?"
-          />
-        </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
+    <div className="grid min-h-[calc(100vh-14rem)] gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="flex flex-col rounded-lg border border-border bg-surface">
+        <div className="border-b border-border p-3">
+          <button
+            type="button"
+            onClick={startNewChat}
+            className="w-full rounded bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            New chat
+          </button>
+        </div>
+        <ul className="flex-1 space-y-1 overflow-y-auto p-2">
+          {threads.map((thread) => {
+            const active = thread.id === activeThread.id;
+            return (
+              <li key={thread.id} className="group relative">
+                <button
+                  type="button"
+                  onClick={() => setActiveId(thread.id)}
+                  className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? "bg-accent/10 text-foreground"
+                      : "text-muted hover:bg-background hover:text-foreground"
+                  }`}
+                >
+                  <span className="line-clamp-2 pr-6">{thread.title}</span>
+                  <span className="mt-1 block font-mono text-[10px] text-muted">
+                    {thread.messages.length} msg
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete chat"
+                  onClick={() => deleteChat(thread.id)}
+                  className="absolute top-2 right-2 hidden rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-danger/10 hover:text-danger group-hover:inline-flex"
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
+
+      <section className="flex min-h-[32rem] flex-col rounded-lg border border-border bg-surface shadow-sm">
+        <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+          <label className="min-w-[8rem] flex-1 text-sm">
             <span className="text-muted">Mode</span>
             <select
-              value={mode}
-              onChange={(e) =>
-                setMode(e.target.value as (typeof MODES)[number])
-              }
+              value={activeThread.mode}
+              onChange={(event) => updateActive({ mode: event.target.value })}
               className="mt-1 w-full rounded border border-border bg-background px-3 py-2 outline-none focus:border-accent"
             >
-              {MODES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
+              {MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
                 </option>
               ))}
             </select>
           </label>
-          <label className="block text-sm">
-            <span className="text-muted">Document ID filter (optional)</span>
+          <label className="min-w-[12rem] flex-[2] text-sm">
+            <span className="text-muted">Document filter (optional)</span>
             <input
-              value={documentId}
-              onChange={(e) => setDocumentId(e.target.value.trim())}
+              value={activeThread.documentId}
+              onChange={(event) =>
+                updateActive({ documentId: event.target.value.trim() })
+              }
               className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-accent"
               placeholder="Leave empty for all documents"
             />
           </label>
         </div>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
-        >
-          {busy ? "Running…" : "Ask"}
-        </button>
-      </form>
 
-      {error ? (
-        <p className="rounded border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
-          {error}
-        </p>
-      ) : null}
-
-      {result ? (
-        <article className="space-y-4 rounded-lg border border-border bg-surface p-6 shadow-sm">
-          <div>
-            <h3 className="text-sm font-medium text-muted">Answer</h3>
-            <p className="mt-2 whitespace-pre-wrap leading-relaxed">
-              {result.answer}
-            </p>
-          </div>
-          {result.mode || result.retrieval_trace_id ? (
-            <p className="font-mono text-xs text-muted">
-              mode={result.mode ?? "?"}
-              {result.retrieval_trace_id
-                ? ` · trace=${result.retrieval_trace_id}`
-                : ""}
-            </p>
-          ) : null}
-          {result.warnings?.length ? (
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
-              {result.warnings.map((w) => (
-                <li key={w}>{w}</li>
-              ))}
-            </ul>
-          ) : null}
-          {result.citations?.length ? (
-            <div>
-              <h3 className="text-sm font-medium text-muted">Citations</h3>
-              <ul className="mt-2 space-y-3">
-                {result.citations.map((c, i) => (
-                  <li
-                    key={c.citation_id || c.chunk_id || i}
-                    className="rounded border border-border bg-background px-3 py-2 text-sm"
-                  >
-                    <p className="font-mono text-xs text-muted">
-                      {c.document_id}
-                      {c.page_start != null
-                        ? ` · p.${c.page_start}${
-                            c.page_end != null && c.page_end !== c.page_start
-                              ? `–${c.page_end}`
-                              : ""
-                          }`
-                        : ""}
-                    </p>
-                    {c.quote ? (
-                      <p className="mt-1 text-foreground/90">{c.quote}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
+          {activeThread.messages.length === 0 ? (
+            <div className="mx-auto max-w-lg py-16 text-center">
+              <h3 className="text-lg font-semibold tracking-tight">
+                Grounded document chat
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Ask follow-up questions like ChatGPT. Each reply stays grounded
+                in retrieved evidence, and this conversation is saved in your
+                browser.
+              </p>
+            </div>
+          ) : (
+            activeThread.messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                uploaderName={
+                  tenantKey.trim()
+                    ? tenantKey.trim().charAt(0).toUpperCase() +
+                      tenantKey.trim().slice(1)
+                    : "Workspace"
+                }
+              />
+            ))
+          )}
+          {busy ? (
+            <div className="flex justify-start">
+              <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted shadow-sm">
+                Retrieving and answering…
+              </div>
             </div>
           ) : null}
-        </article>
-      ) : null}
-    </>
+          <div ref={bottomRef} />
+        </div>
+
+        {error ? (
+          <p className="mx-4 mb-2 rounded border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {error}
+          </p>
+        ) : null}
+
+        <form
+          onSubmit={onSubmit}
+          className="border-t border-border bg-background/60 px-4 py-3"
+        >
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage(draft);
+                }
+              }}
+              rows={3}
+              placeholder="Ask a follow-up… (Enter to send, Shift+Enter for newline)"
+              className="max-h-40 min-h-[4.5rem] flex-1 resize-y rounded-xl border border-border bg-surface px-3 py-2 text-[15px] outline-none focus:border-accent"
+              disabled={busy}
+            />
+            <button
+              type="submit"
+              disabled={busy || !draft.trim()}
+              className="rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
 export default function QueryPage() {
   return (
-    <section className="space-y-6">
+    <section className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Query</h2>
+        <h2 className="text-xl font-semibold">Chat</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Ask grounded questions over ingested documents. Same contract as the
-          CLI <code className="font-mono text-xs">enterprise-rag query</code>.
+          Conversational grounded Q&amp;A with saved chat history in this
+          browser.
         </p>
       </div>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
-        <QueryForm />
+        <ChatWorkspace />
       </Suspense>
     </section>
   );

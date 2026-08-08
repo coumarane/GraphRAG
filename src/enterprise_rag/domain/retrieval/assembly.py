@@ -85,13 +85,79 @@ def assemble_context(
     *,
     top_k: int,
     prefer_modality_diversity: bool = True,
+    prefer_tables: bool = False,
+    prefer_charts: bool = False,
 ) -> list[RetrievedEvidence]:
     """Bound context size while preferring modality diversity when requested."""
     deduped = deduplicate_evidence(evidence)
+    if top_k <= 0:
+        return []
+    if prefer_tables:
+        table_like = [
+            item
+            for item in deduped
+            if item.modality is Modality.TABLE
+            or any(
+                hint in (item.text or "").casefold()
+                for hint in ("ppm", "n.d", "heavy metal", "impurit", "assay")
+            )
+        ]
+        reserved = max(1, min(len(table_like), (top_k + 1) // 2))
+        selected: list[RetrievedEvidence] = []
+        seen: set[UUID] = set()
+        for item in table_like:
+            if len(selected) >= reserved:
+                break
+            selected.append(item)
+            seen.add(item.chunk_id)
+        for item in deduped:
+            if len(selected) >= top_k:
+                break
+            if item.chunk_id in seen:
+                continue
+            selected.append(item)
+            seen.add(item.chunk_id)
+        return selected[:top_k]
+
+    if prefer_charts:
+        chart_like = [
+            item
+            for item in deduped
+            if item.modality in {Modality.CHART, Modality.IMAGE, Modality.COMPOSITE}
+            or any(
+                hint in (item.text or "").casefold()
+                for hint in (
+                    "soft-focus",
+                    "soft focus",
+                    "byk-mac",
+                    "angle of measurement",
+                    "tone-up",
+                    "synthetic mica (matte",
+                    "synthetic mica (gloss",
+                )
+            )
+        ]
+        reserved = max(1, min(len(chart_like), (top_k + 1) // 2))
+        selected: list[RetrievedEvidence] = []
+        seen: set[UUID] = set()
+        for item in chart_like:
+            if len(selected) >= reserved:
+                break
+            selected.append(item)
+            seen.add(item.chunk_id)
+        for item in deduped:
+            if len(selected) >= top_k:
+                break
+            if item.chunk_id in seen:
+                continue
+            selected.append(item)
+            seen.add(item.chunk_id)
+        return selected[:top_k]
+
     if not prefer_modality_diversity or top_k <= 1:
         return deduped[:top_k]
 
-    selected: list[RetrievedEvidence] = []
+    selected = []
     seen_modalities: set[Modality] = set()
     deferred: list[RetrievedEvidence] = []
     for item in deduped:

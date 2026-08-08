@@ -89,6 +89,19 @@ class ServiceContainer:
     assets: dict[tuple[UUID, UUID], str] = field(default_factory=dict)
     ready_checks: list[ReadyCheck] = field(default_factory=list)
     metrics: dict[str, int] = field(default_factory=lambda: {"requests_total": 0})
+    db_session: Any | None = None
+    on_commit: Any | None = None
+
+    async def commit_db(self) -> None:
+        """Commit the metadata DB session when Postgres is wired."""
+        if callable(self.on_commit):
+            maybe = self.on_commit()
+            if hasattr(maybe, "__await__"):
+                await maybe
+            return
+        session = self.db_session
+        if session is not None:
+            await session.commit()
 
     def require_register_source(self) -> RegisterSourceService:
         if self.register_source is None:

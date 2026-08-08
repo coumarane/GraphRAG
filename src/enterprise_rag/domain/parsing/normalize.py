@@ -194,11 +194,35 @@ def _normalize_element(
             ocr_text=_meta_str(raw, "ocr_text"),
         )
     if element_type is ElementType.CHART:
+        legend_raw = raw.metadata.get("legend")
+        legend = (
+            [str(item) for item in legend_raw if str(item).strip()]
+            if isinstance(legend_raw, list)
+            else []
+        )
+        trends_raw = raw.metadata.get("trends")
+        trends = (
+            [str(item) for item in trends_raw if str(item).strip()]
+            if isinstance(trends_raw, list)
+            else []
+        )
+        axes_raw = raw.metadata.get("axes")
+        axes: dict[str, object] = {}
+        if isinstance(axes_raw, dict):
+            for key, value in axes_raw.items():
+                if isinstance(value, (str, int, float, bool)) or value is None:
+                    axes[str(key)] = value
+                else:
+                    axes[str(key)] = str(value)
         return ChartElement(
             **common,
             chart_type=_meta_str(raw, "chart_type"),
             title=_meta_str(raw, "title"),
+            axes=axes,  # type: ignore[arg-type]
+            legend=legend,
+            trends=trends,
             visual_description=_meta_str(raw, "visual_description"),
+            ocr_text=_meta_str(raw, "ocr_text"),
         )
     if element_type is ElementType.DIAGRAM:
         return DiagramElement(

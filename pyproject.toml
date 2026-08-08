@@ -24,6 +24,7 @@ dependencies = [
   "minio>=7.2,<8",
   "httpx>=0.28,<1",
   "pypdfium2>=4.30,<5",
+  "pillow>=12.3.0",
 ]
 
 [project.optional-dependencies]

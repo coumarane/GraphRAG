@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 const NAV = [
   { href: "/documents", label: "Documents" },
   { href: "/upload", label: "Upload" },
-  { href: "/query", label: "Query" },
+  { href: "/query", label: "Chat" },
   { href: "/graph", label: "Graph" },
 ] as const;
 
@@ -17,6 +17,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [tenantKey, setTenantKey] = useState("demo");
   const [ready, setReady] = useState(false);
+  const isBareSource = Boolean(
+    pathname && /\/documents\/[^/]+\/source\/?$/.test(pathname),
+  );
 
   useEffect(() => {
     const stored = window.localStorage.getItem(TENANT_KEY);
@@ -29,8 +32,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(TENANT_KEY, tenantKey);
   }, [tenantKey, ready]);
 
+  if (isBareSource) {
+    return <div className="min-h-screen bg-background">{children}</div>;
+  }
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 pb-16 pt-8 sm:px-6">
+    <div
+      className={`mx-auto flex min-h-screen flex-col px-4 pb-16 pt-8 sm:px-6 ${
+        pathname === "/query" ? "max-w-7xl" : "max-w-5xl"
+      }`}
+    >
       <header className="mb-10 flex flex-col gap-6 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="font-mono text-xs tracking-[0.18em] text-muted uppercase">

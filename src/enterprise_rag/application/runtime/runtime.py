@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from enterprise_rag.application.runtime.container import ServiceContainer
 from enterprise_rag.application.runtime.local import build_local_container
 from enterprise_rag.config.settings import Settings, get_settings
+from enterprise_rag.domain.ingestion.protocols import (
+    DocumentRepository,
+    IngestionRepository,
+    TenantRepository,
+)
 from enterprise_rag.infrastructure.persistence.minio import MinioObjectStore
 
 
@@ -25,6 +33,11 @@ def graph_store_backend() -> str:
     return os.environ.get("GRAPH_STORE_BACKEND", "memory").strip().lower() or "memory"
 
 
+def metadata_store_backend() -> str:
+    """Return metadata backend name (``memory`` or ``postgres``)."""
+    return os.environ.get("METADATA_STORE_BACKEND", "memory").strip().lower() or "memory"
+
+
 def build_runtime_container(settings: Settings | None = None) -> ServiceContainer:
     """Build the process container for uvicorn / compose.
 
@@ -32,11 +45,9 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     - ``OBJECT_STORE_BACKEND``: memory | minio
     - ``VECTOR_STORE_BACKEND``: memory | qdrant
     - ``GRAPH_STORE_BACKEND``: memory | neo4j
-
-    Document/ingestion metadata remain in-memory until Postgres wiring lands.
+    - ``METADATA_STORE_BACKEND``: memory | postgres
     """
     resolved = settings or get_settings()
-    # Ensure flat .env keys (OBJECT_STORE_BACKEND, etc.) are visible to helpers.
     _ = resolved
 
     object_store = None
@@ -70,12 +81,65 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             f"Unsupported GRAPH_STORE_BACKEND={graph_backend!r}; use 'memory' or 'neo4j'"
         )
 
-    return build_local_container(
+    tenant_repo: TenantRepository | None = None
+    document_repo: DocumentRepository | None = None
+    ingestion_repo: IngestionRepository | None = None
+    db_session: AsyncSession | None = None
+    on_commit: Callable[[], Awaitable[None]] | None = None
+    ready_checks: list = []
+
+    meta_backend = metadata_store_backend()
+    if meta_backend in {"postgres", "postgresql", "pg"}:
+        from enterprise_rag.infrastructure.persistence.postgres import (
+            SqlAlchemyDocumentRepository,
+            SqlAlchemyIngestionRepository,
+            SqlAlchemyTenantRepository,
+            create_engine,
+            create_session_factory,
+        )
+
+        engine = create_engine(resolved.postgres)
+        session_factory = create_session_factory(engine)
+        db_session = session_factory()
+        tenant_repo = SqlAlchemyTenantRepository(db_session)
+        document_repo = SqlAlchemyDocumentRepository(db_session)
+        ingestion_repo = SqlAlchemyIngestionRepository(db_session)
+
+        async def _commit() -> None:
+            await db_session.commit()
+
+        async def _postgres_ready() -> bool:
+            from sqlalchemy import text
+
+            try:
+                await db_session.execute(text("SELECT 1"))
+                return True
+            except Exception:
+                return False
+
+        on_commit = _commit
+        ready_checks.append(_postgres_ready)
+    elif meta_backend not in {"memory", "inmemory", "local"}:
+        raise ValueError(
+            f"Unsupported METADATA_STORE_BACKEND={meta_backend!r}; use 'memory' or 'postgres'"
+        )
+
+    container = build_local_container(
         max_upload_bytes=resolved.security.max_upload_bytes,
         object_store=object_store,
         vector_store=vector_store,
         graph_store=graph_store,
+        tenant_repo=tenant_repo,
+        document_repo=document_repo,
+        ingestion_repo=ingestion_repo,
         auto_process_ingest=True,
         use_live_models=True,
         max_pages=resolved.security.max_pages,
+        on_commit=on_commit,
+        enable_semantic_graph=os.environ.get("SEMANTIC_GRAPH", "true").strip().lower()
+        not in {"0", "false", "no"},
     )
+    if ready_checks:
+        container.ready_checks = list(container.ready_checks) + ready_checks
+    container.db_session = db_session
+    return container

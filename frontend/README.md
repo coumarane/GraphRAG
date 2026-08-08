@@ -1,8 +1,10 @@
 # Enterprise RAG frontend
 
-Next.js App Router UI for upload, query, and graph search. Browser traffic goes to
+Next.js App Router UI for upload, grounded chat, and graph search. Browser traffic goes to
 Next.js route handlers, which proxy to the FastAPI API (uploads land in MinIO when
 `OBJECT_STORE_BACKEND=minio`).
+
+Chat history is stored in the browser (`localStorage`) per tenant key.
 
 ## Local development
 

@@ -107,6 +107,7 @@ async def ingest_document(
             result.ingestion_run_id,
         )
 
+    await container.commit_db()
     return IngestAcceptedResponse(
         ingestion_run_id=result.ingestion_run_id,
         document_id=result.document_id,
@@ -115,7 +116,11 @@ async def ingest_document(
     )
 
 
-def _document_response(document: DocumentRecord) -> DocumentResponse:
+def _document_response(
+    document: DocumentRecord,
+    *,
+    page_count: int | None = None,
+) -> DocumentResponse:
     return DocumentResponse(
         document_id=document.document_id,
         tenant_id=document.tenant_id,
@@ -126,7 +131,27 @@ def _document_response(document: DocumentRecord) -> DocumentResponse:
         tags=list(document.tags),
         security_labels=list(document.security_labels),
         metadata=dict(document.metadata),
+        page_count=page_count,
     )
+
+
+async def _document_response_with_version(
+    container: ServiceContainer,
+    tenant: TenantContext,
+    document: DocumentRecord,
+) -> DocumentResponse:
+    page_count: int | None = None
+    meta_pages = document.metadata.get("page_count")
+    if isinstance(meta_pages, int) and meta_pages > 0:
+        page_count = meta_pages
+    elif document.current_version_id is not None:
+        version = await container.require_document_repo().get_version(
+            tenant,
+            document.current_version_id,
+        )
+        if version is not None and version.page_count:
+            page_count = int(version.page_count)
+    return _document_response(document, page_count=page_count)
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -160,7 +185,7 @@ async def get_document(
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is None:
         raise NotFoundError("Document not found", details={"document_id": str(document_id)})
-    return _document_response(document)
+    return await _document_response_with_version(container, tenant, document)
 
 
 @router.post(
@@ -206,6 +231,7 @@ async def reprocess_document(
             result.ingestion_run_id,
         )
 
+    await container.commit_db()
     return ReprocessAcceptedResponse(
         operation_id=result.operation_id,
         document_id=result.document_id,

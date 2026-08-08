@@ -67,7 +67,7 @@ class EmbedChunksService:
 
         records: list[ChunkVectorRecord] = []
         for index, chunk in enumerate(selected):
-            preview = chunk.text[:500]
+            preview = chunk.text[:2000]
             records.append(
                 ChunkVectorRecord(
                     point_id=chunk.chunk_id,

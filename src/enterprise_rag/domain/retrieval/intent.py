@@ -32,6 +32,40 @@ _MULTIMODAL_HINTS = frozenset(
         "photo",
     }
 )
+_ASSAY_HINTS = frozenset(
+    {
+        "assay",
+        "impurity",
+        "impurities",
+        "heavy metal",
+        "heavy metals",
+        "ppm",
+        "specification",
+        "specifications",
+        "particle size",
+        "surface area",
+        "d50",
+        "μm",
+        "um",
+        "mg/kg",
+        "content",
+        "composition",
+        "inci",
+        "cas",
+        "pb",
+        "cd",
+        "as",
+        "hg",
+        "ni",
+        "cr",
+        "lead",
+        "cadmium",
+        "arsenic",
+        "mercury",
+        "nickel",
+        "chromium",
+    }
+)
 _GLOBAL_HINTS = frozenset(
     {
         "overview",
@@ -142,32 +176,98 @@ def detect_modality_hints(question: str) -> list[Modality]:
     lowered = question.casefold()
     hints: list[Modality] = []
     mapping = {
-        Modality.CHART: ("chart", "plot", "graph"),
-        Modality.IMAGE: ("image", "photo", "figure", "visual"),
+        Modality.CHART: (
+            "chart",
+            "plot",
+            "graph",
+            "l*",
+            "angle of measurement",
+            "soft-focus",
+            "soft focus",
+            "tone-up",
+            "tone up",
+            "byk",
+            "synthetic mica",
+            "gloss type",
+            "matte type",
+            "measurement conditions",
+        ),
+        Modality.IMAGE: ("image", "photo", "figure", "visual", "sem", "micrograph"),
         Modality.DIAGRAM: ("diagram",),
-        Modality.TABLE: ("table",),
+        Modality.TABLE: (
+            "table",
+            "assay",
+            "impurity",
+            "impurities",
+            "heavy metal",
+            "heavy metals",
+            "ppm",
+            "specification",
+            "particle size",
+            "surface area",
+            "composition",
+            "content",
+        ),
         Modality.EQUATION: ("equation", "formula"),
     }
     for modality, words in mapping.items():
         if any(word in lowered for word in words):
             hints.append(modality)
+    # Appearance / angle chart questions should not be dominated by assay tables.
+    chartish = any(
+        token in lowered
+        for token in (
+            "appearance",
+            "angle of measurement",
+            "soft-focus",
+            "soft focus",
+            "tone-up",
+            "tone up",
+            "byk",
+            "synthetic mica",
+            "comparison with synthetic",
+        )
+    )
+    if chartish and "heavy metal" not in lowered and "ppm" not in lowered:
+        hints = [item for item in hints if item is not Modality.TABLE]
+        if Modality.CHART not in hints:
+            hints.insert(0, Modality.CHART)
+    # "Does the appearance chart report heavy metals?" is a chart-scope question,
+    # not an assay lookup — keep chart modality ahead of tables.
+    if (
+        "heavy metal" in lowered
+        and any(token in lowered for token in ("appearance", "tone-up", "l*", "angle"))
+        and any(token in lowered for token in ("chart", "slide", "page", "report", "show"))
+    ):
+        hints = [Modality.CHART, *[item for item in hints if item is not Modality.TABLE]]
     return hints
 
 
 def classify_intent(question: str) -> list[str]:
     lowered = question.casefold()
     labels: list[str] = []
+    if any(hint in lowered for hint in _ASSAY_HINTS):
+        labels.append("assay")
+        labels.append("multimodal")
     if any(hint in lowered for hint in _MULTIMODAL_HINTS):
         labels.append("multimodal")
     if any(hint in lowered for hint in _GLOBAL_HINTS):
         labels.append("global")
     if any(hint in lowered for hint in _LOCAL_HINTS):
         labels.append("local")
-    if "?" in question or lowered.startswith(("what", "when", "where", "why", "how")):
+    if "?" in question or lowered.startswith(("what", "when", "where", "why", "how", "give")):
         labels.append("factual")
     if not labels:
         labels.append("general")
-    return labels
+    # Preserve order while deduping.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for label in labels:
+        if label in seen:
+            continue
+        seen.add(label)
+        ordered.append(label)
+    return ordered
 
 
 def select_modes(
@@ -179,6 +279,15 @@ def select_modes(
     """Map requested mode / auto classification to concrete executable modes."""
     if requested is RetrievalMode.AUTO:
         modes: list[RetrievalMode] = []
+        if "assay" in intent_labels:
+            # Assay/spec questions need lexical + dense + table-aware multimodal.
+            modes.extend(
+                [
+                    RetrievalMode.HYBRID,
+                    RetrievalMode.MULTIMODAL,
+                    RetrievalMode.NAIVE,
+                ]
+            )
         if "multimodal" in intent_labels or modality_hints:
             modes.append(RetrievalMode.MULTIMODAL)
         if "global" in intent_labels:
@@ -198,6 +307,7 @@ def select_modes(
             RetrievalMode.GLOBAL,
             RetrievalMode.NAIVE,
             RetrievalMode.MULTIMODAL,
+            RetrievalMode.HYBRID,
         ]
     if requested is RetrievalMode.HYBRID:
         return [RetrievalMode.HYBRID]
