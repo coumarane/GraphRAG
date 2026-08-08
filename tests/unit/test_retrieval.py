@@ -89,7 +89,9 @@ async def test_auto_texture_evaluation_chart_not_multimodal_only() -> None:
     )
     assert RetrievalMode.MULTIMODAL in analysis.selected_modes
     assert RetrievalMode.HYBRID in analysis.selected_modes
-    assert "silkyflake" in analysis.normalized_question.casefold()
+    lowered = analysis.normalized_question.casefold()
+    assert "miu" in lowered or "friction" in lowered or "smoothness" in lowered
+    assert "silkyflake" not in lowered
 
 
 @pytest.mark.asyncio
@@ -121,14 +123,17 @@ async def test_solar_radiation_expands_to_nir_synonyms() -> None:
 
 
 @pytest.mark.asyncio
-async def test_texture_evaluation_expands_to_surface_treated_codes() -> None:
+async def test_texture_evaluation_expands_to_generic_surface_terms() -> None:
     analysis = analyze_query(
-        "SILKYFLAKE Texture evaluation chart MIU MMD",
+        "Texture evaluation chart MIU MMD",
         mode=RetrievalMode.AUTO,
     )
     lowered = analysis.normalized_question.casefold()
-    assert "ftd008fy" in lowered
-    assert "surface-treated" in lowered or "surface" in lowered
+    assert "friction" in lowered or "smoothness" in lowered
+    assert "surface" in lowered
+    # Must not inject brochure-specific product SKUs.
+    assert "ftd008fy" not in lowered
+    assert "silkyflake" not in lowered
 
 
 @pytest.mark.asyncio

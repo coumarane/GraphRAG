@@ -175,6 +175,48 @@ def assemble_context(
     return selected[:top_k]
 
 
+def ensure_document_coverage(
+    selected: Sequence[RetrievedEvidence],
+    pool: Sequence[RetrievedEvidence],
+    *,
+    document_ids: Sequence[UUID],
+    top_k: int,
+    min_per_doc: int = 1,
+) -> list[RetrievedEvidence]:
+    """Reserve evidence slots so multi-doc filters are not drowned by one large corpus."""
+    if top_k <= 0:
+        return []
+    if len(document_ids) < 2:
+        return list(selected)[:top_k]
+
+    by_doc: dict[UUID, list[RetrievedEvidence]] = {doc_id: [] for doc_id in document_ids}
+    for item in [*selected, *pool]:
+        bucket = by_doc.get(item.document_id)
+        if bucket is None:
+            continue
+        if any(existing.chunk_id == item.chunk_id for existing in bucket):
+            continue
+        bucket.append(item)
+
+    reserved: list[RetrievedEvidence] = []
+    used: set[UUID] = set()
+    for doc_id in document_ids:
+        for item in by_doc.get(doc_id, [])[: max(1, min_per_doc)]:
+            if item.chunk_id in used:
+                continue
+            reserved.append(item)
+            used.add(item.chunk_id)
+
+    remainder: list[RetrievedEvidence] = []
+    for item in selected:
+        if item.chunk_id in used:
+            continue
+        remainder.append(item)
+        used.add(item.chunk_id)
+
+    return (reserved + remainder)[:top_k]
+
+
 def document_name_map(
     chunks: Sequence[ChunkBase],
     *,

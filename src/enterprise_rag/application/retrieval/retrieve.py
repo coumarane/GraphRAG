@@ -18,6 +18,7 @@ from enterprise_rag.domain.models.protocols import EmbeddingModel, Reranker
 from enterprise_rag.domain.retrieval.assembly import (
     assemble_context,
     chunk_to_evidence,
+    ensure_document_coverage,
     hit_to_evidence,
 )
 from enterprise_rag.domain.retrieval.enums import RetrievalMode
@@ -476,6 +477,15 @@ class RetrieveEvidenceService:
             prefer_tables=prefer_tables,
             prefer_charts=prefer_charts,
         )
+        scoped_docs = list(request.filters.document_ids)
+        if len(scoped_docs) >= 2:
+            assembled = await self._cover_requested_documents(
+                tenant=tenant,
+                request=request,
+                assembled=assembled,
+                pool=expanded,
+                document_ids=scoped_docs,
+            )
 
         effective_mode = (
             request.mode
@@ -509,6 +519,55 @@ class RetrieveEvidenceService:
             result=result,
             analysis=analysis,
             branch_counts=branch_counts,
+        )
+
+    async def _cover_requested_documents(
+        self,
+        *,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        assembled: list[RetrievedEvidence],
+        pool: list[RetrievedEvidence],
+        document_ids: list[UUID],
+    ) -> list[RetrievedEvidence]:
+        """Guarantee multi-document filters keep evidence from each requested doc."""
+        present = {item.document_id for item in assembled}
+        missing = [doc_id for doc_id in document_ids if doc_id not in present]
+        supplemental: list[RetrievedEvidence] = []
+        for doc_id in missing:
+            sub_request = request.model_copy(
+                update={
+                    "filters": RetrievalFilters(
+                        document_ids=[doc_id],
+                        modalities=list(request.filters.modalities),
+                        tags=list(request.filters.tags),
+                        security_labels=list(request.filters.security_labels),
+                    ),
+                    "top_k": max(2, request.top_k // max(1, len(document_ids))),
+                }
+            )
+            try:
+                evidence, _paths = await self._run_mode(
+                    tenant=tenant,
+                    mode=RetrievalMode.NAIVE,
+                    request=sub_request,
+                    analysis=analyze_query(request.question, mode=RetrievalMode.NAIVE),
+                )
+            except Exception as exc:  # noqa: BLE001 - best-effort coverage
+                logger.warning(
+                    "document_coverage_supplement_failed",
+                    document_id=str(doc_id),
+                    error=str(exc),
+                )
+                continue
+            supplemental.extend(evidence[:2])
+        combined_pool = list(pool) + supplemental
+        return ensure_document_coverage(
+            assembled + supplemental,
+            combined_pool,
+            document_ids=document_ids,
+            top_k=request.top_k,
+            min_per_doc=1,
         )
 
     async def _apply_document_titles(

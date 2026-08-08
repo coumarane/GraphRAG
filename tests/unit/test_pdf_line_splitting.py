@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from enterprise_rag.application.ingestion.local_pipeline import _extract_pdf_raw
+from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
 
 
 def test_extract_pdf_splits_single_newline_pages() -> None:

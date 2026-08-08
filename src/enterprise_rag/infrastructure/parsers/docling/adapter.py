@@ -20,7 +20,7 @@ DoclingConvertFn = Callable[[bytes, str], dict[str, Any]]
 
 
 def _default_docling_convert(data: bytes, filename: str) -> dict[str, Any]:
-    require_optional_dependency("docling")
+    require_optional_dependency("docling", extra_name="parsers-docling")
     # Lazy import of Docling APIs. Exact API surface varies by version; adapters
     # normalize into a stable intermediate dict for conversion.
     import tempfile

@@ -20,7 +20,7 @@ MarkerConvertFn = Callable[[bytes, str], dict[str, Any]]
 
 
 def _default_marker_convert(data: bytes, filename: str) -> dict[str, Any]:
-    require_optional_dependency("marker")
+    require_optional_dependency("marker", extra_name="parsers-full")
     raise NotImplementedError(
         "Marker SDK conversion requires a pinned marker integration; "
         "inject convert_fn for runtime use"

@@ -18,7 +18,7 @@ from enterprise_rag.infrastructure.parsers.docling import DoclingParser
 from enterprise_rag.infrastructure.parsers.marker import MarkerParser
 from enterprise_rag.infrastructure.parsers.mineru import MinerUParser
 from enterprise_rag.infrastructure.parsers.paddleocr import PaddleOCRParser
-from enterprise_rag.infrastructure.parsers.pdfium import PdfiumInspector
+from enterprise_rag.infrastructure.parsers.pdfium import PdfiumInspector, PdfiumParser
 from enterprise_rag.infrastructure.parsers.text import TextDocumentParser
 from enterprise_rag.shared.exceptions import ParserError
 from enterprise_rag.shared.logging import get_logger
@@ -41,6 +41,7 @@ class ParserRegistry:
             ParserName.MINERU.value: MinerUParser(inspector=inspector),
             ParserName.MARKER.value: MarkerParser(inspector=inspector),
             ParserName.PADDLEOCR.value: PaddleOCRParser(inspector=inspector),
+            ParserName.PDFIUM.value: PdfiumParser(inspector=inspector),
             ParserName.TEXT.value: TextDocumentParser(inspector=inspector),
         }
 

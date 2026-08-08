@@ -56,6 +56,45 @@ _STOP_ENTITY = frozenset(
         "Assistant",
     }
 )
+# Datasheet / form-field labels that look product-ish but are not entities.
+_FIELD_LABEL_ENTITY = frozenset(
+    {
+        "INCI",
+        "CAS",
+        "APHA",
+        "HPLC",
+        "HS",
+        "H.S",
+        "Code",
+        "Classification",
+        "Appearance",
+        "Specification",
+        "Specifications",
+        "Version",
+        "General",
+        "Characteristics",
+        "Information",
+        "Item",
+        "Unit",
+        "Test",
+        "Method",
+        "Packing",
+        "Export",
+        "Standard",
+        "Chemical",
+        "Name",
+        "Color",
+        "Water",
+        "Content",
+        "Hydroxyl",
+        "Value",
+        "Melting",
+        "Point",
+        "Clear",
+        "Polyethylene",
+        "Glycol",
+    }
+)
 
 
 class ConversationTurn(BaseModel):
@@ -102,6 +141,7 @@ class QueryContextResolver:
             for entity in known_entities:
                 if entity not in prior_entities:
                     prior_entities.append(entity)
+        prior_entities = self._prefer_topic_entities(prior_entities)
 
         current_entities = self._extract_entities(question)
         switch = self._is_context_switch(question, prior_entities, current_entities)
@@ -115,14 +155,15 @@ class QueryContextResolver:
 
         # Prefer known active entities when history extraction is noisy.
         if known_entities and not switch:
-            if len(known_entities) == 1:
-                prior_entities = list(known_entities)
+            known = self._prefer_topic_entities(list(known_entities))
+            if len(known) == 1:
+                prior_entities = list(known)
             else:
                 merged: list[str] = []
-                for entity in [*known_entities, *prior_entities]:
+                for entity in [*known, *prior_entities]:
                     if entity not in merged:
                         merged.append(entity)
-                prior_entities = merged
+                prior_entities = self._prefer_topic_entities(merged)
 
         if switch:
             # Explicit topic change — do not inherit prior entity unless restated.
@@ -269,6 +310,13 @@ class QueryContextResolver:
             cleaned = " ".join(parts).strip()
             if len(cleaned) < 2:
                 return
+            if cleaned in _FIELD_LABEL_ENTITY or cleaned.casefold() in {
+                item.casefold() for item in _FIELD_LABEL_ENTITY
+            }:
+                return
+            # Skip short all-caps field labels (INCI, CAS, APHA, …).
+            if cleaned.isupper() and len(cleaned) <= 5 and " " not in cleaned:
+                return
             if cleaned not in entities:
                 entities.append(cleaned)
 
@@ -288,6 +336,34 @@ class QueryContextResolver:
             _add(f"{label} {match.group(2)}")
             _add(f"{label} {match.group(3)}")
         return entities[:6]
+
+    def _prefer_topic_entities(self, entities: list[str]) -> list[str]:
+        """Drop field-label noise and prefer longer product-like names."""
+        filtered = [
+            entity
+            for entity in entities
+            if entity not in _FIELD_LABEL_ENTITY
+            and entity.casefold() not in {item.casefold() for item in _FIELD_LABEL_ENTITY}
+            and not (entity.isupper() and len(entity) <= 5 and " " not in entity)
+        ]
+        ranked = filtered or list(entities)
+
+        def _score(entity: str) -> tuple[int, int, int]:
+            has_digit = any(ch.isdigit() for ch in entity)
+            return (len(entity.split()), len(entity), 1 if has_digit else 0)
+
+        ranked = sorted(ranked, key=_score, reverse=True)
+        # Keep original encounter order among equals after preferring stronger topics.
+        preferred = sorted(
+            ranked,
+            key=lambda item: (-_score(item)[0], -_score(item)[1], -_score(item)[2]),
+        )
+        # De-dupe while preserving preference order.
+        out: list[str] = []
+        for entity in preferred:
+            if entity not in out:
+                out.append(entity)
+        return out
 
 
 @dataclass

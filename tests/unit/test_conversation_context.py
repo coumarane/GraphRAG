@@ -60,6 +60,18 @@ def test_explicit_reactivation_after_unrelated_question() -> None:
     assert any("Ingredient X" in entity or "X" in entity for entity in back.active_entities)
 
 
+def test_field_label_not_treated_as_competing_entity() -> None:
+    resolver = QueryContextResolver()
+    history = [
+        ConversationTurn(role="user", content="What is the INCI name for EMULGEN 2020G?"),
+        ConversationTurn(role="assistant", content="OCTYLDODECETH-20"),
+    ]
+    resolved = resolver.resolve("What is its CAS number?", history)
+    assert resolved.ambiguous is False
+    assert "EMULGEN 2020G" in resolved.resolved_query
+    assert resolved.clarification_question is None
+
+
 def test_forget_that_clears_figure_anchor() -> None:
     state = ConversationState()
     state.ask("What does Figure 2 show?")

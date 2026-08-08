@@ -38,7 +38,7 @@ _load_dotenv()
 
 from enterprise_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
 from enterprise_rag.application.generation import GenerateAnswerService, QueryDocumentsService
-from enterprise_rag.application.ingestion.local_pipeline import _extract_pdf_raw
+from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
 from enterprise_rag.application.retrieval import RetrieveEvidenceService
 from enterprise_rag.domain.conversation import ConversationState
 from enterprise_rag.domain.parsing.normalize import normalize_parser_result

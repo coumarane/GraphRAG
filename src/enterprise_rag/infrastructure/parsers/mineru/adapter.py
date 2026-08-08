@@ -20,7 +20,7 @@ MinerUConvertFn = Callable[[bytes, str], dict[str, Any]]
 
 
 def _default_mineru_convert(data: bytes, filename: str) -> dict[str, Any]:
-    require_optional_dependency("magic_pdf")
+    require_optional_dependency("magic_pdf", extra_name="parsers-full")
     # MinerU/magic_pdf APIs vary; keep a clear failure until wired to a pinned version.
     raise NotImplementedError(
         "MinerU SDK conversion requires a pinned magic_pdf integration; "

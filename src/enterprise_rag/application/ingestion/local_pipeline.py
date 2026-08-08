@@ -34,23 +34,32 @@ from enterprise_rag.domain.models.contracts import (
 )
 from enterprise_rag.domain.models.protocols import ChatModel, EmbeddingModel, StructuredExtractor
 from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
+from enterprise_rag.domain.parsing.types import (
+    OcrMode,
+    ParseOptions,
+    ParserName,
+    ParserProfile,
+    ParseSource,
+    RawElement,
+    RawParserResult,
+)
 from enterprise_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from enterprise_rag.domain.storage.protocols import ObjectStore
 from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.shared.exceptions import NotFoundError, ValidationError
+from enterprise_rag.infrastructure.parsers.pdfium.extractor import (
+    extract_pdf_raw as _extract_pdf_raw,
+    extract_text_raw as _extract_text_raw,
+)
+from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService
+from enterprise_rag.shared.exceptions import NotFoundError, ParserError, ValidationError
 from enterprise_rag.shared.logging import get_logger
+
+# Back-compat for scripts/tests that imported private helpers from this module.
+extract_pdf_raw = _extract_pdf_raw
+extract_text_raw = _extract_text_raw
 
 logger = get_logger(__name__)
 
-_TABLE_HINT = re.compile(
-    r"(?i)\b(size|surface|area|inci|cas|specification|item|unit|value|μm|um\b|㎡|mg|%|wt)\b"
-)
-_EQUATION_HINT = re.compile(
-    r"(\u03b1-|\u03b2-|\u03b3-|Al2O3|Al\u2082O\u2083|SiO2|TiO2|"
-    r"\u2192|\u21cc|\u2248|\u2264|\u2265|\u221a|\u2211|\u222b|"
-    r"[A-Za-z]+\d+[A-Za-z0-9]*)"
-)
 _FIGURE_HINT = re.compile(
     r"(?i)\b(sem|tem|xrd|afm|microscope|micrograph|figure|fig\.|chart|diagram|photo|"
     r"comparison|appearance|tone-?up|soft-?focus|angle of measurement|byk|l\*|mica)\b"
@@ -87,139 +96,102 @@ Rules:
 """
 
 
-def _classify_block(text: str) -> ElementType:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
-        return ElementType.TEXT
-    if len(lines) == 1 and len(lines[0]) <= 80 and not lines[0].endswith("."):
-        words = lines[0].split()
-        if 1 <= len(words) <= 10 and not _EQUATION_HINT.search(lines[0]):
-            return ElementType.HEADING
-    numeric_lines = sum(
-        1 for line in lines if sum(ch.isdigit() for ch in line) >= 2 and _TABLE_HINT.search(line)
-    )
-    if len(lines) >= 2 and numeric_lines >= max(2, len(lines) // 2):
-        return ElementType.TABLE
-    if _EQUATION_HINT.search(text) and len(text) < 240:
-        return ElementType.EQUATION
-    return ElementType.TEXT
-
-
-def _extract_pdf_raw(data: bytes, *, filename: str, max_pages: int) -> RawParserResult:
-    import pypdfium2 as pdfium
-
-    document = pdfium.PdfDocument(data)
+def _parse_parser_name(value: str | None) -> ParserName | None:
+    if not value:
+        return None
+    lowered = value.strip().casefold()
+    if lowered in {"", "auto"}:
+        return None
     try:
-        page_count = len(document)
-        limit = min(page_count, max_pages)
-        elements: list[RawElement] = []
-        pages: list[RawPage] = []
-        page_texts: dict[int, str] = {}
-        order = 0
-        for index in range(limit):
-            page = document[index]
-            width, height = page.get_size()
-            text_page = page.get_textpage()
+        return ParserName(lowered)
+    except ValueError:
+        return None
+
+
+async def _parse_document_raw(
+    *,
+    data: bytes,
+    filename: str,
+    mime_type: str,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    parser_requested: str | None,
+    max_pages: int,
+) -> tuple[RawParserResult, list[str]]:
+    """Parse via registry routing with pdfium always available as final fallback."""
+    source = ParseSource(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        filename=filename,
+        mime_type=mime_type or "application/octet-stream",
+        content=data,
+    )
+    override = _parse_parser_name(parser_requested)
+    options = ParseOptions(
+        profile=ParserProfile.BALANCED,
+        parser_override=override,
+        ocr_mode=OcrMode.AUTO,
+        failure_mode="fallback",
+    )
+    service = ParseDocumentService()
+    attempted: list[str] = []
+    try:
+        selection = await service.select_parser(source, options)
+        chain = [selection.primary, *selection.fallbacks]
+        if ParserName.PDFIUM not in chain:
+            chain.append(ParserName.PDFIUM)
+        last_error: Exception | None = None
+        for parser_name in chain:
+            attempted.append(parser_name.value)
             try:
-                text = (text_page.get_text_bounded() or "").strip()
-            finally:
-                text_page.close()
-            page.close()
-            page_number = index + 1
-            page_texts[page_number] = text
-            coverage = 0.9 if len(text) < 80 else 0.15
-            pages.append(
-                RawPage(
-                    page_number=page_number,
-                    width=float(width),
-                    height=float(height),
-                    text_density=float(len(text)),
-                    image_coverage=coverage,
-                    is_scanned=len(text) < 40,
-                )
-            )
-            if not text:
-                continue
-            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-            blocks = [block.strip() for block in normalized.split("\n\n") if block.strip()]
-            # Many brochure PDFs only use single newlines; avoid one giant element.
-            if len(blocks) <= 1:
-                line_blocks = [block.strip() for block in normalized.split("\n") if block.strip()]
-                if len(line_blocks) > 1:
-                    blocks = line_blocks
-            if not blocks:
-                blocks = [normalized]
-            for block in blocks:
-                element_type = _classify_block(block)
-                metadata: dict[str, object] = {}
-                if element_type is ElementType.TABLE:
-                    metadata["caption"] = f"Page {page_number} table"
-                if element_type is ElementType.EQUATION:
-                    metadata["latex"] = block
-                    metadata["semantic_description"] = block
-                if element_type is ElementType.HEADING:
-                    metadata["level"] = 2
-                elements.append(
-                    RawElement(
-                        element_type=element_type,
-                        page_start=page_number,
-                        page_end=page_number,
-                        reading_order=order,
-                        section_path=[f"Page {page_number}"],
-                        raw_content=block,
-                        normalized_content=block,
-                        metadata=metadata,
+                raw = await service.parse_raw(source, parser_name, options)
+                if not raw.elements and parser_name is not ParserName.PDFIUM:
+                    raise ParserError(
+                        "Parser returned no elements",
+                        details={"parser": parser_name.value},
                     )
+                raw.metadata = {
+                    **dict(raw.metadata),
+                    "selected_parser": selection.primary.value,
+                    "attempted_parsers": list(attempted),
+                    "routing_reason": selection.reason,
+                }
+                if attempted and attempted[-1] != selection.primary.value:
+                    raw.warnings.append(
+                        f"parser_fallback_used:{attempted[-1]}_after_{selection.primary.value}"
+                    )
+                return raw, attempted
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "ingest_parser_attempt_failed",
+                    parser=parser_name.value,
+                    error=str(exc),
                 )
-                order += 1
-    finally:
-        document.close()
-
-    warnings: list[str] = []
-    if page_count > limit:
-        warnings.append(f"truncated_to_{limit}_of_{page_count}_pages")
-    if not elements and not pages:
-        raise ValidationError(
-            "No extractable text found in PDF (may be scanned-only)",
-            details={"filename": filename},
+                continue
+        raise ParserError(
+            "All parser attempts failed",
+            details={"attempted": attempted, "last_error": str(last_error)},
+            cause=last_error,
         )
-    return RawParserResult(
-        parser_name="pdfium_multimodal",
-        parser_version="local-2",
-        title=filename,
-        page_count=len(pages),
-        pages=pages,
-        elements=elements,
-        warnings=warnings,
-        metadata={"page_texts": {str(k): v[:2000] for k, v in page_texts.items()}},
-    )
-
-
-def _extract_text_raw(data: bytes, *, filename: str) -> RawParserResult:
-    text = data.decode("utf-8", errors="replace").strip()
-    if not text:
-        raise ValidationError("Empty text document", details={"filename": filename})
-    blocks = [block.strip() for block in text.split("\n\n") if block.strip()] or [text]
-    elements = [
-        RawElement(
-            element_type=ElementType.TEXT,
-            page_start=1,
-            page_end=1,
-            reading_order=index,
-            raw_content=block,
-            normalized_content=block,
-        )
-        for index, block in enumerate(blocks)
-    ]
-    return RawParserResult(
-        parser_name="plaintext",
-        parser_version="local-1",
-        title=filename,
-        page_count=1,
-        pages=[RawPage(page_number=1, text_density=float(len(text)))],
-        elements=elements,
-        warnings=[],
-    )
+    except Exception as exc:
+        logger.warning("ingest_parser_routing_failed", error=str(exc))
+        mime = mime_type.lower()
+        if mime == "application/pdf" or filename.lower().endswith(".pdf"):
+            raw = await asyncio.to_thread(
+                _extract_pdf_raw, data, filename=filename, max_pages=max_pages
+            )
+            raw.warnings.append(f"parser_routing_fallback:{type(exc).__name__}")
+            return raw, attempted or ["pdfium"]
+        if mime.startswith("text/") or filename.lower().endswith(
+            (".txt", ".md", ".markdown", ".csv")
+        ):
+            raw = _extract_text_raw(data, filename=filename)
+            raw.warnings.append(f"parser_routing_fallback:{type(exc).__name__}")
+            return raw, attempted or ["plaintext"]
+        raise
 
 
 def _render_page_png(data: bytes, page_number: int, *, scale: float = 1.5) -> bytes:
@@ -583,33 +555,33 @@ class ProcessRegisteredDocumentService:
             )
             filename = version.source_filename or Path(version.original_object_key).name
             mime = (version.mime_type or "").lower()
-            if mime == "application/pdf" or filename.lower().endswith(".pdf"):
-                raw = await asyncio.to_thread(
-                    _extract_pdf_raw, data, filename=filename, max_pages=self.max_pages
-                )
-                if self.chat_model is not None:
-                    vision_elements = await _vision_enrich_pages(
-                        self.chat_model,
-                        data,
-                        raw,
-                        max_pages=self.vision_max_pages,
-                    )
-                    if vision_elements:
-                        raw.elements.extend(vision_elements)
-            elif mime.startswith("text/") or filename.lower().endswith(
-                (".txt", ".md", ".markdown", ".csv")
+            raw, attempted = await _parse_document_raw(
+                data=data,
+                filename=filename,
+                mime_type=version.mime_type or "application/octet-stream",
+                tenant_id=tenant.tenant_id,
+                document_id=run.document_id,
+                version_id=run.version_id,
+                parser_requested=run.parser_requested,
+                max_pages=self.max_pages,
+            )
+            if self.chat_model is not None and (
+                mime == "application/pdf" or filename.lower().endswith(".pdf")
             ):
-                raw = _extract_text_raw(data, filename=filename)
-            else:
-                raise ValidationError(
-                    "Local indexer supports PDF and plain text only",
-                    details={"mime_type": mime, "filename": filename},
+                # Vision enrichment for sparse/visual pages regardless of primary parser.
+                vision_elements = await _vision_enrich_pages(
+                    self.chat_model,
+                    data,
+                    raw,
+                    max_pages=self.vision_max_pages,
                 )
+                if vision_elements:
+                    raw.elements.extend(vision_elements)
 
             if not raw.elements:
                 raise ValidationError(
                     "No extractable content found in document",
-                    details={"filename": filename},
+                    details={"filename": filename, "attempted_parsers": attempted},
                 )
 
             source = ParseSource(

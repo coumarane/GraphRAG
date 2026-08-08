@@ -14,28 +14,28 @@ _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-_/]{1,}", re.IGNORECASE)
 _CURRENT_QUESTION_RE = re.compile(
     r"(?is)(?:^|\n)\s*Current question:\s*(.+?)(?:\n\s*\n|\n\s*Answer the current question|\Z)"
 )
-# Slide titles often live in TEXT chunks; expand keyword queries for lexical/dense recall.
+# Generic scientific / assay synonym expansions (no product-specific hardcoding).
 _RETRIEVAL_EXPANSIONS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"\bsolar\s+radiation\b", re.IGNORECASE),
-        "near-infrared near infrared NIR NATUTECT UV Near-IR reflective pigments",
+        "near-infrared near infrared NIR UV reflective pigments infrared protection",
     ),
     (
         re.compile(r"\btexture\s+evaluation\b", re.IGNORECASE),
-        "SILKYFLAKE Surface-Treated Products FTD008FY-F130 FTD008FY-F190 "
-        "FTD008FY-F840 MIU MMD smoothness slip Aluminum Stearate",
+        "MIU MMD friction coefficient of dynamic friction smoothness slip "
+        "surface-treated surface treatment",
     ),
     (
         re.compile(r"\bmiu\b", re.IGNORECASE),
-        "MMD Texture evaluation friction coefficient of dynamic friction SILKYFLAKE",
+        "MMD texture evaluation friction coefficient of dynamic friction smoothness",
     ),
     (
         re.compile(r"\bmmd\b", re.IGNORECASE),
-        "MIU Texture evaluation smoothness SILKYFLAKE Surface-Treated",
+        "MIU texture evaluation smoothness friction slip surface-treated",
     ),
     (
         re.compile(r"\bnear[-\s]?infrared\b|\bnir\b", re.IGNORECASE),
-        "solar radiation NATUTECT Near-IR reflective",
+        "solar radiation near-IR reflective infrared UV protection",
     ),
 )
 

@@ -34,6 +34,10 @@ from enterprise_rag.infrastructure.observability import InMemoryAuditStore
 from enterprise_rag.infrastructure.persistence.chunks import (
     InMemoryChunkLookupStore,
     InMemoryLexicalSearchStore,
+    QdrantChunkLookupStore,
+)
+from enterprise_rag.infrastructure.persistence.chunks.lexical_qdrant import (
+    QdrantHydratingLexicalStore,
 )
 from enterprise_rag.infrastructure.persistence.memory import (
     InMemoryDocumentRepository,
@@ -42,7 +46,10 @@ from enterprise_rag.infrastructure.persistence.memory import (
     InMemoryTenantRepository,
 )
 from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from enterprise_rag.infrastructure.persistence.qdrant import (
+    InMemoryChunkVectorStore,
+    QdrantChunkVectorStore,
+)
 from enterprise_rag.infrastructure.security import NoOpMalwareScanner
 
 
@@ -173,8 +180,12 @@ def build_local_container(
 
         extractor = ChatStructuredExtractor(chat)
     vectors = vector_store if vector_store is not None else InMemoryChunkVectorStore()
-    chunks = InMemoryChunkLookupStore()
-    lexical = InMemoryLexicalSearchStore()
+    if isinstance(vectors, QdrantChunkVectorStore):
+        chunks = QdrantChunkLookupStore(settings=getattr(vectors, "_settings", None))
+        lexical = QdrantHydratingLexicalStore(chunks)
+    else:
+        chunks = InMemoryChunkLookupStore()
+        lexical = InMemoryLexicalSearchStore()
     graph = graph_store if graph_store is not None else InMemoryGraphStore()
 
     async def active_document_ids(tenant: TenantContext) -> list[UUID]:

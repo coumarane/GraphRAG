@@ -113,8 +113,14 @@ class QdrantChunkVectorStore:
                     payload=_payload_dict(record.payload),
                 )
             )
+        batch_size = 32
         try:
-            client.upsert(collection_name=self._collection, points=points, wait=True)
+            for start in range(0, len(points), batch_size):
+                client.upsert(
+                    collection_name=self._collection,
+                    points=points[start : start + batch_size],
+                    wait=True,
+                )
         except Exception as exc:
             raise StorageError("Qdrant upsert failed", cause=exc) from exc
         return len(points)

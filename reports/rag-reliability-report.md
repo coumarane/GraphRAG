@@ -7,20 +7,39 @@ Generated as part of `CURSOR_QUERY.md` validation (2026-08-08).
 | Phase | Status | Notes |
 | --- | --- | --- |
 | 1 Corpus discovery | Done | 29 `sample_data` PDFs + 7 eval corpus + `examples/sample.pdf` |
-| 2 Parsing evaluation | Partial | pdfium forensics complete; Docling/MinerU/Marker/PaddleOCR **not installed** |
+| 2 Parsing evaluation | Improved | Live path uses parser registry; Docling installed via `parsers-docling`; pdfium final fallback |
 | 3 Normalization | Done | Boilerplate reclassification + regression tests |
-| 4 Ingestion | Done (subset) | Real MinIO/Postgres/Qdrant/Neo4j ingest of eval PDFs |
+| 4 Ingestion | Done | CLI `--wait` runs `ProcessRegisteredDocumentService` against real backends |
 | 5 Chunking | Done | `inspect_chunks.py` + line-split fix for brochure PDFs |
-| 6 Retrieval | Done (eval corpus) | Live HitRate@5 = **1.0** on generated questions |
-| 7 Cross-document | Done (subset) | Conflicting densities answered with dual-doc citations |
-| 8 Conversation | Done | `QueryContextResolver` + regression suite |
-| 9 Hallucination | Done (eval) | Live no-answer accuracy = **1.0** on negative probes |
-| 10 Multimodal | Partial | Vision path exists in local pipeline; full SEM/chart matrix still open |
+| 6 Retrieval | Done (eval + NSG/EMULGEN) | Live HitRate@5 = **1.0**; Qdrant-backed chunk/lexical hydrate |
+| 7 Cross-document | Done (subset + NSG/EMULGEN) | Dual-doc conflict + surfactant vs pigment compare with both citations |
+| 8 Conversation | Done | Field-label ambiguity fix; follow-up CAS resolve on EMULGEN |
+| 9 Hallucination | Done (eval + NSG/EMULGEN) | Flash-point / molecular-weight probes refused |
+| 10 Multimodal | Partial (improved) | NSG chart/image/table/equation evidence used in live answers |
 | 11 Failure injection | Done (unit) | Parser failure fails loudly (no silent empty success) |
 | 12 Optimization | Partial | Avoided OCR-every-page; vision still page-selective |
 | 13 Full regression | Partial | Focused unit + live eval corpus; not all 29 sample PDFs |
 | 14 Report | This file | |
 
+### Follow-up completed 2026-08-08 (NSG + EMULGEN live challenge)
+
+Validated two frontend-uploaded documents already in the demo tenant:
+
+| Document | ID | Chunks (Qdrant-backed lookup) | Modalities |
+| --- | --- | --- | --- |
+| NSG ALL PRODUCT-PRESENTATION ICE 2023 | `019fdde7-25d9-7469-bff2-1bb70eaee2ab` | 260 / 99 pages | text, table, chart, image, equation, composite |
+| EMULGEN 2020G SPEC | `019fddd2-96f6-7d9c-b6c6-25e21f006bba` | 2 / 1 page | text (spec table flattened into text) |
+
+**Challenge matrix:** 24 queries covering factual, table specs, chart/L*, negatives, cross-doc, and conversation follow-ups → **24/24 pass** after fixes (artifact: `reports/nsg-emulgen-challenge.json`).
+
+**Defects found and fixed (general, not product-overfit):**
+
+1. Chunk/lexical stores were in-memory only → empty after API restart despite Qdrant vectors. Added `QdrantChunkLookupStore` + `QdrantHydratingLexicalStore` when `VECTOR_STORE_BACKEND=qdrant`.
+2. Pronoun follow-ups treated datasheet labels (e.g. INCI) as competing entities → false clarification. Field-label filtering in `QueryContextResolver`.
+3. Multi-doc filters drowned small docs under large presentations. Added `ensure_document_coverage` + per-missing-doc supplemental naive retrieval.
+4. Increased vector `text_preview` length to 8000 for future re-embeds (existing points still 2000).
+
+**Sample grounded answers:** EMULGEN INCI/CAS/pH/hydroxyl/water/mp/packing all correct with citations; NSG particle-size, METASHINE Aurora L*/transparency, gold plasmon HC/ZC, MAR'VINA/SILKYFLAKE; negatives refused; cross-doc compare cites both docs.
 ## Corpus
 
 Inventory: `reports/corpus-inventory.json` (29 sample_data files).
@@ -75,12 +94,11 @@ Routing recommendations from inspection (sample_data):
 
 ### P1 — Live ingest bypasses parser registry
 
-- **severity:** high
+- **severity:** high → **fixed**
 - **document:** all PDFs
-- **root cause:** `local_pipeline._extract_pdf_raw` is the live parse path
-- **affected layer:** ingestion
-- **fix status:** documented; not fully rewired (blocked by missing Docling/MinerU/Marker/PaddleOCR deps)
-- **workaround:** pdfium + vision enrichment for sparse/visual pages
+- **root cause:** `local_pipeline` used pdfium-only extraction
+- **fix:** route through `ParseDocumentService` with pdfium as final fallback; Docling available via `uv sync --extra parsers-docling`
+- **verification:** CLI ingest of `text_heavy.pdf` reported `parser_used: docling`
 
 ### P2 — Single-newline brochure pages collapsed to one element
 
@@ -109,19 +127,17 @@ Routing recommendations from inspection (sample_data):
 
 ### P5 — Product-specific retrieval expansions (overfit risk)
 
-- **severity:** medium
-- **document / query:** SILKYFLAKE / NATUTECT / METASHINE-oriented expansions in `intent.py`
-- **root cause:** prior chat fixes hard-coded sample brochure phrases
-- **status:** flagged against CURSOR_QUERY §36; not fully generalized in this pass
-- **recommended follow-up:** replace with evidence-driven synonym expansion
+- **severity:** medium → **mitigated**
+- **root cause:** synonym expansions injected brochure SKUs (SILKYFLAKE / FTD008 / NATUTECT)
+- **fix:** expansions reduced to generic scientific synonyms (NIR, MIU/MMD, friction, surface-treated)
+- **regression test:** `test_texture_evaluation_expands_to_generic_surface_terms`
 
 ### P6 — CLI ingest uses noop orchestration
 
-- **severity:** medium
-- **root cause:** `enterprise-rag ingest --wait` runs noop stage handlers (“local noop orchestration”)
-- **affected layer:** CLI
-- **workaround:** API/`ProcessRegisteredDocumentService` via runtime container
-- **status:** open
+- **severity:** medium → **fixed**
+- **root cause:** `enterprise-rag ingest --wait` ran noop stage handlers
+- **fix:** `--wait` now executes `ProcessRegisteredDocumentService` and commits; CLI prefers runtime backends from env
+- **verification:** ingest response `duration_note: ProcessRegisteredDocumentService`
 
 ## Retrieval metrics
 
@@ -189,15 +205,16 @@ Graph build during ingest: ~30 nodes / ~60 relationships per short datasheet.
 
 ## Remaining limitations
 
-1. **Optional parsers not installed** — cannot complete quantitative Docling/MinerU/Marker/PaddleOCR challenge matrices; metrics marked `NEEDS_REVIEW`.
-2. **Live path is pdfium-centric** — registry routing is not yet the production ingest path.
-3. **Not all 29 sample_data PDFs** were fully ingested/queried end-to-end in this pass (cost/latency); focus was evaluation corpus + representative real-store dual-doc case.
-4. **Fully scanned catalogs** (`BNB CHEM`, `SUNSPHERE`) need PaddleOCR or vision-heavy OCR before text RAG is meaningful.
-5. **CLI `--wait` noop** does not run `ProcessRegisteredDocumentService`.
-6. **Intent synonym expansions** still contain brochure-specific hard-coding (overfit risk).
-7. **Multimodal SEM/chart numeric fidelity** needs a dedicated live matrix beyond the current vision enrichment heuristics.
-8. SQLAlchemy async connection finalizer emits noisy logging errors on short scripts (observability issue, not answer quality).
-
+1. **MinerU / Marker** still need manual install (not packaged in extras yet); PaddleOCR is available via `parsers-ocr`.
+2. Docling adapter currently flattens mostly to markdown text blocks (page attribution can be coarse).
+3. **Not all 29 sample_data PDFs** were fully ingested/queried end-to-end in this pass (cost/latency).
+4. **Fully scanned catalogs** (`BNB CHEM`, `SUNSPHERE`) still need PaddleOCR/vision-heavy OCR for good text RAG (`uv sync --extra parsers-ocr`).
+5. **Multimodal SEM/chart numeric fidelity** needs a dedicated live matrix beyond current vision enrichment heuristics.
+6. Some chart-boost heuristics in retrieval still mention sample brochure cues; synonym expansions are generalized.
+7. SQLAlchemy async connection finalizer emits noisy logging errors on short scripts (observability issue, not answer quality).
+8. EMULGEN document metadata still lacks `page_count` (content is 1 page; reprocess would refresh metadata + 8000-char previews).
+9. Existing Qdrant payloads still store 2000-char `text_preview` until documents are re-embedded.
+10. Some NSG chart slides contain conflicting callouts (MTH100RS vs MT1080RS “highest transparency”); answers may hedge or prefer one wording.
 ## Artifacts & tooling added
 
 - `scripts/analyze_pdf.py`
@@ -214,7 +231,9 @@ Graph build during ingest: ~30 nodes / ~60 relationships per short datasheet.
 - `reports/parser-comparison-eval-corpus.json`
 - `reports/rag-evaluation.json`
 - `reports/rag-evaluation-live.json`
-
+- `reports/nsg-emulgen-challenge.json`
+- `src/enterprise_rag/infrastructure/persistence/chunks/qdrant_lookup.py`
+- `src/enterprise_rag/infrastructure/persistence/chunks/lexical_qdrant.py`
 ## Acceptance vs targets
 
 | Target | Actual (live eval corpus) |
