@@ -11,6 +11,33 @@ from enterprise_rag.domain.retrieval.enums import RetrievalMode
 
 _SPACE_RE = re.compile(r"\s+")
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-_/]{1,}", re.IGNORECASE)
+_CURRENT_QUESTION_RE = re.compile(
+    r"(?is)(?:^|\n)\s*Current question:\s*(.+?)(?:\n\s*\n|\n\s*Answer the current question|\Z)"
+)
+# Slide titles often live in TEXT chunks; expand keyword queries for lexical/dense recall.
+_RETRIEVAL_EXPANSIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"\bsolar\s+radiation\b", re.IGNORECASE),
+        "near-infrared near infrared NIR NATUTECT UV Near-IR reflective pigments",
+    ),
+    (
+        re.compile(r"\btexture\s+evaluation\b", re.IGNORECASE),
+        "SILKYFLAKE Surface-Treated Products FTD008FY-F130 FTD008FY-F190 "
+        "FTD008FY-F840 MIU MMD smoothness slip Aluminum Stearate",
+    ),
+    (
+        re.compile(r"\bmiu\b", re.IGNORECASE),
+        "MMD Texture evaluation friction coefficient of dynamic friction SILKYFLAKE",
+    ),
+    (
+        re.compile(r"\bmmd\b", re.IGNORECASE),
+        "MIU Texture evaluation smoothness SILKYFLAKE Surface-Treated",
+    ),
+    (
+        re.compile(r"\bnear[-\s]?infrared\b|\bnir\b", re.IGNORECASE),
+        "solar radiation NATUTECT Near-IR reflective",
+    ),
+)
 
 _MULTIMODAL_HINTS = frozenset(
     {
@@ -144,6 +171,31 @@ def normalize_question(question: str) -> str:
     return _SPACE_RE.sub(" ", folded)
 
 
+def extract_focus_question(question: str) -> str:
+    """Prefer the ``Current question:`` line when chat history was prepended.
+
+    Conversational wrappers pollute intent detection and embeddings with prior
+    product names (e.g. METASHINE RC) even when the user asked about another slide.
+    """
+    match = _CURRENT_QUESTION_RE.search(question)
+    if match:
+        focus = match.group(1).strip()
+        if focus:
+            return focus
+    return question.strip()
+
+
+def expand_for_retrieval(question: str) -> str:
+    """Append synonym phrases for known slide/topic keywords."""
+    extras: list[str] = []
+    for pattern, expansion in _RETRIEVAL_EXPANSIONS:
+        if pattern.search(question):
+            extras.append(expansion)
+    if not extras:
+        return question
+    return normalize_question(f"{question} {' '.join(extras)}")
+
+
 def detect_language(question: str) -> str:
     """Lightweight language guess (latin vs non-latin heuristic)."""
     letters = [ch for ch in question if ch.isalpha()]
@@ -191,9 +243,21 @@ def detect_modality_hints(question: str) -> list[Modality]:
             "gloss type",
             "matte type",
             "measurement conditions",
+            "texture evaluation",
+            "miu",
+            "mmd",
+            "smoothness",
+            "slip",
         ),
         Modality.IMAGE: ("image", "photo", "figure", "visual", "sem", "micrograph"),
-        Modality.DIAGRAM: ("diagram",),
+        Modality.DIAGRAM: (
+            "diagram",
+            "solar radiation",
+            "near-infrared",
+            "near infrared",
+            "nir protection",
+            "natutect",
+        ),
         Modality.TABLE: (
             "table",
             "assay",
@@ -255,7 +319,13 @@ def classify_intent(question: str) -> list[str]:
         labels.append("global")
     if any(hint in lowered for hint in _LOCAL_HINTS):
         labels.append("local")
-    if "?" in question or lowered.startswith(("what", "when", "where", "why", "how", "give")):
+    tokens = tokenize(question)
+    # Short keyword queries ("Texture evaluation chart") are factual lookups.
+    if (
+        "?" in question
+        or lowered.startswith(("what", "when", "where", "why", "how", "give", "find", "show"))
+        or len(tokens) <= 8
+    ):
         labels.append("factual")
     if not labels:
         labels.append("general")
@@ -290,6 +360,8 @@ def select_modes(
             )
         if "multimodal" in intent_labels or modality_hints:
             modes.append(RetrievalMode.MULTIMODAL)
+            # Chart titles / captions are often TEXT chunks — never multimodal-only.
+            modes.append(RetrievalMode.HYBRID)
         if "global" in intent_labels:
             modes.append(RetrievalMode.GLOBAL)
         if "local" in intent_labels:
@@ -299,6 +371,8 @@ def select_modes(
         # Always include a dense branch for factual/general questions.
         if RetrievalMode.NAIVE not in modes and "factual" in intent_labels:
             modes.insert(0, RetrievalMode.NAIVE)
+        if RetrievalMode.HYBRID not in modes and "factual" in intent_labels:
+            modes.append(RetrievalMode.HYBRID)
         return _unique(modes)
 
     if requested is RetrievalMode.MIX:
@@ -315,14 +389,15 @@ def select_modes(
 
 
 def analyze_query(question: str, *, mode: RetrievalMode) -> QueryAnalysis:
-    normalized = normalize_question(question)
-    intent_labels = classify_intent(normalized)
-    modality_hints = detect_modality_hints(normalized)
+    focus = normalize_question(extract_focus_question(question))
+    retrieval_question = expand_for_retrieval(focus)
+    intent_labels = classify_intent(focus)
+    modality_hints = detect_modality_hints(focus)
     return QueryAnalysis(
-        normalized_question=normalized,
-        language=detect_language(normalized),
-        tokens=tokenize(normalized),
-        entity_mentions=extract_entity_mentions(normalized),
+        normalized_question=retrieval_question,
+        language=detect_language(focus),
+        tokens=tokenize(focus),
+        entity_mentions=extract_entity_mentions(focus),
         modality_hints=modality_hints,
         selected_modes=select_modes(
             requested=mode,

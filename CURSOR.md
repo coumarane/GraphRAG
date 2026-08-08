@@ -135,3 +135,17 @@ Before creating code, provide:
 10. implementation phases and acceptance tests.
 
 Then begin Phase 1 immediately.
+
+## RAG Reliability Validation
+
+For end-to-end PDF, retrieval, GraphRAG, multimodal, conversation,
+cross-document, citation, and hallucination validation, the authoritative
+test specification is:
+
+`CURSOR_QUERY.md`
+
+When asked to validate, challenge, benchmark, test, or improve RAG quality,
+read `CURSOR_QUERY.md` before making changes.
+
+`CURSOR_QUERY.md` defines validation behavior.
+`specs/` and `contracts/` remain authoritative for architecture and data contracts.

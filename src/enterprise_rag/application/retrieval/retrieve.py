@@ -98,6 +98,17 @@ _CHART_TEXT_HINTS = (
     "l* 110",
     "measurement conditions",
     "background: black",
+    "texture evaluation",
+    "miu",
+    "mmd",
+    "smoothness",
+    "slip",
+    "solar radiation",
+    "near-infrared",
+    "near infrared",
+    "natutect",
+    "silkyflake",
+    "nir protection",
 )
 
 
@@ -161,6 +172,7 @@ def _boost_chart_evidence(
     )
     wants_charts = (
         Modality.CHART in analysis.modality_hints
+        or Modality.DIAGRAM in analysis.modality_hints
         or chart_scope_assay_probe
         or any(
             hint in lowered
@@ -176,11 +188,31 @@ def _boost_chart_evidence(
                 "l* 75",
                 "l* 110",
                 "appearance",
+                "texture evaluation",
+                "solar radiation",
+                "near-infrared",
+                "near infrared",
+                "natutect",
+                "silkyflake",
+                "surface-treated",
+                "miu",
+                "mmd",
             )
         )
     )
     if not wants_charts or not evidence:
         return evidence
+
+    wants_texture = "texture evaluation" in lowered or (
+        "miu" in analysis.tokens and "mmd" in analysis.tokens
+    ) or ("miu" in lowered and "mmd" in lowered)
+    wants_surface_treated = (
+        "surface" in lowered
+        or "ftd008" in lowered
+        or "f130" in lowered
+        or "f190" in lowered
+        or "f840" in lowered
+    )
 
     boosted: list[RetrievedEvidence] = []
     for item in evidence:
@@ -194,6 +226,43 @@ def _boost_chart_evidence(
             boost += 0.55
         if "byk" in text or "soft-focus" in text or "soft focus" in text:
             boost += 0.35
+        if wants_texture and "texture evaluation" in text:
+            boost += 1.2
+        if wants_texture and (
+            "miu" in text or "mmd" in text or "friction" in text or "slipperiness" in text
+        ):
+            boost += 0.55
+        if wants_texture and (
+            "surface-treated" in text
+            or "surface treated" in text
+            or "ftd008fy-f130" in text
+            or "aluminum stearate" in text
+            or "triethoxycaprylylsilane" in text
+        ):
+            boost += 1.1
+        if wants_surface_treated and (
+            "surface-treated" in text
+            or "surface treated" in text
+            or "ftd008fy-f130" in text
+            or "ftd008fy-f190" in text
+            or "ftd008fy-f840" in text
+        ):
+            boost += 0.85
+        # Prefer surface-treated texture slide over appearance/tone-up / L* charts.
+        if wants_texture and (
+            "tone-up" in text
+            or "angle of measurement" in text
+            or "byk-mac" in text
+            or "l*-15" in text
+            or "l* 15" in text
+            or ("synthetic mica" in text and "appearance" in text)
+        ):
+            boost -= 1.1
+        # Demote the different MIU-only bar chart (FTD010/FTD025) when asking MIU+MMD.
+        if wants_texture and "mmd" in lowered and (
+            "ftd010fy" in text or "ftd025fy" in text
+        ) and "ftd008fy-f130" not in text:
+            boost -= 0.7
         # Demote assay bleed when the question is about the appearance chart.
         if ("heavy metal" not in lowered or chart_scope_assay_probe) and (
             "heavy metal content" in text or ("cd:" in text and "pb:" in text) or "| cd |" in text
@@ -394,7 +463,11 @@ class RetrieveEvidenceService:
         if chart_scope_assay_probe:
             prefer_tables = False
         prefer_charts = (
-            Modality.CHART in analysis.modality_hints and not prefer_tables
+            (
+                Modality.CHART in analysis.modality_hints
+                or Modality.DIAGRAM in analysis.modality_hints
+            )
+            and not prefer_tables
         ) or chart_scope_assay_probe
         assembled = assemble_context(
             expanded,
@@ -508,9 +581,16 @@ class RetrieveEvidenceService:
         request: RetrievalRequest,
         analysis: QueryAnalysis,
     ) -> list[RetrievedEvidence]:
-        modalities = list(request.filters.modalities) or list(
-            analysis.modality_hints or _MULTIMODAL_MODALITIES
-        )
+        # Soft modality preference: never hard-gate to a single hint (e.g. CHART),
+        # because slide titles/captions are often TEXT/COMPOSITE chunks.
+        if request.filters.modalities:
+            modalities = list(request.filters.modalities)
+        elif analysis.modality_hints:
+            modalities = list(
+                dict.fromkeys([*analysis.modality_hints, *_MULTIMODAL_MODALITIES])
+            )
+        else:
+            modalities = list(_MULTIMODAL_MODALITIES)
         query_vector = await self._embedder.embed_query(analysis.normalized_question)
         hits = await self._vectors.search(
             tenant,

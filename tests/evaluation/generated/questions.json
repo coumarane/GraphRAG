@@ -1,0 +1,363 @@
+[
+  {
+    "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-q001",
+    "type": "factual",
+    "question": "What does the document say about: Chart Appendix?",
+    "expected_evidence": [
+      {
+        "document_id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "page": 1,
+        "text": "Chart Appendix"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "charts.pdf"
+  },
+  {
+    "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Chart Appendix'.",
+    "expected_evidence": [
+      {
+        "document_id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "page": 1,
+        "text": "Chart Appendix"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "charts.pdf"
+  },
+  {
+    "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "charts.pdf"
+  },
+  {
+    "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "charts.pdf"
+  },
+  {
+    "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-q001",
+    "type": "factual",
+    "question": "What does the document say about: Supplier Comparison Tables?",
+    "expected_evidence": [
+      {
+        "document_id": "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "page": 1,
+        "text": "Supplier Comparison Tables"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "complex_tables.pdf"
+  },
+  {
+    "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Supplier Comparison Tables'.",
+    "expected_evidence": [
+      {
+        "document_id": "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "page": 1,
+        "text": "Supplier Comparison Tables"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "complex_tables.pdf"
+  },
+  {
+    "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-q003",
+    "type": "table",
+    "question": "What density value is reported?",
+    "expected_evidence": [
+      {
+        "document_id": "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "page": 1,
+        "text": "density = 0.97 g/mL"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "complex_tables.pdf",
+    "gold_contains": [
+      "0.97 g/mL"
+    ]
+  },
+  {
+    "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "complex_tables.pdf"
+  },
+  {
+    "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "complex_tables.pdf"
+  },
+  {
+    "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-q001",
+    "type": "factual",
+    "question": "What does the document say about: Scanned Lab Notes?",
+    "expected_evidence": [
+      {
+        "document_id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+        "page": 1,
+        "text": "Scanned Lab Notes"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "scanned.pdf"
+  },
+  {
+    "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Scanned Lab Notes'.",
+    "expected_evidence": [
+      {
+        "document_id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+        "page": 1,
+        "text": "Scanned Lab Notes"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "scanned.pdf"
+  },
+  {
+    "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "scanned.pdf"
+  },
+  {
+    "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "scanned.pdf"
+  },
+  {
+    "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-q001",
+    "type": "factual",
+    "question": "What does the document say about: Rheology Equations?",
+    "expected_evidence": [
+      {
+        "document_id": "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf"
+  },
+  {
+    "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Rheology Equations'.",
+    "expected_evidence": [
+      {
+        "document_id": "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf"
+  },
+  {
+    "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-q003",
+    "type": "equation",
+    "question": "What does Equation 4 calculate?",
+    "expected_evidence": [
+      {
+        "document_id": "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf",
+    "gold_contains": [
+      "viscosity"
+    ]
+  },
+  {
+    "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "scientific_equations.pdf"
+  },
+  {
+    "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "scientific_equations.pdf"
+  },
+  {
+    "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-q001",
+    "type": "factual",
+    "question": "What does the document say about: Supplier A Datasheet?",
+    "expected_evidence": [
+      {
+        "document_id": "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "page": 1,
+        "text": "Supplier A Datasheet"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "shared_entities_a.pdf"
+  },
+  {
+    "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Supplier A Datasheet'.",
+    "expected_evidence": [
+      {
+        "document_id": "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "page": 1,
+        "text": "Supplier A Datasheet"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "shared_entities_a.pdf"
+  },
+  {
+    "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "shared_entities_a.pdf"
+  },
+  {
+    "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "shared_entities_a.pdf"
+  },
+  {
+    "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-q001",
+    "type": "factual",
+    "question": "What does the document say about: Supplier B Datasheet?",
+    "expected_evidence": [
+      {
+        "document_id": "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "page": 1,
+        "text": "Supplier B Datasheet"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "shared_entities_b.pdf"
+  },
+  {
+    "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Supplier B Datasheet'.",
+    "expected_evidence": [
+      {
+        "document_id": "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "page": 1,
+        "text": "Supplier B Datasheet"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "shared_entities_b.pdf"
+  },
+  {
+    "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "shared_entities_b.pdf"
+  },
+  {
+    "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "shared_entities_b.pdf"
+  },
+  {
+    "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-q001",
+    "type": "factual",
+    "question": "What does the document say about: Viscosity Study Report?",
+    "expected_evidence": [
+      {
+        "document_id": "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "page": 1,
+        "text": "Viscosity Study Report"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "text_heavy.pdf"
+  },
+  {
+    "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-q002",
+    "type": "paraphrase",
+    "question": "Summarize the information related to 'Viscosity Study Report'.",
+    "expected_evidence": [
+      {
+        "document_id": "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "page": 1,
+        "text": "Viscosity Study Report"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "text_heavy.pdf"
+  },
+  {
+    "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-neg001",
+    "type": "negative",
+    "question": "What is the CEO's birthday?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "text_heavy.pdf"
+  },
+  {
+    "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-neg002",
+    "type": "negative",
+    "question": "What is this product's 2035 forecast revenue?",
+    "expected_evidence": [],
+    "must_answer": false,
+    "source_document": "text_heavy.pdf"
+  },
+  {
+    "id": "cross-001",
+    "type": "cross_document",
+    "question": "Compare density values across the documents.",
+    "expected_evidence": [
+      {
+        "document_id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "page": 1,
+        "text": "density"
+      },
+      {
+        "document_id": "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "page": 1,
+        "text": "density"
+      }
+    ],
+    "must_answer": true,
+    "source_document": "multi"
+  }
+]

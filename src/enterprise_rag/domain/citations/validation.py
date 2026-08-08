@@ -14,6 +14,14 @@ from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.shared.exceptions import CitationValidationError
 
 _CITATION_REF_RE = re.compile(r"\[(C\d+)\]")
+_INSUFFICIENT_ANSWER_RE = re.compile(
+    r"(?i)\b("
+    r"no .+ (?:in|from) the (?:provided )?evidence"
+    r"|not (?:found|present|available|included) in the (?:provided )?evidence"
+    r"|evidence (?:is|was) insufficient"
+    r"|insufficient evidence"
+    r")\b"
+)
 _METAL_CLAIM_RE = re.compile(
     r"(?i)\b(lead|pb|cadmium|cd|arsenic|as|mercury|hg|chromium|cr|antimony|sb|"
     r"barium|ba|nickel|ni|zinc|zn|tin|sn)\b"
@@ -170,9 +178,18 @@ def validate_citations(
 
     from_text = extract_citation_ids(answer)
     claimed = list(claimed_ids or [])
+    # Prefer markers actually written in the answer. Drop unused JSON citation_ids
+    # on "not found" replies so the UI does not show unrelated source cards.
+    if from_text:
+        candidate_ids = from_text
+    elif _INSUFFICIENT_ANSWER_RE.search(answer):
+        candidate_ids = []
+    else:
+        candidate_ids = claimed
+
     combined: list[str] = []
     seen: set[str] = set()
-    for citation_id in [*from_text, *claimed]:
+    for citation_id in candidate_ids:
         if citation_id in seen:
             continue
         seen.add(citation_id)

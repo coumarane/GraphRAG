@@ -1,0 +1,40 @@
+{
+  "document": "Acerola Extract WB-E TDS.pdf",
+  "pages": 1,
+  "elements": 1,
+  "boilerplate": null,
+  "chunk_count": 2,
+  "header_footer_pollution_chunks": 0,
+  "chunks": [
+    {
+      "chunk_id": "c432042b-525a-551a-b8f3-444e1e31cbf2",
+      "parent_chunk_id": null,
+      "document": "Acerola Extract WB-E TDS.pdf",
+      "page_start": 1,
+      "page_end": 1,
+      "section": [
+        "Page 1"
+      ],
+      "modality": "text",
+      "chunk_type": "section",
+      "token_count": 335,
+      "source_elements": [],
+      "content": "Acerola Extract WB-E (Nichirei)\r\nFUNCTIONS & APPLICATIONS\r\nFunctional Ingredients Vitamin C\r\nMalic Acid\r\nExpected Results\r\nBoost Collagen\r\nUV-Damage Repair\r\nImprove Skin Tone and Texture\r\nRecommended Usage 1%\r\nApplications All skin care, cosmetic, and personal care products\r\nCOMPOSITION ON INGREDIENTS\r\nRAW MATERIAL\r\n(INCI name) CONTENT (%) ORIGIN COUNTRY OF ORIGIN\r\nMalpighia Emarginata \r\n(Acerola) Fruit Extract 1.1 Acerola Fruit (Organic certified)\r\nBrazil\r\nWater 68.9 Water Japan\r\nButylene Glycol 30.0 Sugar cane Asia \r\n(Republic of India, etc.)\r\nPHYSICAL & CHEMICAL CHARACTERISTICS\r\nAppearance Liquid\r\nColor Yellow to red brown\r\nOdor Characteristic\r\npH 2.5 - 4.5\r\nSolubility Soluble in water\r\nREGULATORY\r\nShelf life: 3 years\r\nStockage: Unopened at room temperature\r\nPackaging: 1kg or 20kg\r\nCOO: Japan\r\n✓ Not tested on animals\r\n✓ Non-GMO\r\n✓ Cosmos certified\r\n✓ NMPA registered\r\n〒104-0045 Tokyo, Chuo City, Tsukiji, \r\n6-19-20 Nichirei Higashi Ginza \r\nBuilding\r\nE-mail: n1010x129@nichirei.co.jp\r\nAcerola cherry is known worldwide as a super fruit with high natural vitamin C content. \r\nIt is native to southern Mexico, Central America, and South America. Acerola Extract \r\nWB-E (Nichirei) is extra"
+    },
+    {
+      "chunk_id": "c5d08c57-e9b7-5602-ac6c-ec7b8060ef4b",
+      "parent_chunk_id": "c432042b-525a-551a-b8f3-444e1e31cbf2",
+      "document": "Acerola Extract WB-E TDS.pdf",
+      "page_start": 1,
+      "page_end": 1,
+      "section": [
+        "Page 1"
+      ],
+      "modality": "text",
+      "chunk_type": "text",
+      "token_count": 335,
+      "source_elements": [],
+      "content": "Acerola Extract WB-E (Nichirei)\r\nFUNCTIONS & APPLICATIONS\r\nFunctional Ingredients Vitamin C\r\nMalic Acid\r\nExpected Results\r\nBoost Collagen\r\nUV-Damage Repair\r\nImprove Skin Tone and Texture\r\nRecommended Usage 1%\r\nApplications All skin care, cosmetic, and personal care products\r\nCOMPOSITION ON INGREDIENTS\r\nRAW MATERIAL\r\n(INCI name) CONTENT (%) ORIGIN COUNTRY OF ORIGIN\r\nMalpighia Emarginata \r\n(Acerola) Fruit Extract 1.1 Acerola Fruit (Organic certified)\r\nBrazil\r\nWater 68.9 Water Japan\r\nButylene Glycol 30.0 Sugar cane Asia \r\n(Republic of India, etc.)\r\nPHYSICAL & CHEMICAL CHARACTERISTICS\r\nAppearance Liquid\r\nColor Yellow to red brown\r\nOdor Characteristic\r\npH 2.5 - 4.5\r\nSolubility Soluble in water\r\nREGULATORY\r\nShelf life: 3 years\r\nStockage: Unopened at room temperature\r\nPackaging: 1kg or 20kg\r\nCOO: Japan\r\n✓ Not tested on animals\r\n✓ Non-GMO\r\n✓ Cosmos certified\r\n✓ NMPA registered\r\n〒104-0045 Tokyo, Chuo City, Tsukiji, \r\n6-19-20 Nichirei Higashi Ginza \r\nBuilding\r\nE-mail: n1010x129@nichirei.co.jp\r\nAcerola cherry is known worldwide as a super fruit with high natural vitamin C content. \r\nIt is native to southern Mexico, Central America, and South America. Acerola Extract \r\nWB-E (Nichirei) is extra"
+    }
+  ]
+}

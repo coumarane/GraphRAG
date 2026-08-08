@@ -94,6 +94,24 @@ def test_validate_citations_strips_unknown_ids() -> None:
     assert len(result.citations) == 1
 
 
+def test_validate_citations_drops_unused_ids_on_insufficient_answer() -> None:
+    tenant = TenantContext(tenant_id=new_id())
+    evidence = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="METASHINE RC particle size table",
+    )
+    registry = CitationRegistry(tenant, [evidence])
+    result = validate_citations(
+        tenant=tenant,
+        answer="There is no texture evaluation chart in the provided evidence.",
+        registry=registry,
+        claimed_ids=["C1"],
+        strict=False,
+    )
+    assert result.cited_ids == []
+    assert result.citations == []
+
+
 def test_validate_numeric_grounding_flags_column_misread() -> None:
     from enterprise_rag.domain.citations import validate_numeric_grounding
 

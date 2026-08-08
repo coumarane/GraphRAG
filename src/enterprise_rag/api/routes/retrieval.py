@@ -76,6 +76,7 @@ async def query_documents(
             include_graph_paths=body.include_graph_paths,
             rerank=body.rerank,
             answer_model_override=body.answer_model_override,
+            conversation_history=list(body.conversation_history),
         ),
     )
     return outcome.response

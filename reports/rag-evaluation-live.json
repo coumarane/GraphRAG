@@ -1,0 +1,576 @@
+{
+  "documents": [
+    {
+      "filename": "charts.pdf",
+      "document_id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+      "version_id": "52461236-bb26-444a-8973-77c916a50cba",
+      "pages": 1,
+      "elements": 4,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Chart Appendix\r\nFigure 1: Viscosity versus Temperature chart.\r\nThe chart supports the claim that viscosity falls as temperature rises.\r\nSeries Sample A: 20C->12cP, 40C->8cP."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "complex_tables.pdf",
+      "document_id": "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+      "version_id": "851ba043-6d44-44e1-bc13-968631b1db5d",
+      "pages": 1,
+      "elements": 4,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Supplier Comparison Tables\r\nSupplier A density = 0.97 g/mL at 25C.\r\nSupplier B density = 0.94 g/mL at 25C.\r\nTable columns: Supplier | Density | Viscosity | Lot."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "scanned.pdf",
+      "document_id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+      "version_id": "81a0f6f4-dadc-4f35-9217-34f3af08c266",
+      "pages": 1,
+      "elements": 3,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Scanned Lab Notes\r\nOCR candidate page with sparse extractable text.\r\nObserved haze in sample A after heating."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "scientific_equations.pdf",
+      "document_id": "55c7757e-fc77-4546-93ba-f7d4bec61564",
+      "version_id": "b6107020-e2dc-4284-a20e-22d52d09619a",
+      "pages": 1,
+      "elements": 4,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Rheology Equations\r\nEquation 4 calculates dynamic viscosity eta = tau / gamma_dot.\r\nWhere tau is shear stress and gamma_dot is shear rate.\r\nEquation 4 is used for Newtonian silicone oils."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "shared_entities_a.pdf",
+      "document_id": "36d994f1-bb0e-4322-87bb-73109e44a74f",
+      "version_id": "9ac2e88b-c3bb-4732-85bb-6e185782300c",
+      "pages": 1,
+      "elements": 4,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Supplier A Datasheet\r\nIngredient X density is 0.970 g/mL.\r\nIngredient X is linked to Regulation EU-1234.\r\nSilicone oil grade SO-100."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "shared_entities_b.pdf",
+      "document_id": "adee36a8-9c80-4599-9a66-fa7369889fe9",
+      "version_id": "3a4bfc7b-59e8-4c8c-b06f-76f91890984b",
+      "pages": 1,
+      "elements": 4,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Supplier B Datasheet\r\nIngredient X density is 0.940 g/mL.\r\nConflicting measurement versus Supplier A.\r\nSilicone oil grade SO-100 shared across suppliers."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "text_heavy.pdf",
+      "document_id": "f2eeffdd-73e7-4841-a688-b381f58a8434",
+      "version_id": "37a4b684-7d31-45b5-86d2-5f31398b526b",
+      "pages": 1,
+      "elements": 6,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Viscosity Study Report\r\nSilicone oil viscosity decreases with temperature.\r\nAt 20C the measured viscosity is 12 cP.\r\nAt 40C the measured viscosity is 8 cP.\r\nPackaging process uses sealed HDPE containers.\r\nIngredient X is restricted under Regulation EU-1234."
+      },
+      "ingestion_ok": true
+    }
+  ],
+  "document_ingestion_success_rate": 1.0,
+  "questions": 31,
+  "retrieval": {
+    "HitRate@1": 0.29411764705882354,
+    "HitRate@3": 0.9411764705882353,
+    "HitRate@5": 1.0,
+    "HitRate@10": 1.0,
+    "MRR": 0.6127450980392156
+  },
+  "mean_citation_validity": 1.0,
+  "mean_groundedness": 1.0,
+  "no_answer_accuracy": 1.0,
+  "conversation": {
+    "follow_up_resolution": true,
+    "context_switch": true,
+    "pronoun_after_switch": true
+  },
+  "cases": [
+    {
+      "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-q001",
+      "type": "factual",
+      "question": "What does the document say about: Chart Appendix?",
+      "rank": 1,
+      "answer_preview": "The document's Chart Appendix includes Figure 1, which is a 'Viscosity versus Temperature chart.' This chart demonstrates that viscosity decreases as temperature increases. For Series Sample A, the viscosity is 12 cP at 20\u00b0C and drops to 8 cP at 40\u00b0C. The chart is used to support the claim that visc",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9"
+      ]
+    },
+    {
+      "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Chart Appendix'.",
+      "rank": 1,
+      "answer_preview": "The 'Chart Appendix' provides the following information:\n\n- Figure 1 is a chart showing viscosity versus temperature.\n- The chart demonstrates that viscosity decreases as temperature increases.\n- For Series Sample A, the viscosity is 12 cP at 20\u00b0C and drops to 8 cP at 40\u00b0C.\n\nThis supports the genera",
+      "citations": 2,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9"
+      ]
+    },
+    {
+      "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no evidence in the provided documents regarding a 2035 forecast revenue for this product. The available evidence discusses properties such as density, viscosity, and regulatory status, but does not mention any financial forecasts or revenue projections.",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-q001",
+      "type": "factual",
+      "question": "What does the document say about: Supplier Comparison Tables?",
+      "rank": 2,
+      "answer_preview": "The document provides a summary of Supplier Comparison Tables, specifically comparing density values for two suppliers:\n\n- Supplier A: density = 0.97 g/mL at 25C\n- Supplier B: density = 0.94 g/mL at 25C\n\nThe table columns are: Supplier | Density | Viscosity | Lot[C2].\n\nAdditional supporting evidence",
+      "citations": 3,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434"
+      ]
+    },
+    {
+      "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Supplier Comparison Tables'.",
+      "rank": 2,
+      "answer_preview": "The 'Supplier Comparison Tables' provide a side-by-side comparison of key properties for products from different suppliers:\n\n- The table includes columns for Supplier, Density, Viscosity, and Lot.\n- Supplier A's product has a density of 0.97 g/mL at 25\u00b0C.\n- Supplier B's product has a density of 0.94",
+      "citations": 3,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434"
+      ]
+    },
+    {
+      "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-q003",
+      "type": "table",
+      "question": "What density value is reported?",
+      "rank": 1,
+      "answer_preview": "The following density values are reported:\n\n- Supplier A: 0.97 g/mL at 25\u00b0C [C1][C3]\n- Supplier B: 0.94 g/mL at 25\u00b0C [C1][C2]",
+      "citations": 3,
+      "retrieved_docs": [
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "ad9428ec-af75-4639-8e4a-7c9a631181d9-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no evidence in the provided documents regarding a 2035 forecast revenue for this product. The available evidence discusses properties such as density, viscosity, and regulatory status, but does not mention any financial forecasts or revenue projections.",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-q001",
+      "type": "factual",
+      "question": "What does the document say about: Scanned Lab Notes?",
+      "rank": 2,
+      "answer_preview": "For Scanned Lab Notes:\n\n- The document contains a scanned lab note page with sparse extractable text.\n- It reports that haze was observed in sample A after heating [C2].",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f"
+      ]
+    },
+    {
+      "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Scanned Lab Notes'.",
+      "rank": 2,
+      "answer_preview": "For 'Scanned Lab Notes':\n\n- The notes are from an OCR candidate page with sparse extractable text.\n- The main observation recorded is: haze was observed in sample A after heating [C2].\n\nNo further details or quantitative data are provided in the scanned lab notes.",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9"
+      ]
+    },
+    {
+      "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "128b2192-a6cc-453d-9d1d-ad951fdc26b5-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no evidence in the provided documents regarding a 2035 forecast revenue for this product. The available evidence discusses physical properties, regulatory status, and technical details, but does not mention any revenue forecasts or financial projections.",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-q001",
+      "type": "factual",
+      "question": "What does the document say about: Rheology Equations?",
+      "rank": 2,
+      "answer_preview": "The document provides the following information about rheology equations:\n\n- Equation 4 calculates dynamic viscosity (eta) as eta = tau / gamma_dot, where tau is the shear stress and gamma_dot is the shear rate.\n- This equation is specifically used for Newtonian silicone oils [C2].",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f"
+      ]
+    },
+    {
+      "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Rheology Equations'.",
+      "rank": 2,
+      "answer_preview": "The information related to 'Rheology Equations' includes:\n\n- Equation 4 is used to calculate dynamic viscosity (\u03b7) as \u03b7 = \u03c4 / \u03b3\u0307, where \u03c4 is shear stress and \u03b3\u0307 is shear rate.\n- This equation is specifically applied to Newtonian silicone oils [C2].\n\nAdditionally, supporting data shows that viscosity",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9"
+      ]
+    },
+    {
+      "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-q003",
+      "type": "equation",
+      "question": "What does Equation 4 calculate?",
+      "rank": 1,
+      "answer_preview": "Equation 4 calculates the dynamic viscosity (\u03b7) using the formula \u03b7 = \u03c4 / \u03b3\u0307, where \u03c4 is the shear stress and \u03b3\u0307 is the shear rate. This equation is specifically used for Newtonian silicone oils [C1].",
+      "citations": 1,
+      "retrieved_docs": [
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "55c7757e-fc77-4546-93ba-f7d4bec61564-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no information in the provided evidence regarding the 2035 forecast revenue for this product. The evidence only discusses physical properties, regulatory status, and technical details of Ingredient X and silicone oil grade SO-100, but does not mention any revenue forecasts or financial proj",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-q001",
+      "type": "factual",
+      "question": "What does the document say about: Supplier A Datasheet?",
+      "rank": 3,
+      "answer_preview": "For Supplier A Datasheet:\n\n- Ingredient X density is reported as 0.970 g/mL [C3].\n- Ingredient X is linked to Regulation EU-1234 [C3].\n- The silicone oil grade listed is SO-100 [C3].\n\nThis information is specific to Supplier A and distinguishes it from Supplier B, which reports a different density f",
+      "citations": 2,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434"
+      ]
+    },
+    {
+      "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Supplier A Datasheet'.",
+      "rank": 4,
+      "answer_preview": "For Supplier A Datasheet:\n\n- Ingredient X density: 0.970 g/mL [C4]\n- Silicone oil grade: SO-100 [C4]\n- Ingredient X is linked to Regulation EU-1234 [C4]\n\nAdditional related findings:\n- Viscosity of the sample (likely Supplier A):\n - At 20\u00b0C: 12 cP\n - At 40\u00b0C: 8 cP [C1, C6]\n- Viscosity decreases as t",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "36d994f1-bb0e-4322-87bb-73109e44a74f-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no evidence in the provided documents regarding a 2035 forecast revenue for this product. The available evidence discusses physical properties, regulatory status, and packaging, but does not mention any financial forecasts or revenue projections.",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-q001",
+      "type": "factual",
+      "question": "What does the document say about: Supplier B Datasheet?",
+      "rank": 2,
+      "answer_preview": "For Supplier B Datasheet:\n\n- Ingredient X density is reported as 0.940 g/mL.\n- There is a conflicting measurement versus Supplier A (which reports 0.970 g/mL).\n- The silicone oil grade SO-100 is shared across suppliers.\n\nThese points are directly stated in the Supplier B Datasheet section.[C2]",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434"
+      ]
+    },
+    {
+      "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Supplier B Datasheet'.",
+      "rank": 3,
+      "answer_preview": "For Supplier B Datasheet:\n\n- Ingredient X density is 0.940 g/mL according to Supplier B's datasheet, which is lower than the value reported by Supplier A (0.970 g/mL) [C3].\n- The datasheet notes a conflicting measurement versus Supplier A for density [C3].\n- Both suppliers provide the same silicone ",
+      "citations": 1,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434"
+      ]
+    },
+    {
+      "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "adee36a8-9c80-4599-9a66-fa7369889fe9-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no evidence in the provided documents regarding a 2035 forecast revenue for this product. The available evidence discusses physical properties, regulatory status, and packaging, but does not mention any financial forecasts or revenue projections.",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-q001",
+      "type": "factual",
+      "question": "What does the document say about: Viscosity Study Report?",
+      "rank": 2,
+      "answer_preview": "The document provides the following information about the Viscosity Study Report:\n\n- Silicone oil viscosity decreases as temperature increases.\n- At 20\u00b0C, the measured viscosity is 12 cP.\n- At 40\u00b0C, the measured viscosity is 8 cP.\n- The packaging process uses sealed HDPE containers.\n- Ingredient X i",
+      "citations": 2,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f"
+      ]
+    },
+    {
+      "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Viscosity Study Report'.",
+      "rank": 2,
+      "answer_preview": "# Viscosity Study Report Summary\n\n- The viscosity of silicone oil decreases as temperature increases.\n- At 20\u00b0C, the measured viscosity is 12 cP.\n- At 40\u00b0C, the measured viscosity is 8 cP.\n- This trend is supported by both a chart (showing Sample A: 20\u00b0C \u2192 12 cP, 40\u00b0C \u2192 8 cP) and a textual summary.\n",
+      "citations": 2,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f"
+      ]
+    },
+    {
+      "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "There is no information about the CEO's birthday in the provided evidence.",
+      "citations": 0,
+      "retrieved_docs": [
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "55c7757e-fc77-4546-93ba-f7d4bec61564",
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf"
+      ]
+    },
+    {
+      "id": "f2eeffdd-73e7-4841-a688-b381f58a8434-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "There is no evidence in the provided documents regarding a 2035 forecast revenue for this product. The available evidence discusses physical properties, regulatory status, and packaging, but does not mention any revenue forecasts or financial projections.",
+      "citations": 0,
+      "retrieved_docs": [
+        "36d994f1-bb0e-4322-87bb-73109e44a74f",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "128b2192-a6cc-453d-9d1d-ad951fdc26b5"
+      ]
+    },
+    {
+      "id": "cross-001",
+      "type": "cross_document",
+      "question": "Compare density values across the documents.",
+      "rank": 1,
+      "answer_preview": "The density values reported across the documents are as follows:\n\n| Supplier | Density (g/mL) |\n|--------------|----------------|\n| Supplier A | 0.97 |\n| Supplier B | 0.94 |\n\n- Supplier A density: 0.97 g/mL at 25C [C2][C5]\n- Supplier B density: 0.94 g/mL at 25C [C2][C3]\n\nThese values are consistent ",
+      "citations": 3,
+      "retrieved_docs": [
+        "f7799eb9-e71f-4d7e-b186-cff8ce1d6ddf",
+        "ad9428ec-af75-4639-8e4a-7c9a631181d9",
+        "adee36a8-9c80-4599-9a66-fa7369889fe9",
+        "f2eeffdd-73e7-4841-a688-b381f58a8434",
+        "36d994f1-bb0e-4322-87bb-73109e44a74f"
+      ]
+    }
+  ],
+  "dataset_path": "tests/evaluation/generated/questions.json",
+  "elapsed_sec": 88.41,
+  "mode": "live",
+  "parser_note": "Live ingest path uses pdfium (+ optional vision). Docling/MinerU/Marker/PaddleOCR optional packages are not installed."
+}

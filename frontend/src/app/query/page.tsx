@@ -4,14 +4,13 @@ import {
   FormEvent,
   Suspense,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
 import { readTenantKey } from "@/components/AppShell";
+import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswer";
 import {
-  buildConversationalQuestion,
   createEmptyThread,
   createMessage,
   loadChatThreads,
@@ -32,12 +31,6 @@ const MODES = [
   "multimodal",
   "mix",
 ] as const;
-
-type AnswerBlock =
-  | { type: "paragraph"; text: string }
-  | { type: "heading"; text: string }
-  | { type: "list"; items: string[] }
-  | { type: "kv"; rows: Array<{ key: string; value: string }> };
 
 function unwrapAnswerPayload(raw: string): {
   answer: string;
@@ -62,202 +55,6 @@ function unwrapAnswerPayload(raw: string): {
   } catch {
     return { answer: trimmed, warnings: [] };
   }
-}
-
-function splitValuePairs(
-  text: string,
-): Array<{ key: string; value: string }> | null {
-  const pairs = [
-    ...text.matchAll(/\b([A-Za-z][A-Za-z0-9]{0,6})\s+([^,;]+?)(?=,|;|$)/g),
-  ]
-    .map((match) => ({
-      key: match[1].trim(),
-      value: match[2].trim(),
-    }))
-    .filter((row) => row.key && row.value && /[0-9.<]/.test(row.value));
-  return pairs.length >= 3 ? pairs : null;
-}
-
-function toBlocks(answer: string): AnswerBlock[] {
-  const normalized = answer.replace(/\r\n/g, "\n").trim();
-  if (!normalized) return [];
-
-  const blocks: AnswerBlock[] = [];
-  const paragraphs = normalized
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  for (const paragraph of paragraphs) {
-    const lines = paragraph
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const bulletLines = lines.filter((line) => /^([-*•]|\d+\.)\s+/.test(line));
-    if (bulletLines.length >= 2 && bulletLines.length === lines.length) {
-      blocks.push({
-        type: "list",
-        items: lines.map((line) => line.replace(/^([-*•]|\d+\.)\s+/, "")),
-      });
-      continue;
-    }
-
-    const sectionChunks = paragraph
-      .split(/(?=\bFor\s+[A-Z0-9][^:]{0,80}:)/g)
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-    if (sectionChunks.length > 1) {
-      for (const chunk of sectionChunks) {
-        const headingMatch = /^(For\s+.+?)(?:\s*:\s*|\.\s+)/.exec(chunk);
-        if (headingMatch) {
-          blocks.push({
-            type: "heading",
-            text: headingMatch[1].replace(/\.$/, ""),
-          });
-          const rest = chunk.slice(headingMatch[0].length).trim();
-          const valuesMatch =
-            /(?:measured\s+)?values?\s+are\s*:\s*(.+)$/i.exec(rest);
-          if (valuesMatch) {
-            const pairs = splitValuePairs(valuesMatch[1]);
-            if (pairs) {
-              blocks.push({ type: "kv", rows: pairs });
-              continue;
-            }
-          }
-          if (rest) blocks.push({ type: "paragraph", text: rest });
-          continue;
-        }
-        blocks.push({ type: "paragraph", text: chunk });
-      }
-      continue;
-    }
-
-    const valuesMatch =
-      /(?:measured\s+)?values?\s+are\s*:\s*(.+)$/i.exec(paragraph);
-    if (valuesMatch) {
-      const intro = paragraph.slice(0, valuesMatch.index).trim();
-      if (intro) {
-        blocks.push({ type: "paragraph", text: intro.replace(/:\s*$/, "") });
-      }
-      const pairs = splitValuePairs(valuesMatch[1]);
-      if (pairs) {
-        blocks.push({ type: "kv", rows: pairs });
-        continue;
-      }
-    }
-
-    const kvLines = lines.filter((line) =>
-      /^[-*•]?\s*[A-Za-z][^:]{1,40}:\s+\S/.test(line),
-    );
-    if (kvLines.length >= 2 && kvLines.length === lines.length) {
-      blocks.push({
-        type: "kv",
-        rows: lines.map((line) => {
-          const cleaned = line.replace(/^[-*•]\s*/, "");
-          const idx = cleaned.indexOf(":");
-          return {
-            key: cleaned.slice(0, idx).trim(),
-            value: cleaned.slice(idx + 1).trim(),
-          };
-        }),
-      });
-      continue;
-    }
-
-    blocks.push({ type: "paragraph", text: paragraph });
-  }
-
-  return blocks;
-}
-
-function highlightCitations(text: string) {
-  const parts = text.split(/(\[C\d+\])/g);
-  return parts.map((part, index) => {
-    const match = /^\[(C\d+)\]$/.exec(part);
-    if (!match) return <span key={index}>{part}</span>;
-    const id = match[1];
-    return (
-      <a
-        key={index}
-        href={`#cite-${id}`}
-        className="mx-0.5 inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent hover:bg-accent/15"
-      >
-        {id}
-      </a>
-    );
-  });
-}
-
-function FormattedAnswer({ answer }: { answer: string }) {
-  const blocks = useMemo(() => toBlocks(answer), [answer]);
-
-  if (!blocks.length) {
-    return <p className="text-sm text-muted">No answer returned.</p>;
-  }
-
-  return (
-    <div className="space-y-3 text-[15px] leading-7 text-foreground">
-      {blocks.map((block, index) => {
-        if (block.type === "heading") {
-          return (
-            <h4
-              key={index}
-              className="text-sm font-semibold tracking-tight text-foreground"
-            >
-              {highlightCitations(block.text)}
-            </h4>
-          );
-        }
-        if (block.type === "list") {
-          return (
-            <ul key={index} className="list-disc space-y-1.5 pl-5">
-              {block.items.map((item, itemIndex) => (
-                <li key={itemIndex}>{highlightCitations(item)}</li>
-              ))}
-            </ul>
-          );
-        }
-        if (block.type === "kv") {
-          return (
-            <div
-              key={index}
-              className="overflow-hidden rounded-md border border-border"
-            >
-              <table className="w-full text-left text-sm">
-                <thead className="bg-background text-xs uppercase tracking-wide text-muted">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Element</th>
-                    <th className="px-3 py-2 font-medium">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {block.rows.map((row, rowIndex) => (
-                    <tr
-                      key={`${row.key}-${rowIndex}`}
-                      className="border-t border-border/80"
-                    >
-                      <td className="px-3 py-2 font-mono text-[13px] font-semibold">
-                        {row.key}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-[13px]">
-                        {highlightCitations(row.value)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        }
-        return (
-          <p key={index} className="whitespace-pre-wrap">
-            {highlightCitations(block.text)}
-          </p>
-        );
-      })}
-    </div>
-  );
 }
 
 function looksLikeUuid(value: string): boolean {
@@ -469,12 +266,61 @@ function SourcesGrid({
   );
 }
 
+function CopyMessageButton({
+  text,
+  tone,
+}: {
+  text: string;
+  tone: "user" | "assistant";
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    const value = text.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = value;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      document.body.removeChild(area);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  const isUser = tone === "user";
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      className={`rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
+        isUser
+          ? "text-white/70 hover:bg-white/15 hover:text-white"
+          : "text-muted hover:bg-background hover:text-foreground"
+      }`}
+      aria-label={isUser ? "Copy question" : "Copy answer"}
+      title={copied ? "Copied" : isUser ? "Copy question" : "Copy answer"}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 function MessageBubble({
   message,
   uploaderName,
+  allowCharts = false,
 }: {
   message: ChatMessage;
   uploaderName: string;
+  allowCharts?: boolean;
 }) {
   const isUser = message.role === "user";
   return (
@@ -486,20 +332,31 @@ function MessageBubble({
             : "w-full max-w-[min(100%,52rem)] border border-border bg-surface text-foreground shadow-sm"
         }`}
       >
-        <p
-          className={`mb-1 text-[11px] font-medium uppercase tracking-wide ${
-            isUser ? "text-white/70" : "text-muted"
-          }`}
-        >
-          {isUser ? "You" : "Assistant"}
-        </p>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <p
+            className={`text-[11px] font-medium uppercase tracking-wide ${
+              isUser ? "text-white/70" : "text-muted"
+            }`}
+          >
+            {isUser ? "You" : "Assistant"}
+          </p>
+          <CopyMessageButton
+            text={message.content}
+            tone={isUser ? "user" : "assistant"}
+          />
+        </div>
         {isUser ? (
-          <p className="whitespace-pre-wrap text-[15px] leading-7">
+          <p className="select-text whitespace-pre-wrap text-[15px] leading-7">
             {message.content}
           </p>
         ) : (
           <div className="space-y-4">
-            <FormattedAnswer answer={message.content} />
+            <div className="select-text">
+              <FormattedAnswer
+                answer={message.content}
+                allowCharts={allowCharts}
+              />
+            </div>
             {message.retrieval_mode ? (
               <p className="font-mono text-[11px] text-muted">
                 mode={message.retrieval_mode}
@@ -661,7 +518,11 @@ function ChatWorkspace() {
           "X-Tenant-Key": tenantKey,
         },
         body: JSON.stringify({
-          question: buildConversationalQuestion(historyForContext, question),
+          question,
+          conversation_history: historyForContext.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
           mode: activeThread.mode,
           document_ids: activeThread.documentId.trim()
             ? [activeThread.documentId.trim()]
@@ -834,18 +695,27 @@ function ChatWorkspace() {
               </p>
             </div>
           ) : (
-            activeThread.messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                uploaderName={
-                  tenantKey.trim()
-                    ? tenantKey.trim().charAt(0).toUpperCase() +
-                      tenantKey.trim().slice(1)
-                    : "Workspace"
-                }
-              />
-            ))
+            activeThread.messages.map((message, index) => {
+              const priorUser = [...activeThread.messages.slice(0, index)]
+                .reverse()
+                .find((item) => item.role === "user");
+              const allowCharts = priorUser
+                ? wantsRenderedChart(priorUser.content)
+                : false;
+              return (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  allowCharts={allowCharts}
+                  uploaderName={
+                    tenantKey.trim()
+                      ? tenantKey.trim().charAt(0).toUpperCase() +
+                        tenantKey.trim().slice(1)
+                      : "Workspace"
+                  }
+                />
+              );
+            })
           )}
           {busy ? (
             <div className="flex justify-start">

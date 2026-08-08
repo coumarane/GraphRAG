@@ -299,16 +299,28 @@ async def _query_async(
 def inspect_document(
     document_id: str = typer.Argument(...),
     tenant_id: str = typer.Option(..., "--tenant-id"),
+    show_chunks: bool = typer.Option(False, "--show-chunks"),
     output: str = typer.Option("json", "--output"),
 ) -> None:
     try:
-        payload = asyncio.run(_inspect_async(document_id=document_id, tenant_id=tenant_id))
+        payload = asyncio.run(
+            _inspect_async(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                show_chunks=show_chunks,
+            )
+        )
         _emit(payload, output=output)
     except EnterpriseRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
-async def _inspect_async(*, document_id: str, tenant_id: str) -> dict[str, Any]:
+async def _inspect_async(
+    *,
+    document_id: str,
+    tenant_id: str,
+    show_chunks: bool = False,
+) -> dict[str, Any]:
     tenant = await _resolve_tenant(tenant_id)
     document = await get_container().require_document_repo().get_document(
         tenant, UUID(document_id)
@@ -317,7 +329,31 @@ async def _inspect_async(*, document_id: str, tenant_id: str) -> dict[str, Any]:
         from enterprise_rag.shared.exceptions import NotFoundError
 
         raise NotFoundError("Document not found")
-    return document.model_dump(mode="json")
+    payload = document.model_dump(mode="json")
+    if show_chunks:
+        container = get_container()
+        chunks, total = await container.list_chunks(
+            tenant,
+            UUID(document_id),
+            offset=0,
+            limit=200,
+        )
+        payload["chunks"] = [
+            {
+                "chunk_id": str(chunk.chunk_id),
+                "parent_chunk_id": str(chunk.parent_chunk_id) if chunk.parent_chunk_id else None,
+                "page_start": chunk.page_start,
+                "page_end": chunk.page_end,
+                "section": list(chunk.section_path),
+                "modality": chunk.modality.value,
+                "chunk_type": chunk.chunk_type.value,
+                "token_count": chunk.token_count,
+                "content": chunk.text[:1200],
+            }
+            for chunk in chunks
+        ]
+        payload["chunk_total"] = total
+    return payload
 
 
 @app.command("show-run")

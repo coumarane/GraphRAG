@@ -102,12 +102,15 @@ export function buildConversationalQuestion(
   history: ChatMessage[],
   latestQuestion: string,
 ): string {
-  const prior = history.slice(-6);
+  const prior = history.slice(-4);
   if (!prior.length) return latestQuestion;
+  // Keep prior USER turns for pronoun resolution; truncate assistant text hard so
+  // earlier product lines (e.g. METASHINE) do not dominate retrieval embeddings.
   const transcript = prior
     .map((message) => {
       const role = message.role === "user" ? "User" : "Assistant";
-      const text = message.content.replace(/\s+/g, " ").trim().slice(0, 600);
+      const limit = message.role === "assistant" ? 160 : 400;
+      const text = message.content.replace(/\s+/g, " ").trim().slice(0, limit);
       return `${role}: ${text}`;
     })
     .join("\n");
@@ -120,6 +123,7 @@ export function buildConversationalQuestion(
     "Answer the current question using retrieved document evidence.",
     "Use prior turns only to resolve references (e.g. \"that product\", \"those values\").",
     "Do not invent facts from chat history that are not grounded in retrieved evidence.",
+    "Do not keep answering about a prior product line unless the current question asks about it.",
   ].join("\n");
 }
 

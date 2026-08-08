@@ -140,9 +140,15 @@ def _extract_pdf_raw(data: bytes, *, filename: str, max_pages: int) -> RawParser
             )
             if not text:
                 continue
-            blocks = [block.strip() for block in text.split("\n\n") if block.strip()]
+            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+            blocks = [block.strip() for block in normalized.split("\n\n") if block.strip()]
+            # Many brochure PDFs only use single newlines; avoid one giant element.
+            if len(blocks) <= 1:
+                line_blocks = [block.strip() for block in normalized.split("\n") if block.strip()]
+                if len(line_blocks) > 1:
+                    blocks = line_blocks
             if not blocks:
-                blocks = [block.strip() for block in text.split("\n") if block.strip()] or [text]
+                blocks = [normalized]
             for block in blocks:
                 element_type = _classify_block(block)
                 metadata: dict[str, object] = {}

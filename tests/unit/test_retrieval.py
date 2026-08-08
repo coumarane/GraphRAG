@@ -77,7 +77,58 @@ async def test_auto_selects_multimodal_for_chart_questions() -> None:
         mode=RetrievalMode.AUTO,
     )
     assert RetrievalMode.MULTIMODAL in analysis.selected_modes
+    assert RetrievalMode.HYBRID in analysis.selected_modes
     assert Modality.CHART in analysis.modality_hints
+
+
+@pytest.mark.asyncio
+async def test_auto_texture_evaluation_chart_not_multimodal_only() -> None:
+    analysis = analyze_query(
+        "Texture evaluation chart",
+        mode=RetrievalMode.AUTO,
+    )
+    assert RetrievalMode.MULTIMODAL in analysis.selected_modes
+    assert RetrievalMode.HYBRID in analysis.selected_modes
+    assert "silkyflake" in analysis.normalized_question.casefold()
+
+
+@pytest.mark.asyncio
+async def test_analyze_query_uses_current_question_not_chat_history() -> None:
+    wrapped = "\n".join(
+        [
+            "Conversation so far:",
+            "User: Give me heavy metal content for METASHINE RC HC ZC",
+            "Assistant: RC series Cd 0.4 ppm Pb <3 ppm",
+            "",
+            "Current question: Texture evaluation chart",
+            "",
+            "Answer the current question using retrieved document evidence.",
+        ]
+    )
+    analysis = analyze_query(wrapped, mode=RetrievalMode.AUTO)
+    assert "texture" in analysis.normalized_question.casefold()
+    assert "metashine" not in analysis.normalized_question.casefold()
+    assert "assay" not in analysis.intent_labels
+    assert RetrievalMode.HYBRID in analysis.selected_modes
+
+
+@pytest.mark.asyncio
+async def test_solar_radiation_expands_to_nir_synonyms() -> None:
+    analysis = analyze_query("solar radiation data", mode=RetrievalMode.AUTO)
+    lowered = analysis.normalized_question.casefold()
+    assert "near-infrared" in lowered or "nir" in lowered
+    assert Modality.DIAGRAM in analysis.modality_hints
+
+
+@pytest.mark.asyncio
+async def test_texture_evaluation_expands_to_surface_treated_codes() -> None:
+    analysis = analyze_query(
+        "SILKYFLAKE Texture evaluation chart MIU MMD",
+        mode=RetrievalMode.AUTO,
+    )
+    lowered = analysis.normalized_question.casefold()
+    assert "ftd008fy" in lowered
+    assert "surface-treated" in lowered or "surface" in lowered
 
 
 @pytest.mark.asyncio
