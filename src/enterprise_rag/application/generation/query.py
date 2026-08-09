@@ -28,7 +28,6 @@ from enterprise_rag.domain.conversation.conversation_context import (
 )
 from enterprise_rag.domain.conversation.scope_expand import (
     AWAITING_SCOPE_EXPAND,
-    DOCUMENT_SCOPE_EXPANDED,
     ScopeExpandDecision,
     answer_looks_like_abstention,
     build_scope_miss_message,
@@ -36,6 +35,8 @@ from enterprise_rag.domain.conversation.scope_expand import (
     is_scope_expand_affirmative,
 )
 from enterprise_rag.domain.ids import new_id
+from enterprise_rag.domain.policies import HardInvariantGate, InvariantVerdict
+from enterprise_rag.domain.policies.hard_invariants import HardInvariant
 from enterprise_rag.domain.retrieval.models import (
     QueryRequest,
     QueryResponse,
@@ -61,7 +62,7 @@ class QueryDocumentsResult:
 
 
 class QueryDocumentsService:
-    """Application facade for grounded Q&A."""
+    """Application facade for grounded Q&A under hard system invariants."""
 
     def __init__(
         self,
@@ -69,19 +70,39 @@ class QueryDocumentsService:
         generate_service: GenerateAnswerService,
         context_resolver: QueryContextResolver | None = None,
         document_titles: DocumentTitlesProvider | None = None,
+        invariant_gate: HardInvariantGate | None = None,
     ) -> None:
         self._retrieve = retrieve_service
         self._generate = generate_service
         self._context_resolver = context_resolver or QueryContextResolver()
         self._document_titles = document_titles
+        self._gate = invariant_gate or HardInvariantGate()
 
     async def query(
         self,
         tenant: TenantContext,
         request: QueryRequest,
     ) -> QueryDocumentsResult:
+        verdict = InvariantVerdict()
+        self._gate.enforce_security(tenant, verdict)
+        if verdict.blocked:
+            response = QueryResponse(
+                answer=verdict.block_answer or "Unauthorized.",
+                retrieval_mode=request.mode,
+                citations=[],
+                retrieval_trace_id=new_id(),
+                warnings=list(verdict.warnings),
+                graph_paths=[],
+                enforced_invariants=list(verdict.enforced),
+            )
+            return QueryDocumentsResult(
+                response=response,
+                retrieval=None,
+                generation=None,
+                context=None,
+            )
+
         working = request
-        expand_warnings: list[str] = []
         titles = await self._load_titles(tenant)
 
         expand = detect_scope_expand_from_history(
@@ -109,19 +130,31 @@ class QueryDocumentsService:
                         ),
                     }
                 )
-                expand_warnings.append(DOCUMENT_SCOPE_EXPANDED)
                 expanded = True
                 logger.info("document_scope_expanded", prior_question=replay[:120])
 
         context = self._resolve_context(working)
         if context.ambiguous and context.clarification_question:
+            verdict.extend_warnings([*context.warnings, "ambiguous_reference"])
+            self._gate.enforce_conversation_context(
+                has_active_context=False,
+                context_switch=False,
+                inferred=False,
+                verdict=verdict,
+            )
+            self._gate.enforce_retrieval_scope(
+                pinned_document_ids=[],
+                expanded=expanded,
+                verdict=verdict,
+            )
             response = QueryResponse(
                 answer=context.clarification_question,
                 retrieval_mode=working.mode,
                 citations=[],
                 retrieval_trace_id=new_id(),
-                warnings=[*context.warnings, "ambiguous_reference", *expand_warnings],
+                warnings=list(verdict.warnings),
                 graph_paths=[],
+                enforced_invariants=list(verdict.enforced),
             )
             return QueryDocumentsResult(
                 response=response,
@@ -139,13 +172,13 @@ class QueryDocumentsService:
             history,
             self._context_resolver,
         )
-        # Drop interrogative leftovers that sometimes escape entity filters.
         entities = [
             item
             for item in entities
             if item.casefold() not in {"who", "what", "when", "where", "why", "how"}
         ]
         has_prior_turns = bool(history)
+        inferred_pin = False
         if context.context_switch:
             entities = list(context.active_entities) or entities
             entities = [
@@ -154,13 +187,16 @@ class QueryDocumentsService:
                 if item.casefold() not in {"who", "what", "when", "where", "why", "how"}
             ]
             pinned_ids = match_document_ids_for_entities(entities, titles)
-            if pinned_ids:
-                expand_warnings.append("conversation_context_switched")
         elif not expanded and not pinned_ids and has_prior_turns:
-            # Follow-up: stick to docs established by the opening Q/A.
             pinned_ids = match_document_ids_for_entities(entities, titles)
-            if pinned_ids:
-                expand_warnings.append("conversation_context_inferred")
+            inferred_pin = bool(pinned_ids)
+
+        self._gate.enforce_conversation_context(
+            has_active_context=bool(pinned_ids) or has_prior_turns,
+            context_switch=context.context_switch,
+            inferred=inferred_pin,
+            verdict=verdict,
+        )
 
         if pinned_ids and not expanded:
             working = working.model_copy(
@@ -174,8 +210,13 @@ class QueryDocumentsService:
                 }
             )
 
+        self._gate.enforce_retrieval_scope(
+            pinned_document_ids=list(working.filters.document_ids),
+            expanded=expanded,
+            verdict=verdict,
+        )
+
         retrieval_question = context.resolved_query
-        # Keep sticky entity in the retrieval question for follow-ups only.
         if (
             not expanded
             and has_prior_turns
@@ -197,6 +238,7 @@ class QueryDocumentsService:
                 rerank=working.rerank,
             ),
         )
+        verdict.extend_warnings(retrieval.result.warnings)
 
         active = self._build_active_context(
             pinned_ids=list(working.filters.document_ids),
@@ -204,24 +246,28 @@ class QueryDocumentsService:
             entities=entities,
             citations=[],
         )
+        label = active.label if active else label_for_documents(
+            list(working.filters.document_ids), titles, entities=entities
+        )
 
-        if working.filters.document_ids and not retrieval.result.evidence and not expanded:
-            label = active.label if active else label_for_documents(
-                list(working.filters.document_ids), titles, entities=entities
-            )
+        self._gate.enforce_evidence_sufficiency(
+            question=retrieval_question,
+            evidence=retrieval.result.evidence,
+            pinned_document_ids=list(working.filters.document_ids),
+            context_label=label,
+            expanded=expanded,
+            verdict=verdict,
+        )
+        if verdict.blocked:
             response = QueryResponse(
-                answer=build_scope_miss_message(label),
+                answer=verdict.block_answer or build_scope_miss_message(label),
                 retrieval_mode=retrieval.result.mode,
                 citations=[],
                 retrieval_trace_id=retrieval.result.retrieval_trace_id,
-                warnings=[
-                    *retrieval.result.warnings,
-                    "weak_evidence",
-                    AWAITING_SCOPE_EXPAND,
-                    *expand_warnings,
-                ],
+                warnings=list(verdict.warnings),
                 graph_paths=[],
                 active_conversation_context=active.model_dump(mode="json") if active else None,
+                enforced_invariants=list(verdict.enforced),
             )
             return QueryDocumentsResult(
                 response=response,
@@ -236,32 +282,22 @@ class QueryDocumentsService:
             retrieval=retrieval.result,
             answer_model_override=working.answer_model_override,
         )
-        warnings = list(generation.response.warnings)
-        warnings.extend(expand_warnings)
-        if context.context_switch:
-            warnings.append("context_switch_detected")
+        verdict.extend_warnings(generation.response.warnings)
         if context.requires_history:
-            warnings.append("history_resolved")
-        for warning in context.warnings:
-            if warning not in warnings:
-                warnings.append(warning)
+            verdict.extend_warnings(["history_resolved"])
+        verdict.extend_warnings(context.warnings)
 
         answer = generation.response.answer
         if (
             working.filters.document_ids
             and not expanded
-            and ("weak_evidence" in warnings or answer_looks_like_abstention(answer))
+            and ("weak_evidence" in verdict.warnings or answer_looks_like_abstention(answer))
         ):
-            label = active.label if active else label_for_documents(
-                list(working.filters.document_ids), titles, entities=entities
-            )
             offer = build_scope_miss_message(label)
             if offer not in answer:
                 answer = f"{answer.rstrip()}\n\n{offer}"
-            if AWAITING_SCOPE_EXPAND not in warnings:
-                warnings.append(AWAITING_SCOPE_EXPAND)
+            verdict.extend_warnings([AWAITING_SCOPE_EXPAND])
 
-        # Establish / refresh active context from pins or citation dominance.
         if not active or not active.document_ids:
             cited = dominant_document_ids_from_citations(generation.response.citations)
             active = self._build_active_context(
@@ -271,7 +307,6 @@ class QueryDocumentsService:
                 citations=generation.response.citations,
             )
         if expanded and generation.response.citations:
-            # Cross-doc answer: keep original sticky context for next turns if known.
             if entities:
                 sticky = match_document_ids_for_entities(entities, titles)
                 if sticky:
@@ -281,15 +316,34 @@ class QueryDocumentsService:
                         entities=entities,
                         citations=[],
                     )
-            warnings.append("cross_document_answer")
+            verdict.extend_warnings(["cross_document_answer"])
+
+        answer = self._gate.enforce_grounded_generation(
+            question=retrieval_question,
+            answer=answer,
+            evidence=retrieval.result.evidence,
+            cross_document_authorized=expanded,
+            pinned_document_ids=list(working.filters.document_ids) if not expanded else [],
+            verdict=verdict,
+        )
+        self._gate.enforce_citation_traceability(
+            answer=answer,
+            citation_count=len(generation.response.citations),
+            citation_warnings=[],
+            verdict=verdict,
+        )
+        # First-turn open search still establishes conversation context after answer.
+        if not has_prior_turns:
+            verdict.mark(HardInvariant.CONVERSATION_CONTEXT)
 
         response = generation.response.model_copy(
             update={
                 "answer": answer,
-                "warnings": warnings,
+                "warnings": list(dict.fromkeys(verdict.warnings)),
                 "active_conversation_context": (
                     active.model_dump(mode="json") if active else None
                 ),
+                "enforced_invariants": list(verdict.enforced),
             }
         )
         logger.info(
@@ -300,8 +354,9 @@ class QueryDocumentsService:
             trace_id=str(response.retrieval_trace_id),
             context_switch=context.context_switch,
             resolved_query=context.resolved_query[:120],
-            awaiting_scope_expand=AWAITING_SCOPE_EXPAND in warnings,
+            awaiting_scope_expand=AWAITING_SCOPE_EXPAND in verdict.warnings,
             active_context=active.label if active else None,
+            enforced_invariants=response.enforced_invariants,
         )
         return QueryDocumentsResult(
             response=response,

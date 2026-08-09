@@ -109,3 +109,4 @@ class QueryResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     graph_paths: list[GraphPath] = Field(default_factory=list)
     active_conversation_context: dict[str, JsonValue] | None = None
+    enforced_invariants: list[str] = Field(default_factory=list)

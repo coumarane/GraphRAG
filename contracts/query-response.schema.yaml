@@ -49,4 +49,15 @@ properties:
       entities:
         type: array
         items: {type: string}
+  enforced_invariants:
+    type: array
+    items:
+      type: string
+      enum:
+        - grounded_generation
+        - conversation_context
+        - retrieval_scope
+        - evidence_sufficiency
+        - citation_traceability
+        - security_authorization
 

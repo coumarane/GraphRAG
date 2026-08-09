@@ -856,9 +856,12 @@ class RetrieveEvidenceService:
                 paths.append(
                     GraphPath(
                         nodes=[topic.name for topic in topics[:8]],
-                        relationships=["MENTIONS"],
+                        relationships=[],
                         supporting_citations=[str(cid) for cid in topic_chunk_ids[:8]],
-                        metadata={"topic_count": len(topics)},
+                        metadata={
+                            "topic_count": len(topics),
+                            "path_kind": "topic_nodes",
+                        },
                     )
                 )
 

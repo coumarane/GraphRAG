@@ -15,6 +15,16 @@ from enterprise_rag.domain.citations.validation import (
     remap_graph_path_citations,
     validate_citations,
 )
+from enterprise_rag.domain.generation.claim_fidelity import (
+    CLAIM_STRENGTH_OVERREACH,
+    detect_claim_strength_overreach,
+    soften_normative_overreach,
+)
+from enterprise_rag.domain.generation.grounding_policy import (
+    assess_evidence,
+    filter_grounded_graph_paths,
+    finalize_grounded_answer,
+)
 from enterprise_rag.domain.models.contracts import GenerationRequest, ModelRole
 from enterprise_rag.domain.models.protocols import ChatModel
 from enterprise_rag.domain.retrieval.models import (
@@ -63,6 +73,8 @@ class GenerateAnswerService:
     ) -> GenerateAnswerResult:
         registry = CitationRegistry(tenant, retrieval.evidence)
         warnings = list(retrieval.warnings)
+        assessment = assess_evidence(question=question, evidence=retrieval.evidence)
+        warnings.extend(assessment.warnings)
 
         if not retrieval.evidence:
             warnings.append("weak_evidence")
@@ -74,7 +86,7 @@ class GenerateAnswerService:
                 retrieval_mode=retrieval.mode,
                 citations=[],
                 retrieval_trace_id=retrieval.retrieval_trace_id,
-                warnings=warnings,
+                warnings=list(dict.fromkeys(warnings)),
                 graph_paths=[],
             )
             empty_validation = validate_citations(
@@ -108,20 +120,49 @@ class GenerateAnswerService:
         )
         warnings.extend(validation.warnings)
 
+        evidence_texts = [item.text for item in retrieval.evidence if item.text]
+        if detect_claim_strength_overreach(question, validation.answer, evidence_texts):
+            warnings.append(CLAIM_STRENGTH_OVERREACH)
+            softened = soften_normative_overreach(validation.answer)
+            if softened != validation.answer:
+                validation = validate_citations(
+                    tenant=tenant,
+                    answer=softened,
+                    registry=registry,
+                    claimed_ids=claimed_ids,
+                    strict=False,
+                )
+                warnings.extend(validation.warnings)
+
         if not validation.valid:
             from enterprise_rag.infrastructure.observability import get_metrics
 
             get_metrics().incr("citation_validation_failures_total")
-        graph_paths = remap_graph_path_citations(retrieval.graph_paths, registry)
-        # Prefer citations actually referenced; if none, attach none (avoid inventing use).
+
+        evidence_chunk_ids = {item.chunk_id for item in retrieval.evidence}
+        graph_paths, path_warnings = filter_grounded_graph_paths(
+            retrieval.graph_paths,
+            evidence_chunk_ids=evidence_chunk_ids,
+        )
+        warnings.extend(path_warnings)
+        graph_paths = remap_graph_path_citations(graph_paths, registry)
         citations = validation.citations
 
-        response = QueryResponse(
+        final_answer, final_warnings = finalize_grounded_answer(
+            question=question,
             answer=validation.answer,
+            evidence=retrieval.evidence,
+            warnings=warnings,
+            cross_document_authorized=False,
+            pinned_document_ids=[],
+        )
+
+        response = QueryResponse(
+            answer=final_answer,
             retrieval_mode=retrieval.mode,
             citations=citations,
             retrieval_trace_id=retrieval.retrieval_trace_id,
-            warnings=list(dict.fromkeys(warnings)),
+            warnings=list(dict.fromkeys(final_warnings)),
             graph_paths=graph_paths,
         )
         logger.info(
@@ -129,6 +170,7 @@ class GenerateAnswerService:
             mode=retrieval.mode.value,
             citations=len(citations),
             retried=retried,
+            sufficiency=assessment.sufficiency.value,
             trace_id=str(retrieval.retrieval_trace_id),
         )
         return GenerateAnswerResult(
@@ -163,6 +205,7 @@ class GenerateAnswerService:
                 graph_paths=retrieval.graph_paths,
                 strict_retry=strict_retry,
                 allowed_ids=registry.ids(),
+                evidence=retrieval.evidence,
             )
             generation = await self._chat.generate(
                 GenerationRequest(
@@ -183,6 +226,9 @@ class GenerateAnswerService:
             answer = parsed.answer
             claimed = parsed.citation_ids
 
+            evidence_texts = [item.text for item in retrieval.evidence if item.text]
+            overreach = detect_claim_strength_overreach(question, answer, evidence_texts)
+
             try:
                 validation = validate_citations(
                     tenant=tenant,
@@ -191,6 +237,14 @@ class GenerateAnswerService:
                     claimed_ids=claimed,
                     strict=True,
                 )
+                if overreach and attempt < self._max_retries:
+                    logger.warning(
+                        "claim_strength_overreach_retry",
+                        attempt=attempt,
+                        question=question[:120],
+                    )
+                    model_warnings.append(CLAIM_STRENGTH_OVERREACH)
+                    continue
                 return validation.answer, validation.cited_ids, model_warnings, retried
             except CitationValidationError as exc:
                 logger.warning(
