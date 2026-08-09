@@ -43,6 +43,12 @@ from enterprise_rag.domain.parsing.types import (
     RawElement,
     RawParserResult,
 )
+from enterprise_rag.domain.retrieval.condition_facets import (
+    extract_condition_facets,
+    facets_from_chart_axes,
+    merge_facets,
+    prose_for_facets,
+)
 from enterprise_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from enterprise_rag.domain.storage.protocols import ObjectStore
 from enterprise_rag.domain.tenant import TenantContext
@@ -390,6 +396,23 @@ async def _vision_enrich_pages(
                 )
                 axes = figure.get("axes") if isinstance(figure.get("axes"), dict) else {}
                 ranking = str(figure.get("series_ranking") or "").strip()
+                facets = merge_facets(
+                    facets_from_chart_axes(axes if isinstance(axes, dict) else {}),
+                    extract_condition_facets(conditions),
+                    extract_condition_facets(
+                        " ".join(
+                            str(part)
+                            for part in (
+                                figure.get("title"),
+                                figure.get("description"),
+                                figure.get("ocr_labels"),
+                                ocr,
+                            )
+                            if part
+                        )
+                    ),
+                )
+                facet_prose = prose_for_facets(facets)
                 chart_text = "\n".join(
                     part
                     for part in [
@@ -402,9 +425,25 @@ async def _vision_enrich_pages(
                         f"Ranking: {ranking}" if ranking else "",
                         ("Trends: " + "; ".join(trends)) if trends else "",
                         ("Legend: " + "; ".join(legend)) if legend else "",
+                        facet_prose,
                     ]
                     if part
                 )
+                chart_meta: dict[str, object] = {
+                    "chart_type": str(figure.get("type") or "chart"),
+                    "title": str(figure.get("title") or summary or "").strip() or None,
+                    "visual_description": chart_text,
+                    "ocr_text": ocr or chart_text,
+                    "axes": axes,
+                    "legend": legend,
+                    "trends": trends,
+                    "callouts": callouts,
+                    "measurement_conditions": conditions or None,
+                    "series_ranking": ranking or None,
+                    "source": "openai_vision_chart",
+                }
+                if not facets.is_empty:
+                    chart_meta["condition_facets"] = facets.to_metadata()
                 extras.append(
                     RawElement(
                         element_type=ElementType.CHART,
@@ -415,23 +454,24 @@ async def _vision_enrich_pages(
                         raw_content=chart_text,
                         normalized_content=chart_text,
                         ocr_confidence=0.75,
-                        metadata={
-                            "chart_type": str(figure.get("type") or "chart"),
-                            "title": str(figure.get("title") or summary or "").strip() or None,
-                            "visual_description": chart_text,
-                            "ocr_text": ocr or chart_text,
-                            "axes": axes,
-                            "legend": legend,
-                            "trends": trends,
-                            "callouts": callouts,
-                            "measurement_conditions": conditions or None,
-                            "series_ranking": ranking or None,
-                            "source": "openai_vision_chart",
-                        },
+                        metadata=chart_meta,
                     )
                 )
                 order += 1
         elif ocr or summary or figures:
+            image_facets = merge_facets(
+                extract_condition_facets(conditions),
+                extract_condition_facets(f"{ocr}\n{description}"),
+            )
+            image_meta: dict[str, object] = {
+                "visual_description": description,
+                "ocr_text": ocr or description,
+                "callouts": callouts,
+                "measurement_conditions": conditions or None,
+                "source": "openai_vision_page",
+            }
+            if not image_facets.is_empty:
+                image_meta["condition_facets"] = image_facets.to_metadata()
             extras.append(
                 RawElement(
                     element_type=ElementType.IMAGE,
@@ -442,13 +482,7 @@ async def _vision_enrich_pages(
                     raw_content=description,
                     normalized_content=description,
                     ocr_confidence=0.7,
-                    metadata={
-                        "visual_description": description,
-                        "ocr_text": ocr or description,
-                        "callouts": callouts,
-                        "measurement_conditions": conditions or None,
-                        "source": "openai_vision_page",
-                    },
+                    metadata=image_meta,
                 )
             )
             order += 1

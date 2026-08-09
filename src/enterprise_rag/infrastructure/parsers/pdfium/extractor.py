@@ -6,6 +6,11 @@ import re
 
 from enterprise_rag.domain.elements.enums import ElementType
 from enterprise_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
+from enterprise_rag.domain.retrieval.condition_facets import (
+    extract_condition_facets,
+    merge_facets,
+    prose_for_facets,
+)
 from enterprise_rag.shared.exceptions import ValidationError
 
 _TABLE_HINT = re.compile(
@@ -86,9 +91,22 @@ def extract_pdf_raw(data: bytes, *, filename: str, max_pages: int) -> RawParserR
             )
             if not text:
                 continue
+            page_facets = extract_condition_facets(text)
+            page_prose = prose_for_facets(page_facets)
             for block in split_page_blocks(text):
                 element_type = classify_text_block(block)
+                # Page-level axis ticks often sit on a different line than the
+                # phenomenon caption; merge so blocks on the page can align.
+                facets = merge_facets(extract_condition_facets(block), page_facets)
+                content = block
+                prose = prose_for_facets(facets)
+                if prose and prose not in content:
+                    content = f"{content}\n{prose}"
+                elif page_prose and page_prose not in content and facets.ranges:
+                    content = f"{content}\n{page_prose}"
                 metadata: dict[str, object] = {}
+                if not facets.is_empty:
+                    metadata["condition_facets"] = facets.to_metadata()
                 if element_type is ElementType.TABLE:
                     metadata["caption"] = f"Page {page_number} table"
                 if element_type is ElementType.EQUATION:
@@ -104,7 +122,7 @@ def extract_pdf_raw(data: bytes, *, filename: str, max_pages: int) -> RawParserR
                         reading_order=order,
                         section_path=[f"Page {page_number}"],
                         raw_content=block,
-                        normalized_content=block,
+                        normalized_content=content,
                         metadata=metadata,
                     )
                 )

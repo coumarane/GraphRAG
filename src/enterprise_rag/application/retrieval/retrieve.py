@@ -27,6 +27,11 @@ from enterprise_rag.domain.retrieval.fusion import (
     apply_normalized_component,
     reciprocal_rank_fusion,
 )
+from enterprise_rag.domain.retrieval.condition_facets import (
+    ConditionFacets,
+    extract_condition_facets,
+    score_facet_alignment,
+)
 from enterprise_rag.domain.retrieval.intent import QueryAnalysis, analyze_query
 from enterprise_rag.domain.retrieval.models import (
     GraphPath,
@@ -290,6 +295,46 @@ def _boost_chart_evidence(
     return boosted
 
 
+def _align_condition_facets(
+    evidence: list[RetrievedEvidence],
+    analysis: QueryAnalysis,
+    chunk_map: Mapping[UUID, ChunkBase] | None = None,
+) -> list[RetrievedEvidence]:
+    """Rerank by typed QueryFeatures ↔ condition_facets (no slide-title matching)."""
+    features = analysis.features
+    if not features.asks_condition_range or not evidence:
+        return evidence
+
+    boosted: list[RetrievedEvidence] = []
+    for item in evidence:
+        facets: ConditionFacets | None = None
+        chunk = chunk_map.get(item.chunk_id) if chunk_map else None
+        if chunk is not None:
+            facets = ConditionFacets.from_mapping(
+                chunk.metadata.get("condition_facets")  # type: ignore[arg-type]
+                if isinstance(chunk.metadata.get("condition_facets"), dict)
+                else None
+            )
+        if facets is None or facets.is_empty:
+            facets = extract_condition_facets(item.text or "")
+        alignment = score_facet_alignment(features=features, facets=facets)
+        score = float(item.score or 0.0)
+        components = dict(item.score_components)
+        if alignment.boost:
+            score += alignment.boost
+            components["condition_facet_alignment"] = alignment.boost
+        boosted.append(
+            item.model_copy(
+                update={
+                    "score": score,
+                    "score_components": components,
+                }
+            )
+        )
+    boosted.sort(key=lambda row: float(row.score or 0.0), reverse=True)
+    return boosted
+
+
 @dataclass
 class RetrieveEvidenceResult:
     """Service result wrapping the fused retrieval bundle."""
@@ -440,6 +485,7 @@ class RetrieveEvidenceService:
         fused = _boost_chart_evidence(fused, analysis)
 
         chunk_map = await self._load_chunk_map(tenant, fused)
+        fused = _align_condition_facets(fused, analysis, chunk_map)
         expanded = expand_parents_and_neighbors(
             fused,
             chunk_map,
@@ -450,6 +496,8 @@ class RetrieveEvidenceService:
         prefer_tables = (
             "assay" in analysis.intent_labels or Modality.TABLE in analysis.modality_hints
         )
+        if analysis.features.prefer_chart:
+            prefer_tables = False
         chart_scope_assay_probe = (
             "heavy metal" in analysis.normalized_question.casefold()
             and any(
@@ -467,6 +515,7 @@ class RetrieveEvidenceService:
             (
                 Modality.CHART in analysis.modality_hints
                 or Modality.DIAGRAM in analysis.modality_hints
+                or analysis.features.prefer_chart
             )
             and not prefer_tables
         ) or chart_scope_assay_probe

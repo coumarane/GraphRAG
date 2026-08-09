@@ -115,6 +115,81 @@ async def test_analyze_query_uses_current_question_not_chat_history() -> None:
 
 
 @pytest.mark.asyncio
+async def test_condition_range_query_prefers_chart_modality() -> None:
+    analysis = analyze_query(
+        "Over which pH range was the tinting test performed?",
+        mode=RetrievalMode.AUTO,
+    )
+    assert analysis.features.asks_condition_range
+    assert analysis.features.prefer_chart
+    assert Modality.CHART in analysis.modality_hints
+    assert Modality.TABLE not in analysis.modality_hints
+
+
+@pytest.mark.asyncio
+async def test_tinting_ph_range_prefers_axis_not_mic_table() -> None:
+    tenant = TenantContext(tenant_id=new_id())
+    document_id = new_id()
+    version_id = new_id()
+    axis = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text=(
+            "Effect of pH values in aqueous solution\n"
+            "pH 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0\n"
+            "Little/No tinting under alkaline conditions"
+        ),
+        modality=Modality.CHART,
+        chunk_type=ChunkType.CHART,
+        page_start=10,
+        page_end=10,
+        document_name="SY-KNP.pdf",
+    )
+    mic = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text="MIC minimum inhibitory concentration at pH 5, pH 7, pH 9 — no growth",
+        modality=Modality.TABLE,
+        chunk_type=ChunkType.TABLE,
+        page_start=8,
+        page_end=8,
+        document_name="SY-KNP.pdf",
+    )
+    chunk_store = InMemoryChunkLookupStore()
+    await chunk_store.upsert(tenant, [axis, mic])
+    embedder = FakeEmbeddingModel()
+    vectors = InMemoryChunkVectorStore()
+    await vectors.ensure_collection(vector_size=2)
+    embedded = await EmbedChunksService(embedder).embed([axis, mic])
+    await vectors.upsert(tenant, embedded.records)
+    lexical = InMemoryLexicalSearchStore()
+    await lexical.upsert(tenant, [axis, mic])
+    service = RetrieveEvidenceService(
+        embedding_model=embedder,
+        vector_store=vectors,
+        chunk_store=chunk_store,
+        lexical_store=lexical,
+        reranker=FakeReranker(),
+    )
+    outcome = await service.retrieve(
+        tenant,
+        RetrievalRequest(
+            question="Over which pH range was the tinting test performed?",
+            mode=RetrievalMode.AUTO,
+            top_k=4,
+            rerank=False,
+        ),
+    )
+    assert outcome.result.evidence
+    top = outcome.result.evidence[0]
+    lowered = (top.text or "").casefold()
+    assert "tint" in lowered or "3.0" in lowered or "10.0" in lowered
+    assert "minimum inhibitory" not in lowered
+
+
+@pytest.mark.asyncio
 async def test_solar_radiation_expands_to_nir_synonyms() -> None:
     analysis = analyze_query("solar radiation data", mode=RetrievalMode.AUTO)
     lowered = analysis.normalized_question.casefold()

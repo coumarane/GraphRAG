@@ -20,6 +20,11 @@ from enterprise_rag.domain.elements.models import (
 )
 from enterprise_rag.domain.ids import content_sha256_hex, deterministic_id
 from enterprise_rag.domain.modality import Modality
+from enterprise_rag.domain.retrieval.condition_facets import (
+    extract_condition_facets,
+    facets_from_elements,
+    merge_facets,
+)
 from enterprise_rag.domain.types import JsonValue
 
 _SKIP = {ElementType.PAGE_HEADER, ElementType.PAGE_FOOTER}
@@ -441,6 +446,12 @@ class HierarchicalMultimodalChunker:
         page_end = max((el.page_end for el in elements), default=parent.page_end)
         section_path = elements[0].section_path if elements else parent.section_path
         meta: dict[str, JsonValue] = {"role": "child", **(metadata or {})}
+        facets = merge_facets(
+            facets_from_elements(elements),
+            extract_condition_facets(text),
+        )
+        if not facets.is_empty:
+            meta["condition_facets"] = facets.to_metadata()
         return ChunkBase(
             chunk_id=chunk_id,
             tenant_id=document.tenant_id,

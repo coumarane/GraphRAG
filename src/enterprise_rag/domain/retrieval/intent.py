@@ -7,6 +7,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from enterprise_rag.domain.modality import Modality
+from enterprise_rag.domain.retrieval.condition_facets import QueryFeatures, detect_query_features
 from enterprise_rag.domain.retrieval.enums import RetrievalMode
 
 _SPACE_RE = re.compile(r"\s+")
@@ -163,6 +164,7 @@ class QueryAnalysis:
     modality_hints: list[Modality]
     selected_modes: list[RetrievalMode]
     intent_labels: list[str] = field(default_factory=list)
+    features: QueryFeatures = field(default_factory=QueryFeatures)
 
 
 def normalize_question(question: str) -> str:
@@ -232,22 +234,10 @@ def detect_modality_hints(question: str) -> list[Modality]:
             "chart",
             "plot",
             "graph",
-            "l*",
-            "angle of measurement",
-            "soft-focus",
-            "soft focus",
-            "tone-up",
-            "tone up",
-            "byk",
-            "synthetic mica",
-            "gloss type",
-            "matte type",
             "measurement conditions",
             "texture evaluation",
             "miu",
             "mmd",
-            "smoothness",
-            "slip",
         ),
         Modality.IMAGE: ("image", "photo", "figure", "visual", "sem", "micrograph"),
         Modality.DIAGRAM: (
@@ -256,7 +246,6 @@ def detect_modality_hints(question: str) -> list[Modality]:
             "near-infrared",
             "near infrared",
             "nir protection",
-            "natutect",
         ),
         Modality.TABLE: (
             "table",
@@ -277,30 +266,23 @@ def detect_modality_hints(question: str) -> list[Modality]:
     for modality, words in mapping.items():
         if any(word in lowered for word in words):
             hints.append(modality)
-    # Appearance / angle chart questions should not be dominated by assay tables.
+    # Generic appearance/angle chart probes — not product SKU lists.
     chartish = any(
         token in lowered
         for token in (
             "appearance",
             "angle of measurement",
-            "soft-focus",
-            "soft focus",
-            "tone-up",
-            "tone up",
-            "byk",
-            "synthetic mica",
-            "comparison with synthetic",
+            "l*",
         )
     )
     if chartish and "heavy metal" not in lowered and "ppm" not in lowered:
         hints = [item for item in hints if item is not Modality.TABLE]
         if Modality.CHART not in hints:
             hints.insert(0, Modality.CHART)
-    # "Does the appearance chart report heavy metals?" is a chart-scope question,
-    # not an assay lookup — keep chart modality ahead of tables.
+    # "Does the appearance chart report heavy metals?" is chart-scope, not assay.
     if (
         "heavy metal" in lowered
-        and any(token in lowered for token in ("appearance", "tone-up", "l*", "angle"))
+        and any(token in lowered for token in ("appearance", "l*", "angle"))
         and any(token in lowered for token in ("chart", "slide", "page", "report", "show"))
     ):
         hints = [Modality.CHART, *[item for item in hints if item is not Modality.TABLE]]
@@ -393,6 +375,15 @@ def analyze_query(question: str, *, mode: RetrievalMode) -> QueryAnalysis:
     retrieval_question = expand_for_retrieval(focus)
     intent_labels = classify_intent(focus)
     modality_hints = detect_modality_hints(focus)
+    features = detect_query_features(focus)
+    # Condition-range / axis questions are chart lookups, not assay tables.
+    if features.prefer_chart:
+        modality_hints = [
+            Modality.CHART,
+            *[item for item in modality_hints if item is not Modality.TABLE],
+        ]
+        if "multimodal" not in intent_labels:
+            intent_labels = [*intent_labels, "multimodal"]
     return QueryAnalysis(
         normalized_question=retrieval_question,
         language=detect_language(focus),
@@ -405,6 +396,7 @@ def analyze_query(question: str, *, mode: RetrievalMode) -> QueryAnalysis:
             modality_hints=modality_hints,
         ),
         intent_labels=intent_labels,
+        features=features,
     )
 
 
