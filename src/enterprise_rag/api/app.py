@@ -8,7 +8,7 @@ from fastapi import APIRouter, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from enterprise_rag.api.errors import register_exception_handlers
-from enterprise_rag.api.routes import assets, documents, health, ingestion, retrieval
+from enterprise_rag.api.routes import assets, documents, health, ingestion, parsing_audit, retrieval
 from enterprise_rag.application.runtime.container import ServiceContainer
 from enterprise_rag.application.runtime.runtime import build_runtime_container
 from enterprise_rag.config.settings import get_settings
@@ -54,6 +54,7 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
     api = APIRouter(prefix="/api/v1")
     api.include_router(health.router)
     api.include_router(documents.router)
+    api.include_router(parsing_audit.router)
     api.include_router(ingestion.router)
     api.include_router(retrieval.router)
     api.include_router(assets.router)

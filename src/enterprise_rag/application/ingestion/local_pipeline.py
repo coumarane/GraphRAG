@@ -13,6 +13,7 @@ from uuid import UUID
 
 from enterprise_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
 from enterprise_rag.application.graph.build_graph import BuildKnowledgeGraphService
+from enterprise_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
 from enterprise_rag.domain.chunks.protocols import ChunkVectorStore
 from enterprise_rag.domain.chunks.vectors import ChunkingResult
 from enterprise_rag.domain.elements.enums import ElementType
@@ -24,6 +25,12 @@ from enterprise_rag.domain.ingestion.stages import (
     IngestionRunStatus,
     StageStatus,
 )
+from enterprise_rag.domain.parsing.audit import (
+    ElementProcessingStatus,
+    RoutingReasonCode,
+    StageRunStatus,
+)
+from enterprise_rag.domain.parsing.audit_protocols import ParsingAuditRepository
 from enterprise_rag.domain.models.contracts import (
     ChatMessage,
     GenerationRequest,
@@ -552,6 +559,7 @@ class ProcessRegisteredDocumentService:
     graph_store: GraphStore | None = None
     chat_model: ChatModel | None = None
     structured_extractor: StructuredExtractor | None = None
+    parsing_audit_repo: ParsingAuditRepository | None = None
     max_pages: int = 2_000
     vision_max_pages: int = 28
     semantic_graph: bool = True
@@ -583,12 +591,39 @@ class ProcessRegisteredDocumentService:
             document.updated_at = now
             await self.document_repo.update_document(tenant, document)
 
+        audit = ParsingAuditCollector(
+            tenant_id=tenant.tenant_id,
+            document_id=run.document_id,
+            version_id=run.version_id,
+            ingestion_run_id=ingestion_run_id,
+        )
         try:
             data = await self.object_store.get_bytes(
                 tenant, object_key=version.original_object_key
             )
             filename = version.source_filename or Path(version.original_object_key).name
             mime = (version.mime_type or "").lower()
+            embed_name = getattr(self.embedding_model, "model_name", None) or type(
+                self.embedding_model
+            ).__name__
+            vision_name = None
+            if self.chat_model is not None:
+                vision_name = getattr(self.chat_model, "model_name", None) or type(
+                    self.chat_model
+                ).__name__
+            audit.document_started(
+                original_filename=filename,
+                file_hash=version.content_hash,
+                mime_type=version.mime_type,
+                file_size_bytes=version.byte_size,
+                config_profile="local_pipeline",
+                ocr_strategy="auto",
+                vision_strategy="page_enrichment" if self.chat_model else "disabled",
+                embedding_model=str(embed_name),
+                vision_llm=str(vision_name) if vision_name else None,
+            )
+
+            audit.stage_started("PARSE", tool="parser_registry", input_count=1)
             raw, attempted = await _parse_document_raw(
                 data=data,
                 filename=filename,
@@ -599,9 +634,98 @@ class ProcessRegisteredDocumentService:
                 parser_requested=run.parser_requested,
                 max_pages=self.max_pages,
             )
+            primary = raw.parser_name
+            fallbacks = [name for name in attempted if name != primary]
+            audit.record_routing(
+                RoutingReasonCode.PRIMARY_PARSER_SELECTED
+                if not run.parser_requested or run.parser_requested in {"auto", None}
+                else RoutingReasonCode.PARSER_OVERRIDE,
+                message=f"Primary parser selected: {primary}",
+                selected_tool=primary,
+                details={"attempted": attempted, "requested": run.parser_requested},
+            )
+            if fallbacks:
+                audit.record_routing(
+                    RoutingReasonCode.FALLBACK_TRIGGERED,
+                    message=f"Fallback parsers attempted: {', '.join(fallbacks)}",
+                    selected_tool=primary,
+                    details={"fallbacks": fallbacks},
+                )
+            audit.document.primary_parser = primary
+            audit.document.fallback_parsers = fallbacks
+            for order, element in enumerate(raw.elements):
+                page_no = int(element.page_start)
+                bbox = None
+                if element.bounding_boxes:
+                    box = element.bounding_boxes[0]
+                    bbox = {
+                        "x0": float(box.x0),
+                        "y0": float(box.y0),
+                        "x1": float(box.x1),
+                        "y1": float(box.y1),
+                    }
+                audit.element_detected(
+                    page_number=page_no,
+                    normalized_element_type=element.element_type.value,
+                    original_parser_element_type=str(
+                        element.metadata.get("raw_type") or element.element_type.value
+                    ),
+                    detector=primary,
+                    parser_name=primary,
+                    reading_order=element.reading_order if element.reading_order else order,
+                    bbox=bbox,
+                    section_path=list(element.section_path),
+                    confidence_score=element.parser_confidence,
+                    confidence_source=(
+                        "parser" if element.parser_confidence is not None else None
+                    ),
+                )
+                page = audit.ensure_page(page_no)
+                audit._pages[page_no] = page.model_copy(
+                    update={
+                        "page_parser": primary,
+                        "page_width": page.page_width,
+                        "page_height": page.page_height,
+                    }
+                )
+            for page in raw.pages or []:
+                existing = audit.ensure_page(int(page.page_number))
+                audit._pages[int(page.page_number)] = existing.model_copy(
+                    update={
+                        "page_width": page.width,
+                        "page_height": page.height,
+                        "has_native_text": not bool(page.is_scanned),
+                        "ocr_required": bool(page.is_scanned),
+                        "page_parser": primary,
+                        "status": existing.status,
+                    }
+                )
+                audit.page_completed(
+                    int(page.page_number),
+                    page_parser=primary,
+                    has_native_text=not bool(page.is_scanned),
+                    ocr_required=bool(page.is_scanned),
+                )
+            audit.stage_completed(
+                "PARSE",
+                status=StageRunStatus.COMPLETED,
+                output_count=len(raw.elements),
+                warning_count=len(raw.warnings or []),
+            )
+
             if self.chat_model is not None and (
                 mime == "application/pdf" or filename.lower().endswith(".pdf")
             ):
+                audit.stage_started(
+                    "VISION_ENRICHMENT",
+                    tool="vision",
+                    model_name=str(vision_name),
+                )
+                audit.record_routing(
+                    RoutingReasonCode.VISION_REQUIRED,
+                    message="Vision enrichment for sparse/visual PDF pages",
+                    selected_model=str(vision_name),
+                )
                 # Vision enrichment for sparse/visual pages regardless of primary parser.
                 vision_elements = await _vision_enrich_pages(
                     self.chat_model,
@@ -611,6 +735,27 @@ class ProcessRegisteredDocumentService:
                 )
                 if vision_elements:
                     raw.elements.extend(vision_elements)
+                    for order, element in enumerate(vision_elements):
+                        page_no = int(element.page_start)
+                        report = audit.element_detected(
+                            page_number=page_no,
+                            normalized_element_type=element.element_type.value,
+                            detector="vision",
+                            parser_name=primary,
+                            reading_order=10_000 + order,
+                            status=ElementProcessingStatus.PROCESSED,
+                        )
+                        audit.element_processed(
+                            report,
+                            processing_tool="vision_enrichment",
+                            model_name=str(vision_name),
+                            status=ElementProcessingStatus.PROCESSED,
+                        )
+                audit.stage_completed(
+                    "VISION_ENRICHMENT",
+                    status=StageRunStatus.COMPLETED,
+                    output_count=len(vision_elements or []),
+                )
 
             if not raw.elements:
                 raise ValidationError(
@@ -626,7 +771,35 @@ class ProcessRegisteredDocumentService:
                 mime_type=version.mime_type or "application/octet-stream",
                 content=data,
             )
+            audit.stage_started("NORMALIZE", tool="normalize_parser_result")
             normalized = normalize_parser_result(raw, source)
+            normalized_ids = {element.element_id for element in normalized.elements}
+            # Pair detected raw elements to normalized ones by page+type+order best-effort.
+            by_page_type: dict[tuple[int | None, str | None], list] = {}
+            for element in normalized.elements:
+                key = (element.page_start, element.element_type.value)
+                by_page_type.setdefault(key, []).append(element)
+            for report in list(audit._elements):
+                key = (report.page_number, report.normalized_element_type)
+                bucket = by_page_type.get(key) or []
+                if bucket:
+                    matched = bucket.pop(0)
+                    audit.update_element(
+                        report,
+                        element_id=matched.element_id,
+                        section_path=list(matched.section_path or []),
+                        reached_normalized=True,
+                        status=ElementProcessingStatus.PROCESSED,
+                        processing_tool="normalizer",
+                    )
+            audit.mark_normalized(normalized_ids)
+            audit.stage_completed(
+                "NORMALIZE",
+                status=StageRunStatus.COMPLETED,
+                output_count=len(normalized.elements),
+            )
+
+            audit.stage_started("CHUNK", tool="HierarchicalMultimodalChunker")
             chunks = HierarchicalMultimodalChunker().chunk(normalized)
             all_chunks = list(chunks.all_chunks)
             doc_title = (
@@ -640,21 +813,30 @@ class ProcessRegisteredDocumentService:
                 meta["document_name"] = doc_title
                 stamped.append(chunk.model_copy(update={"metadata": meta}))
             all_chunks = stamped
+            audit.stage_completed("CHUNK", output_count=len(all_chunks))
+            audit.mark_downstream(chunking=True)
+
+            audit.stage_started("EMBED", tool=str(embed_name), model_name=str(embed_name))
             embedded = await EmbedChunksService(self.embedding_model).embed(
                 all_chunks, parser=raw.parser_name
             )
             if not embedded.records:
                 raise ValidationError("No embeddings produced from document")
+            audit.stage_completed("EMBED", output_count=len(embedded.records))
 
+            audit.stage_started("INDEX_VECTOR", tool="vector_store")
             await self.vector_store.ensure_collection(
                 vector_size=len(embedded.records[0].content_vector)
             )
             await self.vector_store.upsert(tenant, embedded.records)
             await self.chunk_store.upsert(tenant, all_chunks)
             await self.lexical_store.upsert(tenant, all_chunks)
+            audit.stage_completed("INDEX_VECTOR", output_count=len(embedded.records))
+            audit.mark_downstream(vector_index=True)
 
             graph_counts: dict[str, int] = {}
             if self.graph_store is not None:
+                audit.stage_started("INDEX_GRAPH", tool="graph_store")
                 chunking_result = ChunkingResult(
                     parents=[c for c in all_chunks if c.parent_chunk_id is None],
                     children=[c for c in all_chunks if c.parent_chunk_id is not None],
@@ -695,6 +877,15 @@ class ProcessRegisteredDocumentService:
                 else:
                     projected = StructuralGraphBuilder().build(normalized, chunking_result)
                     graph_counts = await self.graph_store.upsert_graph(tenant, projected)
+                audit.stage_completed(
+                    "INDEX_GRAPH",
+                    output_count=int(graph_counts.get("nodes") or 0)
+                    + int(graph_counts.get("relationships") or 0),
+                )
+                audit.mark_downstream(graph_index=True)
+
+            for warning in raw.warnings or []:
+                audit.add_issue(severity="warning", message=str(warning), stage_name="PARSE")
 
             done = datetime.now(UTC)
             for stage in stages:
@@ -729,6 +920,16 @@ class ProcessRegisteredDocumentService:
                 document.updated_at = done
                 await self.document_repo.update_document(tenant, document)
 
+            snapshot = audit.document_completed(
+                ingestion_status=run.status.value,
+                primary_parser=raw.parser_name,
+                fallback_parsers=fallbacks,
+                total_pages=normalized.page_count,
+                total_normalized_elements=len(normalized.elements),
+            )
+            if self.parsing_audit_repo is not None:
+                await self.parsing_audit_repo.save_snapshot(tenant, snapshot)
+
             if callable(self.on_commit):
                 maybe = self.on_commit()
                 if asyncio.iscoroutine(maybe):
@@ -748,6 +949,8 @@ class ProcessRegisteredDocumentService:
                 element_types=type_counts,
                 graph_nodes=graph_counts.get("nodes"),
                 graph_relationships=graph_counts.get("relationships"),
+                audit_elements=snapshot.document.total_detected_elements,
+                content_losses=len(snapshot.content_losses),
             )
         except Exception as exc:
             failed = datetime.now(UTC)
@@ -760,6 +963,24 @@ class ProcessRegisteredDocumentService:
                 document.status = DocumentLifecycleStatus.FAILED
                 document.updated_at = failed
                 await self.document_repo.update_document(tenant, document)
+            try:
+                audit.add_issue(
+                    severity="error",
+                    message=str(exc),
+                    code=type(exc).__name__,
+                    stage_name="FINALIZE",
+                )
+                snapshot = audit.document_completed(
+                    ingestion_status=IngestionRunStatus.FAILED.value,
+                )
+                if self.parsing_audit_repo is not None:
+                    await self.parsing_audit_repo.save_snapshot(tenant, snapshot)
+            except Exception:
+                logger.warning(
+                    "parsing_audit_persist_failed",
+                    ingestion_run_id=str(ingestion_run_id),
+                    exc_info=True,
+                )
             if callable(self.on_commit):
                 maybe = self.on_commit()
                 if asyncio.iscoroutine(maybe):

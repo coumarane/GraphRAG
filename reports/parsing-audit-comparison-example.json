@@ -1,0 +1,167 @@
+{
+  "document_id": "197ab4a6-102a-42e5-b1c5-e69cf44248c9",
+  "run_a": "eda8f832-2d80-4de7-8fbe-500420e7d34a",
+  "run_b": "511e905a-7893-44f7-a2fa-1daea639e00e",
+  "document_deltas": {
+    "total_detected_elements": {
+      "run_a": 6,
+      "run_b": 6,
+      "changed": false
+    },
+    "total_processed_elements": {
+      "run_a": 5,
+      "run_b": 6,
+      "changed": true
+    },
+    "total_failed_elements": {
+      "run_a": 1,
+      "run_b": 0,
+      "changed": true
+    },
+    "total_skipped_elements": {
+      "run_a": 0,
+      "run_b": 0,
+      "changed": false
+    },
+    "total_normalized_elements": {
+      "run_a": 5,
+      "run_b": 6,
+      "changed": true
+    },
+    "duration_ms": {
+      "run_a": 1.231,
+      "run_b": 0.12999999999999998,
+      "changed": true
+    },
+    "primary_parser": {
+      "run_a": "docling",
+      "run_b": "docling",
+      "changed": false
+    },
+    "parser_version": {
+      "run_a": null,
+      "run_b": null,
+      "changed": false
+    },
+    "vision_llm": {
+      "run_a": null,
+      "run_b": null,
+      "changed": false
+    },
+    "extraction_completeness": {
+      "run_a": 0.8333333333333334,
+      "run_b": 1.0,
+      "changed": true
+    },
+    "normalization_completeness": {
+      "run_a": 0.8333333333333334,
+      "run_b": 1.0,
+      "changed": true
+    }
+  },
+  "page_deltas": [
+    {
+      "page_number": 7,
+      "detected": {
+        "run_a": 6,
+        "run_b": 6,
+        "changed": false
+      },
+      "processed": {
+        "run_a": 5,
+        "run_b": 6,
+        "changed": true
+      },
+      "failed": {
+        "run_a": 1,
+        "run_b": 0,
+        "changed": true
+      },
+      "element_type_counts": {
+        "run_a": {
+          "heading": 1,
+          "paragraph": 2,
+          "table": 1,
+          "image": 1,
+          "chart": 1
+        },
+        "run_b": {
+          "heading": 1,
+          "paragraph": 2,
+          "table": 1,
+          "image": 1,
+          "chart": 1
+        },
+        "changed": false
+      },
+      "page_parser": {
+        "run_a": "docling",
+        "run_b": "docling",
+        "changed": false
+      },
+      "errors": {
+        "run_a": [],
+        "run_b": [],
+        "changed": false
+      }
+    }
+  ],
+  "element_deltas": [
+    {
+      "change": "modified",
+      "page_number": 7,
+      "element_type": "table",
+      "status": {
+        "run_a": "failed",
+        "run_b": "processed",
+        "changed": true
+      },
+      "parser_name": {
+        "run_a": "docling",
+        "run_b": "docling",
+        "changed": false
+      },
+      "model_name": {
+        "run_a": null,
+        "run_b": null,
+        "changed": false
+      },
+      "confidence_score": {
+        "run_a": null,
+        "run_b": null,
+        "changed": false
+      }
+    }
+  ],
+  "stage_deltas": [
+    {
+      "stage_name": "PARSE",
+      "duration_ms": {
+        "run_a": 0.1675826497375965,
+        "run_b": 0.10145874693989754,
+        "changed": true
+      },
+      "status": {
+        "run_a": "completed",
+        "run_b": "completed",
+        "changed": false
+      },
+      "tool": {
+        "run_a": "docling",
+        "run_b": "docling",
+        "changed": false
+      },
+      "model_name": {
+        "run_a": null,
+        "run_b": null,
+        "changed": false
+      }
+    }
+  ],
+  "summary": {
+    "pages_compared": 1,
+    "element_changes": 1,
+    "content_losses_a": 1,
+    "content_losses_b": 0
+  }
+}

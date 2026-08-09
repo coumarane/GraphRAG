@@ -84,6 +84,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     tenant_repo: TenantRepository | None = None
     document_repo: DocumentRepository | None = None
     ingestion_repo: IngestionRepository | None = None
+    parsing_audit_repo = None
     db_session: AsyncSession | None = None
     on_commit: Callable[[], Awaitable[None]] | None = None
     ready_checks: list = []
@@ -97,6 +98,9 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             create_engine,
             create_session_factory,
         )
+        from enterprise_rag.infrastructure.persistence.postgres.repositories.parsing_audit import (
+            SqlAlchemyParsingAuditRepository,
+        )
 
         engine = create_engine(resolved.postgres)
         session_factory = create_session_factory(engine)
@@ -104,6 +108,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         tenant_repo = SqlAlchemyTenantRepository(db_session)
         document_repo = SqlAlchemyDocumentRepository(db_session)
         ingestion_repo = SqlAlchemyIngestionRepository(db_session)
+        parsing_audit_repo = SqlAlchemyParsingAuditRepository(db_session)
 
         async def _commit() -> None:
             await db_session.commit()
@@ -132,6 +137,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         tenant_repo=tenant_repo,
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
+        parsing_audit_repo=parsing_audit_repo,
         auto_process_ingest=True,
         use_live_models=True,
         max_pages=resolved.security.max_pages,

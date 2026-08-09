@@ -19,6 +19,7 @@ from enterprise_rag.domain.ingestion.protocols import (
     IngestionRepository,
     TenantRepository,
 )
+from enterprise_rag.domain.parsing.audit_protocols import ParsingAuditRepository
 from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from enterprise_rag.domain.models.protocols import ChatModel, EmbeddingModel, StructuredExtractor
 from enterprise_rag.domain.storage.protocols import ObjectStore
@@ -38,6 +39,9 @@ from enterprise_rag.infrastructure.persistence.chunks import (
 )
 from enterprise_rag.infrastructure.persistence.chunks.lexical_qdrant import (
     QdrantHydratingLexicalStore,
+)
+from enterprise_rag.infrastructure.persistence.memory.parsing_audit import (
+    InMemoryParsingAuditRepository,
 )
 from enterprise_rag.infrastructure.persistence.memory import (
     InMemoryDocumentRepository,
@@ -138,6 +142,7 @@ def build_local_container(
     tenant_repo: TenantRepository | None = None,
     document_repo: DocumentRepository | None = None,
     ingestion_repo: IngestionRepository | None = None,
+    parsing_audit_repo: ParsingAuditRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
     auto_process_ingest: bool = False,
     use_live_models: bool = False,
@@ -153,6 +158,7 @@ def build_local_container(
     tenant_repo = tenant_repo or InMemoryTenantRepository()
     document_repo = document_repo or InMemoryDocumentRepository()
     ingestion_repo = ingestion_repo or InMemoryIngestionRepository()
+    parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
     source_loader = DefaultSourceLoader(
         max_upload_bytes=max_upload_bytes,
@@ -231,6 +237,7 @@ def build_local_container(
         graph_store=graph,
         chat_model=chat,
         structured_extractor=extractor,
+        parsing_audit_repo=parsing_audit_repo,
         max_pages=max_pages,
         vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "28") or "28"),
         semantic_graph=enable_semantic_graph,
@@ -281,6 +288,7 @@ def build_local_container(
         delete_document=delete_service,
         reindex_document=reindex_service,
         audit_store=InMemoryAuditStore(),
+        parsing_audit_repo=parsing_audit_repo,
         process_ingestion=process,
         auto_process_ingest=auto_process_ingest,
         ready_checks=[lambda: True],

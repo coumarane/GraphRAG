@@ -149,3 +149,7 @@ read `CURSOR_QUERY.md` before making changes.
 
 `CURSOR_QUERY.md` defines validation behavior.
 `specs/` and `contracts/` remain authoritative for architecture and data contracts.
+
+## Document Parsing Observability & Audit Report
+
+`CURSOR_OBSERVABILITY.md` defines Observability & Audit Report

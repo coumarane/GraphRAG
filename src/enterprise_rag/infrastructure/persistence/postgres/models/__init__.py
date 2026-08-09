@@ -10,12 +10,28 @@ from enterprise_rag.infrastructure.persistence.postgres.models.ingestion import 
     IngestionStageModel,
     ParserAttemptModel,
 )
+from enterprise_rag.infrastructure.persistence.postgres.models.parsing_audit import (
+    ContentLossRecordModel,
+    DocumentParseReportModel,
+    ElementParseReportModel,
+    IngestionIssueModel,
+    PageParseReportModel,
+    ProcessingStageRunModel,
+    RoutingDecisionModel,
+)
 
 __all__ = [
+    "ContentLossRecordModel",
     "DocumentModel",
+    "DocumentParseReportModel",
     "DocumentVersionModel",
+    "ElementParseReportModel",
+    "IngestionIssueModel",
     "IngestionRunModel",
     "IngestionStageModel",
+    "PageParseReportModel",
     "ParserAttemptModel",
+    "ProcessingStageRunModel",
+    "RoutingDecisionModel",
     "TenantModel",
 ]
