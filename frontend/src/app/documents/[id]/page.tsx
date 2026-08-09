@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
+import { DocumentParseReport } from "@/components/DocumentParseReport";
 
 type DocumentMeta = {
   document_id: string;
@@ -27,7 +28,7 @@ type Chunk = {
   token_count: number;
 };
 
-type Tab = "original" | "indexed";
+type Tab = "original" | "indexed" | "report";
 
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
@@ -219,6 +220,7 @@ export default function DocumentDetailPage() {
           [
             ["original", "Original preview"],
             ["indexed", `Indexed text (${chunkTotal})`],
+            ["report", "Parse report"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -241,6 +243,10 @@ export default function DocumentDetailPage() {
       ) : null}
 
       {tab === "indexed" ? <DocumentChunkViz chunks={chunks} /> : null}
+
+      {tab === "report" && documentId ? (
+        <DocumentParseReport documentId={documentId} />
+      ) : null}
     </section>
   );
 }
