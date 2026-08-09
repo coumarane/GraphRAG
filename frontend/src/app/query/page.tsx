@@ -13,6 +13,7 @@ import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswe
 import {
   createEmptyThread,
   createMessage,
+  isScopeExpandAffirmative,
   loadChatThreads,
   saveChatThreads,
   titleFromQuestion,
@@ -501,6 +502,18 @@ function ChatWorkspace() {
         ? titleFromQuestion(question)
         : activeThread.title;
 
+    const pending = (activeThread.pendingExpandQuestion || "").trim();
+    const expandScope =
+      Boolean(pending) && isScopeExpandAffirmative(question);
+    const questionForApi = expandScope ? pending : question;
+    const stickyIds = activeThread.conversationContext?.documentIds ?? [];
+    const manualId = activeThread.documentId.trim();
+    const documentIds = expandScope
+      ? []
+      : manualId
+        ? [manualId]
+        : stickyIds;
+
     const optimistic: ChatThread = {
       ...activeThread,
       title: titled,
@@ -518,15 +531,14 @@ function ChatWorkspace() {
           "X-Tenant-Key": tenantKey,
         },
         body: JSON.stringify({
-          question,
+          question: questionForApi,
           conversation_history: historyForContext.map((message) => ({
             role: message.role,
             content: message.content,
           })),
           mode: activeThread.mode,
-          document_ids: activeThread.documentId.trim()
-            ? [activeThread.documentId.trim()]
-            : [],
+          document_ids: documentIds,
+          expand_document_scope: expandScope,
           include_graph_paths: true,
           rerank: true,
         }),
@@ -546,6 +558,26 @@ function ChatWorkspace() {
         ...(Array.isArray(body.warnings) ? body.warnings.map(String) : []),
         ...unwrapped.warnings,
       ];
+      const uniqueWarnings = [...new Set(warnings)];
+      const awaitingExpand = uniqueWarnings.includes("awaiting_scope_expand");
+      const rawCtx = body.active_conversation_context;
+      let nextContext = activeThread.conversationContext ?? null;
+      if (
+        rawCtx &&
+        typeof rawCtx === "object" &&
+        typeof rawCtx.label === "string" &&
+        Array.isArray(rawCtx.document_ids)
+      ) {
+        nextContext = {
+          label: rawCtx.label,
+          documentIds: rawCtx.document_ids.map(String),
+          entities: Array.isArray(rawCtx.entities)
+            ? rawCtx.entities.map(String)
+            : [],
+        };
+      } else if (uniqueWarnings.includes("context_switch_detected")) {
+        nextContext = null;
+      }
       const assistantMessage = createMessage("assistant", unwrapped.answer, {
         citations: Array.isArray(body.citations)
           ? body.citations.map((item: ChatCitation) => ({
@@ -561,7 +593,7 @@ function ChatWorkspace() {
                 : [],
             }))
           : [],
-        warnings: [...new Set(warnings)],
+        warnings: uniqueWarnings,
         retrieval_mode: body.retrieval_mode || body.mode,
         retrieval_trace_id: body.retrieval_trace_id,
       });
@@ -572,6 +604,12 @@ function ChatWorkspace() {
           ...current,
           title: titled,
           messages: [...current.messages, assistantMessage],
+          pendingExpandQuestion: awaitingExpand
+            ? expandScope
+              ? pending
+              : question
+            : null,
+          conversationContext: nextContext,
           updatedAt: new Date().toISOString(),
         });
       });
@@ -670,15 +708,37 @@ function ChatWorkspace() {
             </select>
           </label>
           <label className="min-w-[12rem] flex-[2] text-sm">
-            <span className="text-muted">Document filter (optional)</span>
+            <span className="text-muted">Manual document override (optional)</span>
             <input
               value={activeThread.documentId}
               onChange={(event) =>
-                updateActive({ documentId: event.target.value.trim() })
+                updateActive({
+                  documentId: event.target.value.trim(),
+                  pendingExpandQuestion: null,
+                })
               }
               className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-accent"
-              placeholder="Leave empty for all documents"
+              placeholder="Usually leave empty — context sticks from chat"
             />
+            {activeThread.conversationContext?.label ? (
+              <p className="mt-1 text-xs text-foreground">
+                Active conversation context:{" "}
+                <span className="font-medium">
+                  {activeThread.conversationContext.label}
+                </span>
+                . Follow-ups stay here unless you change topic or reply Yes to
+                widen.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted">
+                Context is established by your first question and answer.
+              </p>
+            )}
+            {activeThread.pendingExpandQuestion ? (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                Waiting for Yes to search other documents.
+              </p>
+            ) : null}
           </label>
         </div>
 

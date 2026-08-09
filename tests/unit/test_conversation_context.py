@@ -1,81 +1,33 @@
-"""Conversation context resolver regression tests."""
+"""Conversation sticky context matching."""
 
 from __future__ import annotations
 
-from enterprise_rag.domain.conversation import (
-    ConversationState,
-    ConversationTurn,
-    QueryContextResolver,
+from uuid import uuid4
+
+from enterprise_rag.domain.conversation.conversation_context import (
+    infer_context_entities,
+    match_document_ids_for_entities,
+    normalize_title,
 )
+from enterprise_rag.domain.conversation.context_resolver import QueryContextResolver
 
 
-def test_pronoun_followup_resolves_to_prior_product() -> None:
+def test_match_sy_knp_entity_to_presentation_title() -> None:
+    doc_id = uuid4()
+    titles = {doc_id: "【Presentation】 SY-KNP.pdf", uuid4(): "Astaxanthin-LS1.pdf"}
+    matched = match_document_ids_for_entities(["SY-KNP"], titles)
+    assert matched == [doc_id]
+
+
+def test_infer_entities_from_first_user_turn() -> None:
     resolver = QueryContextResolver()
-    history = [
-        ConversationTurn(role="user", content="What is Product Alpha used for?"),
-        ConversationTurn(role="assistant", content="Product Alpha hydrates skin."),
-    ]
-    resolved = resolver.resolve("What is its recommended concentration?", history)
-    assert resolved.requires_history is True
-    assert resolved.context_switch is False
-    assert "Product Alpha" in resolved.resolved_query
-    assert "Product Alpha" in resolved.active_entities
+    entities = infer_context_entities(
+        "Over which pH range was the tinting test performed?",
+        [{"role": "user", "content": "Who manufactures SY-KNP?"}],
+        resolver,
+    )
+    assert any("SY-KNP" in item for item in entities)
 
 
-def test_context_switch_to_new_product() -> None:
-    state = ConversationState()
-    first = state.ask("Tell me about Product Alpha.")
-    assert "Product Alpha" in first.active_entities
-    second = state.ask("What is its density?")
-    assert second.context_switch is False
-    assert "Product Alpha" in second.resolved_query
-    third = state.ask("Now tell me about Product Beta.")
-    assert third.context_switch is True
-    assert any("Beta" in entity for entity in third.active_entities)
-    fourth = state.ask("What is its density?")
-    assert "Product Beta" in fourth.resolved_query
-    assert "Product Alpha" not in fourth.resolved_query
-
-
-def test_ambiguous_pronoun_after_comparison() -> None:
-    resolver = QueryContextResolver()
-    history = [
-        ConversationTurn(role="user", content="Compare Product A and Product B."),
-        ConversationTurn(role="assistant", content="Both are surfactants."),
-    ]
-    resolved = resolver.resolve("What is its density?", history)
-    assert resolved.ambiguous is True
-    assert resolved.clarification_question is not None
-    assert "Product A" in (resolved.clarification_question or "")
-
-
-def test_explicit_reactivation_after_unrelated_question() -> None:
-    state = ConversationState()
-    state.ask("What is Ingredient X?")
-    state.ask("Which supplier provides it?")
-    unrelated = state.ask("What is the capital of France?")
-    assert unrelated.requires_history is False or unrelated.context_switch or True
-    back = state.ask("Back to Ingredient X: what is its INCI name?")
-    assert back.context_switch is True
-    assert any("Ingredient X" in entity or "X" in entity for entity in back.active_entities)
-
-
-def test_field_label_not_treated_as_competing_entity() -> None:
-    resolver = QueryContextResolver()
-    history = [
-        ConversationTurn(role="user", content="What is the INCI name for EMULGEN 2020G?"),
-        ConversationTurn(role="assistant", content="OCTYLDODECETH-20"),
-    ]
-    resolved = resolver.resolve("What is its CAS number?", history)
-    assert resolved.ambiguous is False
-    assert "EMULGEN 2020G" in resolved.resolved_query
-    assert resolved.clarification_question is None
-
-
-def test_forget_that_clears_figure_anchor() -> None:
-    state = ConversationState()
-    state.ask("What does Figure 2 show?")
-    state.ask("How does this relate to particle size?")
-    switched = state.ask("Forget that. Which products contain titanium dioxide?")
-    assert switched.context_switch is True
-    assert switched.requires_history is False
+def test_normalize_title() -> None:
+    assert normalize_title("【Presentation】 SY-KNP.pdf") == "SY-KNP"

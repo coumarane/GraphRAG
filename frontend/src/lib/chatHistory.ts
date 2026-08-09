@@ -24,6 +24,12 @@ export type ChatMessage = {
   retrieval_trace_id?: string;
 };
 
+export type ConversationContext = {
+  label: string;
+  documentIds: string[];
+  entities?: string[];
+};
+
 export type ChatThread = {
   id: string;
   title: string;
@@ -32,6 +38,10 @@ export type ChatThread = {
   createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
+  /** Last user question waiting for "yes" to search beyond conversation context. */
+  pendingExpandQuestion?: string | null;
+  /** Sticky context established by the first Q/A (not a manual UUID filter). */
+  conversationContext?: ConversationContext | null;
 };
 
 const STORAGE_PREFIX = "enterprise-rag-chats:";
@@ -59,7 +69,15 @@ export function createEmptyThread(
     createdAt: now,
     updatedAt: now,
     messages: [],
+    pendingExpandQuestion: null,
+    conversationContext: null,
   };
+}
+
+export function isScopeExpandAffirmative(text: string): boolean {
+  return /^(yes|y|yeah|yep|sure|ok|okay|please do|go ahead|search(?:\s+all)?|expand|broader|all documents)\.?$/i.test(
+    text.trim(),
+  );
 }
 
 export function loadChatThreads(tenantKey: string): ChatThread[] {

@@ -218,6 +218,7 @@ def build_local_container(
     query = QueryDocumentsService(
         retrieve,
         GenerateAnswerService(chat),
+        document_titles=document_titles,
     )
     process = ProcessRegisteredDocumentService(
         document_repo=document_repo,

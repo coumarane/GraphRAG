@@ -206,6 +206,7 @@ class QueryApiRequest(BaseModel):
     rerank: bool = True
     answer_model_override: str | None = None
     conversation_history: list[dict[str, str]] = Field(default_factory=list)
+    expand_document_scope: bool = False
 
 
 class GraphSearchRequest(BaseModel):

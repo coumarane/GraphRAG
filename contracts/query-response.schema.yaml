@@ -39,3 +39,14 @@ properties:
   graph_paths:
     type: array
     items: {type: object}
+  active_conversation_context:
+    type: [object, 'null']
+    properties:
+      label: {type: string}
+      document_ids:
+        type: array
+        items: {type: string, format: uuid}
+      entities:
+        type: array
+        items: {type: string}
+

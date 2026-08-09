@@ -77,6 +77,7 @@ async def query_documents(
             rerank=body.rerank,
             answer_model_override=body.answer_model_override,
             conversation_history=list(body.conversation_history),
+            expand_document_scope=body.expand_document_scope,
         ),
     )
     return outcome.response

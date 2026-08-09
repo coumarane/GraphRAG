@@ -51,6 +51,7 @@ class QueryRequest(BaseModel):
     rerank: bool = True
     answer_model_override: str | None = None
     conversation_history: list[dict[str, str]] = Field(default_factory=list)
+    expand_document_scope: bool = False
 
 
 class GraphPath(BaseModel):
@@ -107,3 +108,4 @@ class QueryResponse(BaseModel):
     retrieval_trace_id: UUID
     warnings: list[str] = Field(default_factory=list)
     graph_paths: list[GraphPath] = Field(default_factory=list)
+    active_conversation_context: dict[str, JsonValue] | None = None
