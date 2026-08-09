@@ -15,13 +15,24 @@ from enterprise_rag.shared.exceptions import CitationValidationError
 
 _CITATION_REF_RE = re.compile(r"\[(C\d+)\]")
 _INSUFFICIENT_ANSWER_RE = re.compile(
-    r"(?i)\b("
+    r"(?is)\b("
     r"no .+ (?:in|from) the (?:provided )?evidence"
     r"|not (?:found|present|available|included) in the (?:provided )?evidence"
+    r"|no explicit .+ (?:found|available|provided)"
+    r"|does not (?:provide|contain|include|mention|state|specify)"
+    r"|do not (?:provide|contain|include|mention|state|specify)"
+    r"|cannot be confirmed (?:from|in) the (?:provided )?evidence"
+    r"|could not (?:be )?(?:confirmed|found|determined)"
     r"|evidence (?:is|was) insufficient"
-    r"|insufficient evidence"
+    r"|insufficient (?:evidence|information)"
+    r"|unable to (?:confirm|determine|find|answer)"
     r")\b"
 )
+
+
+def is_insufficient_evidence_answer(answer: str) -> bool:
+    """True when the answer itself says the ask is not supported by evidence."""
+    return bool(_INSUFFICIENT_ANSWER_RE.search(answer or ""))
 _METAL_CLAIM_RE = re.compile(
     r"(?i)\b(lead|pb|cadmium|cd|arsenic|as|mercury|hg|chromium|cr|antimony|sb|"
     r"barium|ba|nickel|ni|zinc|zn|tin|sn)\b"
@@ -178,12 +189,18 @@ def validate_citations(
 
     from_text = extract_citation_ids(answer)
     claimed = list(claimed_ids or [])
-    # Prefer markers actually written in the answer. Drop unused JSON citation_ids
-    # on "not found" replies so the UI does not show unrelated source cards.
-    if from_text:
+    insufficient = is_insufficient_evidence_answer(answer)
+    warnings: list[str] = []
+
+    # Abstention / "not in evidence" answers must not surface source cards.
+    # Models often still attach every retrieved [Cn]; strip them hard.
+    if insufficient:
+        candidate_ids: list[str] = []
+        if from_text or claimed:
+            warnings.append("citations_cleared_on_insufficient_answer")
+    elif from_text:
+        # Prefer markers actually written in the answer over unused JSON IDs.
         candidate_ids = from_text
-    elif _INSUFFICIENT_ANSWER_RE.search(answer):
-        candidate_ids = []
     else:
         candidate_ids = claimed
 
@@ -196,7 +213,6 @@ def validate_citations(
         combined.append(citation_id)
 
     unknown = [cid for cid in combined if not registry.contains(cid)]
-    warnings: list[str] = []
     if unknown:
         if strict:
             raise CitationValidationError(
@@ -205,16 +221,16 @@ def validate_citations(
             )
         warnings.append(f"stripped_unknown_citations:{','.join(unknown)}")
 
-    allowed = set(registry.ids())
+    allowed = set() if insufficient else set(registry.ids())
     cleaned_answer = strip_unknown_citation_refs(answer, allowed_ids=allowed)
-    known_ids = [cid for cid in combined if cid in allowed]
+    known_ids = [cid for cid in combined if cid in set(registry.ids())]
     citations = registry.select(known_ids)
 
     # Identity / page / element checks against registry records.
     for citation in citations:
         _assert_citation_integrity(tenant, citation, registry)
 
-    if not citations and registry.ids():
+    if not citations and registry.ids() and not insufficient:
         warnings.append("answer_missing_citations")
 
     grounding_warnings = validate_numeric_grounding(

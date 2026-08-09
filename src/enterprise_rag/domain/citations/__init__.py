@@ -6,6 +6,7 @@ from enterprise_rag.domain.citations.registry import CitationRegistry, evidence_
 from enterprise_rag.domain.citations.validation import (
     CitationValidationResult,
     extract_citation_ids,
+    is_insufficient_evidence_answer,
     remap_graph_path_citations,
     strip_unknown_citation_refs,
     validate_citations,
@@ -19,6 +20,7 @@ __all__ = [
     "GroundedAnswerPayload",
     "evidence_to_citation",
     "extract_citation_ids",
+    "is_insufficient_evidence_answer",
     "parse_generation_text",
     "remap_graph_path_citations",
     "strip_unknown_citation_refs",

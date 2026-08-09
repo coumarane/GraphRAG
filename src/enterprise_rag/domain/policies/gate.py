@@ -148,9 +148,12 @@ class HardInvariantGate:
         verdict: InvariantVerdict,
     ) -> None:
         """Invariant 5 — factual answers keep valid citations when evidence exists."""
+        from enterprise_rag.domain.citations.validation import is_insufficient_evidence_answer
+
         verdict.extend_warnings(citation_warnings)
         looks_like_abstain = (
-            "no relevant information was found" in answer.casefold()
+            is_insufficient_evidence_answer(answer)
+            or "no relevant information was found" in answer.casefold()
             or "could not find enough retrieved evidence" in answer.casefold()
             or AWAITING_SCOPE_EXPAND in verdict.warnings
         )

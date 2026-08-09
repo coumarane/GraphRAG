@@ -112,6 +112,39 @@ def test_validate_citations_drops_unused_ids_on_insufficient_answer() -> None:
     assert result.citations == []
 
 
+def test_validate_citations_strips_markers_on_shelf_life_abstention() -> None:
+    """Models often cite every retrieved chunk while saying 'not found'."""
+    tenant = TenantContext(tenant_id=new_id())
+    evidences = [
+        _evidence(
+            tenant_id=tenant.tenant_id,
+            text=f"SY-KNP antimicrobial note {idx}",
+        )
+        for idx in range(12)
+    ]
+    registry = CitationRegistry(tenant, evidences)
+    claimed = [f"C{i}" for i in range(1, 13)]
+    markers = " ".join(f"[{cid}]" for cid in claimed)
+    answer = (
+        "For SY-KNP: The available evidence does not provide explicit information "
+        "regarding the shelf life or specific storage conditions for SY-KNP. "
+        "Therefore, no shelf life or storage condition details can be confirmed "
+        f"from the provided evidence. {markers}"
+    )
+    result = validate_citations(
+        tenant=tenant,
+        answer=answer,
+        registry=registry,
+        claimed_ids=claimed,
+        strict=False,
+    )
+    assert result.citations == []
+    assert result.cited_ids == []
+    assert "[C1]" not in result.answer
+    assert "citations_cleared_on_insufficient_answer" in result.warnings
+    assert "answer_missing_citations" not in result.warnings
+
+
 def test_validate_numeric_grounding_flags_column_misread() -> None:
     from enterprise_rag.domain.citations import validate_numeric_grounding
 
