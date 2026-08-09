@@ -563,9 +563,17 @@ class ParsingAuditCollector:
                     if fallback_parsers is not None
                     else self.document.fallback_parsers
                 ),
-                "total_pages": total_pages
-                if total_pages is not None
-                else max(self._pages.keys(), default=0),
+                "total_pages": (
+                    total_pages
+                    if total_pages is not None
+                    else max(
+                        max(self._pages.keys(), default=0),
+                        max(
+                            (el.page_number or 0 for el in self._elements),
+                            default=0,
+                        ),
+                    )
+                ),
                 "total_detected_elements": detected,
                 "total_processed_elements": processed,
                 "total_failed_elements": failed,
