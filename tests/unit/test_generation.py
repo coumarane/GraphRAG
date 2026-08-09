@@ -145,6 +145,38 @@ def test_validate_citations_strips_markers_on_shelf_life_abstention() -> None:
     assert "answer_missing_citations" not in result.warnings
 
 
+def test_validate_citations_keeps_sources_on_partial_claim_fidelity_answer() -> None:
+    """Tested/example % answers must keep citations despite 'no recommended level' hedge."""
+    tenant = TenantContext(tenant_id=new_id())
+    e1 = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="Cream formulation example: butylene glycol 5.0%.",
+    )
+    e2 = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="Moisturizing cream uses 8.0% butylene glycol.",
+    )
+    registry = CitationRegistry(tenant, [e1, e2])
+    answer = (
+        "For cream formulations: One example cream formulation contains 5.0% "
+        "butylene glycol [C1]. Another moisturizing cream formulation uses 8.0% "
+        "butylene glycol [C2]. These are tested or example levels in specific cream "
+        "formulas. The evidence does not specify an official or recommended use "
+        "level for butylene glycol in creams, but shows that 5–8% is used in "
+        "practice in these formulations."
+    )
+    result = validate_citations(
+        tenant=tenant,
+        answer=answer,
+        registry=registry,
+        claimed_ids=["C1", "C2"],
+        strict=False,
+    )
+    assert [c.citation_id for c in result.citations] == ["C1", "C2"]
+    assert "citations_cleared_on_insufficient_answer" not in result.warnings
+    assert "[C1]" in result.answer
+
+
 def test_validate_numeric_grounding_flags_column_misread() -> None:
     from enterprise_rag.domain.citations import validate_numeric_grounding
 

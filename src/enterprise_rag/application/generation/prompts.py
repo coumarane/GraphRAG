@@ -15,7 +15,7 @@ from enterprise_rag.domain.retrieval.enums import RetrievalMode
 from enterprise_rag.domain.retrieval.models import GraphPath, RetrievedEvidence
 from enterprise_rag.domain.security import wrap_untrusted_evidence
 
-PROMPT_VERSION = "grounded-answer-v9"
+PROMPT_VERSION = "grounded-answer-v10"
 
 SYSTEM_PROMPT = """You are a grounded enterprise answer generator.
 Use ONLY the provided evidence. Never invent facts or citation IDs.
@@ -105,11 +105,16 @@ Do not wrap the JSON in markdown fences unless necessary.
 STRICT_RETRY_SYSTEM_PROMPT = """You previously produced an invalid grounded answer.
 Regenerate using ONLY the allowed citation IDs listed below.
 Do not invent citation IDs. Prefer fewer, correct citations over unsupported claims.
+If you state concrete values (percentages, ranges, composition amounts), you MUST
+place [Cn] markers on those claims and list those IDs in citation_ids.
+Do not return an empty citation_ids array when the answer includes supported facts.
 For multi-column tables, name the product/column and copy values exactly.
 Remove any numeric claim (ppm, N.D., less than X) that is not literally supported
 by the cited evidence text.
 Claim-strength: never upgrade challenge-test / MIC / demo concentrations into
 "recommended" or "specified" use levels unless those words appear in the evidence.
+A claim-fidelity hedge ("no recommended level found") does not mean citation_ids
+should be empty — still cite the tested/example evidence for the values you report.
 Return the same JSON schema: answer, citation_ids, warnings.
 """
 

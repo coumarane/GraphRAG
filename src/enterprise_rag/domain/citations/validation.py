@@ -14,25 +14,61 @@ from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.shared.exceptions import CitationValidationError
 
 _CITATION_REF_RE = re.compile(r"\[(C\d+)\]")
+# Full abstention / "not found" language — not claim-fidelity hedges alone.
 _INSUFFICIENT_ANSWER_RE = re.compile(
     r"(?is)\b("
     r"no .+ (?:in|from) the (?:provided )?evidence"
     r"|not (?:found|present|available|included) in the (?:provided )?evidence"
-    r"|no explicit .+ (?:found|available|provided)"
-    r"|does not (?:provide|contain|include|mention|state|specify)"
-    r"|do not (?:provide|contain|include|mention|state|specify)"
+    r"|no explicit .+ (?:found|available|provided|in the)"
+    r"|does not (?:provide|contain|include|mention|state).{0,60}"
+    r"(?:information|details|data|evidence).{0,40}"
+    r"(?:regarding|about|on|for|in the)"
     r"|cannot be confirmed (?:from|in) the (?:provided )?evidence"
-    r"|could not (?:be )?(?:confirmed|found|determined)"
+    r"|could not find (?:enough |any )?(?:retrieved )?evidence"
     r"|evidence (?:is|was) insufficient"
-    r"|insufficient (?:evidence|information)"
-    r"|unable to (?:confirm|determine|find|answer)"
+    r"|insufficient (?:evidence|information)(?:\s+in\s+the|\s+to\s+)"
+    r"|unable to (?:confirm|determine|find|answer).{0,40}(?:evidence|sources)"
     r")\b"
+)
+# Positive grounded claims — if present, keep citations even with a fidelity hedge.
+_POSITIVE_GROUNDED_CLAIM_RE = re.compile(
+    r"(?i)("
+    r"\d+(?:\.\d+)?\s*%"
+    r"|\bcontains\b.{0,40}\d"
+    r"|\buses\b.{0,40}\d"
+    r"|\b(?:is|was|were)\b.{0,20}\d+(?:\.\d+)?\s*%"
+    r"|\bexample\b.{0,60}\d+(?:\.\d+)?\s*%"
+    r")"
+)
+# "No recommended/official level" is claim-strength fidelity, not a full abstention.
+_CLAIM_FIDELITY_HEDGE_RE = re.compile(
+    r"(?i)does not (?:specify|provide|state|include).{0,100}"
+    r"(?:recommended|official|specified|approved|labelled|labeled|explicit recommended)"
 )
 
 
 def is_insufficient_evidence_answer(answer: str) -> bool:
-    """True when the answer itself says the ask is not supported by evidence."""
-    return bool(_INSUFFICIENT_ANSWER_RE.search(answer or ""))
+    """True when the answer is a full abstention (no supported ask), not a partial reply.
+
+    Claim-fidelity hedges like \"evidence does not specify a recommended use level\"
+    must NOT clear citations when the answer still states tested/example values.
+    """
+    text = answer or ""
+    if not text.strip():
+        return False
+    if _CLAIM_FIDELITY_HEDGE_RE.search(text) and _POSITIVE_GROUNDED_CLAIM_RE.search(text):
+        return False
+    if _POSITIVE_GROUNDED_CLAIM_RE.search(text) and not re.search(
+        r"(?i)no .+ (?:in|from) the (?:provided )?evidence"
+        r"|cannot be confirmed (?:from|in) the (?:provided )?evidence"
+        r"|not (?:found|present|available|included) in the (?:provided )?evidence",
+        text,
+    ):
+        # Concrete numeric/example claims without a global "not in evidence" closer.
+        return False
+    return bool(_INSUFFICIENT_ANSWER_RE.search(text))
+
+
 _METAL_CLAIM_RE = re.compile(
     r"(?i)\b(lead|pb|cadmium|cd|arsenic|as|mercury|hg|chromium|cr|antimony|sb|"
     r"barium|ba|nickel|ni|zinc|zn|tin|sn)\b"

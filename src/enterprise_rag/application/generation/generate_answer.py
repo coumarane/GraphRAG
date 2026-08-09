@@ -12,6 +12,7 @@ from enterprise_rag.domain.citations.parsing import parse_generation_text
 from enterprise_rag.domain.citations.registry import CitationRegistry
 from enterprise_rag.domain.citations.validation import (
     CitationValidationResult,
+    is_insufficient_evidence_answer,
     remap_graph_path_citations,
     validate_citations,
 )
@@ -244,6 +245,19 @@ class GenerateAnswerService:
                         question=question[:120],
                     )
                     model_warnings.append(CLAIM_STRENGTH_OVERREACH)
+                    continue
+                missing_required_citations = (
+                    not validation.citations
+                    and bool(registry.ids())
+                    and not is_insufficient_evidence_answer(validation.answer)
+                )
+                if missing_required_citations and attempt < self._max_retries:
+                    logger.warning(
+                        "missing_citations_retry",
+                        attempt=attempt,
+                        question=question[:120],
+                    )
+                    model_warnings.append("answer_missing_citations")
                     continue
                 return validation.answer, validation.cited_ids, model_warnings, retried
             except CitationValidationError as exc:
