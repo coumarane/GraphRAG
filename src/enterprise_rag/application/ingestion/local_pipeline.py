@@ -75,27 +75,32 @@ logger = get_logger(__name__)
 
 _FIGURE_HINT = re.compile(
     r"(?i)\b(sem|tem|xrd|afm|microscope|micrograph|figure|fig\.|chart|diagram|photo|"
-    r"comparison|appearance|tone-?up|soft-?focus|angle of measurement|byk|l\*|mica)\b"
+    r"comparison|appearance|tone-?up|soft-?focus|angle of measurement|byk|l\*|mica|"
+    r"map|factory|factories|head office|branch|laboratory|company introduction)\b"
 )
 _CHART_PAGE_HINT = re.compile(
     r"(?i)\b(comparison with|synthetic mica|soft-?focus|tone-?up|"
     r"angle of measurement|byk-?mac|transparent|gloss type|matte type|"
     r"natural tone|l\*\s*-?\s*15|measurement conditions)\b"
 )
-_VISION_PROMPT = """Analyze this page from a technical cosmetics / powder brochure PDF.
+_MAP_LOCATION_HINT = re.compile(
+    r"(?i)\b(head office|factory|factories|branch|laboratory|company introduction|"
+    r"research and development|location|sites?|plant)\b"
+)
+_VISION_PROMPT = """Analyze this page from a technical cosmetics / powder / company brochure PDF.
 Return ONLY valid JSON (no markdown fences) with this shape:
 {
   "page_summary": "short summary of the slide purpose",
-  "ocr_text": "ALL readable text on the page, including titles, legends, axes, callout bubbles, footnotes, and measurement conditions",
+  "ocr_text": "ALL readable text on the page, including titles, map labels, legends, axes, callout bubbles, footnotes, and measurement conditions",
   "measurement_conditions": "e.g. Background: Black, thickness: 20µm, BYK-mac — empty if none",
   "callouts": ["exact callout / speech-bubble labels such as Soft-focus effect or Transparent"],
   "tables": [{"caption": "", "markdown": "| col | ... |"}],
   "formulas": [{"text": "", "description": ""}],
   "figures": [{
-    "type": "sem|photo|chart|diagram|table_image|other",
+    "type": "sem|photo|chart|diagram|map|table_image|other",
     "title": "chart or figure title if present",
-    "description": "what the figure shows; for charts describe axes, series names, relative ranking, and trends",
-    "ocr_labels": "legend entries, axis labels, series names, numeric annotations",
+    "description": "what the figure shows; for charts describe axes, series names, relative ranking, and trends; for maps list every labeled site",
+    "ocr_labels": "legend entries, axis labels, series names, numeric annotations, map pin labels (factories, offices, branches)",
     "axes": {"x": "Angle of measurement", "y": "L*"},
     "legend": ["series A", "series B"],
     "series_ranking": "e.g. at L*-15: matte mica highest, then product X, then gloss mica lowest",
@@ -103,8 +108,9 @@ Return ONLY valid JSON (no markdown fences) with this shape:
   }]
 }
 Rules:
-- Be precise for SEM/microscopy images, line charts, tables, and chemical formulas.
+- Be precise for SEM/microscopy images, line charts, tables, maps, and chemical formulas.
 - For charts: capture every legend series name, axis labels, callouts, and measurement conditions exactly.
+- For maps / company location slides: OCR every pin label (factories, head office, branches, labs, subsidiaries) into ocr_text and figures.ocr_labels.
 - Do not invent unseen numeric values; approximate rankings from the visual if exact numbers are unreadable.
 """
 
@@ -227,39 +233,85 @@ def _render_page_png(data: bytes, page_number: int, *, scale: float = 1.5) -> by
         document.close()
 
 
+def _page_element_stats(
+    raw: RawParserResult,
+) -> tuple[dict[int, str], dict[int, float], dict[int, float], dict[int, int]]:
+    """Aggregate native text / image presence per page when parser metrics are sparse."""
+    page_texts: dict[int, list[str]] = {}
+    text_chars: dict[int, int] = {}
+    image_counts: dict[int, int] = {}
+    for element in raw.elements:
+        page = int(element.page_start or 1)
+        content = (element.normalized_content or element.raw_content or "").strip()
+        if content:
+            page_texts.setdefault(page, []).append(content)
+            text_chars[page] = text_chars.get(page, 0) + len(content)
+        if element.element_type in {ElementType.IMAGE, ElementType.CHART}:
+            image_counts[page] = image_counts.get(page, 0) + 1
+    joined = {page: "\n".join(parts) for page, parts in page_texts.items()}
+    densities = {page: float(chars) for page, chars in text_chars.items()}
+    coverages: dict[int, float] = {}
+    for page, count in image_counts.items():
+        # Heuristic: one or more image/chart elements with little text ≈ visual page.
+        density = densities.get(page, 0.0)
+        if count >= 1 and density < 400:
+            coverages[page] = 0.75 if density < 200 else 0.55
+        else:
+            coverages[page] = min(1.0, 0.35 + 0.15 * count)
+    return joined, densities, coverages, image_counts
+
+
 def _select_vision_pages(raw: RawParserResult, *, max_pages: int = 15) -> list[int]:
     scored: list[tuple[int, int]] = []
     forced: list[int] = []
+    element_texts, element_densities, element_coverages, image_counts = _page_element_stats(raw)
     page_texts = {
         int(k): str(v)
         for k, v in (raw.metadata.get("page_texts") or {}).items()
         if str(k).isdigit()
     }
+    for page_number, text in element_texts.items():
+        page_texts.setdefault(page_number, text)
+
     for page in raw.pages:
         text = page_texts.get(page.page_number, "")
         score = 0
-        density = page.text_density or 0.0
-        coverage = page.image_coverage or 0.0
+        density = page.text_density
+        if density is None:
+            density = element_densities.get(page.page_number, 0.0)
+        coverage = page.image_coverage
+        if coverage is None:
+            coverage = element_coverages.get(page.page_number, 0.0)
+        image_count = image_counts.get(page.page_number, 0)
         if density < 80:
             score += 100
         if density < 200:
             score += 20
         if coverage >= 0.5:
             score += 40
+        if image_count >= 1:
+            score += 60
         if _FIGURE_HINT.search(text):
             score += 50
+        if _MAP_LOCATION_HINT.search(text) and (image_count >= 1 or density < 250):
+            score += 100
+            forced.append(page.page_number)
         if _CHART_PAGE_HINT.search(text):
             score += 120
             forced.append(page.page_number)
-        # Prefer sparse visual pages (charts/photos) even without keyword text.
+        # Prefer sparse visual pages (charts/photos/maps) even without keyword text.
         if coverage >= 0.5 and density < 120:
             score += 80
             if 40 <= page.page_number <= 80:
                 score += 40
                 forced.append(page.page_number)
+        if image_count >= 1 and density < 250:
+            score += 90
+            forced.append(page.page_number)
         if score > 0:
             scored.append((score, page.page_number))
-    scored.sort(reverse=True)
+    # Higher score first; on ties prefer earlier pages (company intros often early).
+    scored.sort(key=lambda item: (-item[0], item[1]))
     selected: list[int] = []
     for page_number in forced:
         if page_number not in selected:
