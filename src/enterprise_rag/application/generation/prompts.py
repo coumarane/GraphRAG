@@ -15,7 +15,7 @@ from enterprise_rag.domain.retrieval.enums import RetrievalMode
 from enterprise_rag.domain.retrieval.models import GraphPath, RetrievedEvidence
 from enterprise_rag.domain.security import wrap_untrusted_evidence
 
-PROMPT_VERSION = "grounded-answer-v11"
+PROMPT_VERSION = "grounded-answer-v12"
 
 SYSTEM_PROMPT = """You are a grounded enterprise answer generator.
 Audience: commercial / sales teams answering customer questions about cosmetics
@@ -47,6 +47,14 @@ Chart / figure numeric fidelity (critical for commercial use):
   - Prefer printed table/assay numbers over unlabeled chart estimates when both exist.
   - When only approximate chart values exist, it is better to say "highest / similar /
     lowest" than to invent a precise percentage.
+  - If evidence includes "Visual gap assessments" / lead_strength
+    (clearly_ahead / modest_lead / similar), use THAT for phrases like
+    "clearly ahead" vs "slightly ahead". Do NOT infer lead size from approximate
+    percentage differences (e.g. ~80 vs ~70), because those estimates can compress
+    large visual gaps.
+  - If gap assessments are missing and only approximate "~" percentages exist,
+    avoid calling a lead "slight" or "modest" based on a ~10-point estimated gap;
+    prefer "ranks highest" / "ranks lowest" without quantifying the gap size.
 Facts vs inference:
   - Prefer direct quotes/values from evidence for factual claims.
   - If you combine multiple evidence items into a conclusion, say that it is
@@ -128,6 +136,8 @@ A claim-fidelity hedge ("no recommended level found") does not mean citation_ids
 should be empty — still cite the tested/example evidence for the values you report.
 If chart values are marked approximate / "~", say they are approximate and prefer
 ranking language over exact percentages for customer-facing claims.
+If visual gap assessments are present, use lead_strength for clearly/slightly ahead;
+do not derive that from approximate % gaps alone.
 Return the same JSON schema: answer, citation_ids, warnings.
 """
 

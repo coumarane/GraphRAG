@@ -116,6 +116,14 @@ Return ONLY valid JSON (no markdown fences) with this shape:
     "axes": {"x": "Concentration Level", "y": "Irritation Response, %"},
     "legend": ["series A", "series B"],
     "series_ranking": "e.g. at 75%: Propylene Glycol highest, BPDO-800N and Control at 0",
+    "gap_assessments": [
+      {
+        "category": "No Filming",
+        "leader": "BDO-800N",
+        "lead_strength": "clearly_ahead|modest_lead|similar|mixed",
+        "note": "BDO bar near top of axis; others much lower"
+      }
+    ],
     "trends": ["short trend statements grounded in the chart"]
   }]
 }
@@ -124,7 +132,13 @@ Rules:
 - For charts: capture every legend series name, axis labels, callouts, and measurement conditions exactly.
 - For bar/line charts: ALWAYS fill values_markdown with one column per legend series and one row per x-axis category. Read bar heights / numeric annotations; do NOT copy y-axis scale ticks (10, 20, 30) as series values.
 - Missing / absent bars at a category mean 0 when the chart baseline is 0. Different series can have different values — do not copy one series onto another.
-- numeric_precision MUST be "exact" only when numbers are printed on/near bars or in an accompanying table. If you estimate from bar height alone, set numeric_precision to "approximate", prefix estimated cells with "~", and make series_ranking the primary takeaway.
+- numeric_precision MUST be "exact" only when numbers are printed on/near bars or in an accompanying table. If you estimate from bar height alone, set numeric_precision to "approximate", prefix estimated cells with "~", and make series_ranking + gap_assessments the primary takeaway.
+- For EVERY x-axis category / attribute in a grouped bar chart, add a gap_assessments entry. Judge lead_strength from the VISUAL gap between bars (not from your estimated percentages):
+  - clearly_ahead: large visible gap (leader clearly taller)
+  - modest_lead: small but visible gap
+  - similar: bars nearly the same height
+  - mixed: no single clear leader
+- Do NOT compress large visual gaps into similar estimated percentages. If one bar is near the top and others mid/low, lead_strength must be clearly_ahead even if you are unsure of exact %.
 - Also copy values_markdown into tables[] when the chart is a quantitative comparison.
 - For maps / company location slides: OCR every pin label (factories, head office, branches, labs, subsidiaries) into ocr_text and figures.ocr_labels.
 - Do not invent unseen numeric values; approximate rankings from the visual if exact numbers are unreadable.
@@ -425,7 +439,7 @@ async def _vision_enrich_pages(
                         role=ModelRole.VISION,
                         model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
                         temperature=0.0,
-                        prompt_version="local-pdf-vision-v4-commercial-charts",
+                        prompt_version="local-pdf-vision-v5-gap-assessments",
                     )
                 )
                 payload = _parse_vision_json(response.text)
@@ -510,16 +524,48 @@ async def _vision_enrich_pages(
                 ).strip()
                 precision = str(figure.get("numeric_precision") or "").strip().lower()
                 looks_approx = precision == "approximate" or ("~" in values_md)
+                gap_raw = figure.get("gap_assessments")
+                gap_lines: list[str] = []
+                gap_meta: list[dict[str, str]] = []
+                if isinstance(gap_raw, list):
+                    for item in gap_raw:
+                        if not isinstance(item, dict):
+                            continue
+                        category = str(item.get("category") or "").strip()
+                        leader = str(item.get("leader") or "").strip()
+                        strength = str(item.get("lead_strength") or "").strip()
+                        note = str(item.get("note") or "").strip()
+                        if not (category or leader or strength):
+                            continue
+                        gap_meta.append(
+                            {
+                                "category": category,
+                                "leader": leader,
+                                "lead_strength": strength,
+                                "note": note,
+                            }
+                        )
+                        gap_lines.append(
+                            f"- {category or 'category'}: {leader or 'n/a'} "
+                            f"({strength or 'unspecified'})"
+                            + (f" — {note}" if note else "")
+                        )
                 values_block = ""
                 if values_md:
                     if looks_approx:
                         values_block = (
                             "Chart values (APPROXIMATE from bar heights — not printed labels; "
-                            "use for ranking/trend only, not as exact customer specs):\n"
+                            "use ranking + gap_assessments for customer wording, not exact specs):\n"
                             f"{values_md}"
                         )
                     else:
                         values_block = f"Chart values (exact printed/labeled numbers):\n{values_md}"
+                gap_block = ""
+                if gap_lines:
+                    gap_block = (
+                        "Visual gap assessments (preferred over approximate % differences):\n"
+                        + "\n".join(gap_lines)
+                    )
                 facets = merge_facets(
                     facets_from_chart_axes(axes if isinstance(axes, dict) else {}),
                     extract_condition_facets(conditions),
@@ -546,6 +592,7 @@ async def _vision_enrich_pages(
                         f"Ranking (preferred when values are approximate): {ranking}"
                         if ranking
                         else "",
+                        gap_block,
                         values_block,
                         f"OCR: {ocr}" if ocr else "",
                         f"Labels: {figure.get('ocr_labels') or ''}".strip(),
@@ -564,6 +611,7 @@ async def _vision_enrich_pages(
                     "ocr_text": ocr or chart_text,
                     "values_markdown": values_md or None,
                     "numeric_precision": "approximate" if looks_approx else (precision or "exact"),
+                    "gap_assessments": gap_meta or None,
                     "axes": axes,
                     "legend": legend,
                     "trends": trends,
