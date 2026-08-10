@@ -97,6 +97,7 @@ _FLAT_CHART_HINT = re.compile(
     r")\b"
 )
 _VISION_PROMPT = """Analyze this page from a technical cosmetics / powder / company brochure PDF.
+Audience context: answers will be used by commercial teams with customers — never present guessed chart numbers as exact specs.
 Return ONLY valid JSON (no markdown fences) with this shape:
 {
   "page_summary": "short summary of the slide purpose",
@@ -110,6 +111,7 @@ Return ONLY valid JSON (no markdown fences) with this shape:
     "title": "chart or figure title if present",
     "description": "what the figure shows; for charts describe axes, series names, relative ranking, and trends; for maps list every labeled site",
     "ocr_labels": "legend entries, axis labels, series names, numeric annotations, map pin labels (factories, offices, branches)",
+    "numeric_precision": "exact|approximate",
     "values_markdown": "| x category | series A | series B | ... |\\n|---|---|---|\\n| ... | ... | ... |",
     "axes": {"x": "Concentration Level", "y": "Irritation Response, %"},
     "legend": ["series A", "series B"],
@@ -122,6 +124,7 @@ Rules:
 - For charts: capture every legend series name, axis labels, callouts, and measurement conditions exactly.
 - For bar/line charts: ALWAYS fill values_markdown with one column per legend series and one row per x-axis category. Read bar heights / numeric annotations; do NOT copy y-axis scale ticks (10, 20, 30) as series values.
 - Missing / absent bars at a category mean 0 when the chart baseline is 0. Different series can have different values — do not copy one series onto another.
+- numeric_precision MUST be "exact" only when numbers are printed on/near bars or in an accompanying table. If you estimate from bar height alone, set numeric_precision to "approximate", prefix estimated cells with "~", and make series_ranking the primary takeaway.
 - Also copy values_markdown into tables[] when the chart is a quantitative comparison.
 - For maps / company location slides: OCR every pin label (factories, head office, branches, labs, subsidiaries) into ocr_text and figures.ocr_labels.
 - Do not invent unseen numeric values; approximate rankings from the visual if exact numbers are unreadable.
@@ -422,7 +425,7 @@ async def _vision_enrich_pages(
                         role=ModelRole.VISION,
                         model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
                         temperature=0.0,
-                        prompt_version="local-pdf-vision-v3-barcharts",
+                        prompt_version="local-pdf-vision-v4-commercial-charts",
                     )
                 )
                 payload = _parse_vision_json(response.text)
@@ -505,6 +508,18 @@ async def _vision_enrich_pages(
                 values_md = str(
                     figure.get("values_markdown") or figure.get("data_markdown") or ""
                 ).strip()
+                precision = str(figure.get("numeric_precision") or "").strip().lower()
+                looks_approx = precision == "approximate" or ("~" in values_md)
+                values_block = ""
+                if values_md:
+                    if looks_approx:
+                        values_block = (
+                            "Chart values (APPROXIMATE from bar heights — not printed labels; "
+                            "use for ranking/trend only, not as exact customer specs):\n"
+                            f"{values_md}"
+                        )
+                    else:
+                        values_block = f"Chart values (exact printed/labeled numbers):\n{values_md}"
                 facets = merge_facets(
                     facets_from_chart_axes(axes if isinstance(axes, dict) else {}),
                     extract_condition_facets(conditions),
@@ -528,12 +543,14 @@ async def _vision_enrich_pages(
                     for part in [
                         str(figure.get("title") or summary or "").strip(),
                         str(figure.get("description") or "").strip(),
-                        f"Chart values:\n{values_md}" if values_md else "",
+                        f"Ranking (preferred when values are approximate): {ranking}"
+                        if ranking
+                        else "",
+                        values_block,
                         f"OCR: {ocr}" if ocr else "",
                         f"Labels: {figure.get('ocr_labels') or ''}".strip(),
                         f"Measurement conditions: {conditions}" if conditions else "",
                         ("Callouts: " + "; ".join(callouts)) if callouts else "",
-                        f"Ranking: {ranking}" if ranking else "",
                         ("Trends: " + "; ".join(trends)) if trends else "",
                         ("Legend: " + "; ".join(legend)) if legend else "",
                         facet_prose,
@@ -546,6 +563,7 @@ async def _vision_enrich_pages(
                     "visual_description": chart_text,
                     "ocr_text": ocr or chart_text,
                     "values_markdown": values_md or None,
+                    "numeric_precision": "approximate" if looks_approx else (precision or "exact"),
                     "axes": axes,
                     "legend": legend,
                     "trends": trends,
