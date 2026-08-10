@@ -25,6 +25,12 @@ from enterprise_rag.domain.conversation.conversation_context import (
     infer_context_entities,
     label_for_documents,
     match_document_ids_for_entities,
+    normalize_title,
+)
+from enterprise_rag.domain.conversation.entity_clarification import (
+    AWAITING_ENTITY_CLARIFICATION,
+    bind_entity_to_question,
+    detect_clarification_resume,
 )
 from enterprise_rag.domain.conversation.scope_expand import (
     AWAITING_SCOPE_EXPAND,
@@ -133,17 +139,102 @@ class QueryDocumentsService:
                 expanded = True
                 logger.info("document_scope_expanded", prior_question=replay[:120])
 
+        # Resume pending question after "Which entity…?" clarification replies.
+        clarification_resume = detect_clarification_resume(
+            question=working.question,
+            conversation_history=list(working.conversation_history),
+        )
+        if clarification_resume is not None:
+            resumed = bind_entity_to_question(
+                clarification_resume.pending_question,
+                clarification_resume.selected_entity,
+            )
+            working = working.model_copy(update={"question": resumed})
+            verdict.extend_warnings(["entity_clarification_resumed"])
+            logger.info(
+                "entity_clarification_resumed",
+                entity=clarification_resume.selected_entity,
+                pending=clarification_resume.pending_question[:120],
+            )
+
+        # Infer sticky document pin BEFORE clarification so follow-ups keep scope
+        # even when the client only has a label (empty document_ids).
+        history = list(working.conversation_history)
+        early_entities = [
+            item
+            for item in infer_context_entities(
+                working.question, history, self._context_resolver
+            )
+            if item.casefold() not in {"who", "what", "when", "where", "why", "how"}
+        ]
+        if (
+            not expanded
+            and not working.filters.document_ids
+            and history
+            and early_entities
+        ):
+            sticky = match_document_ids_for_entities(early_entities, titles)
+            if sticky:
+                working = working.model_copy(
+                    update={
+                        "filters": RetrievalFilters(
+                            document_ids=list(sticky),
+                            modalities=list(working.filters.modalities),
+                            tags=list(working.filters.tags),
+                            security_labels=list(working.filters.security_labels),
+                        )
+                    }
+                )
+                verdict.extend_warnings(["document_scope_inferred_before_clarify"])
+
         context = self._resolve_context(working)
         if context.ambiguous and context.clarification_question:
-            verdict.extend_warnings([*context.warnings, "ambiguous_reference"])
+            pinned_for_clarify = list(working.filters.document_ids)
+            # Single pinned document already defines scope — don't derail the Q.
+            if len(pinned_for_clarify) == 1:
+                title = titles.get(pinned_for_clarify[0], "")
+                title_norm = normalize_title(title).casefold()
+                preferred = [
+                    entity
+                    for entity in context.active_entities
+                    if entity.casefold() in title_norm
+                    or title_norm in entity.casefold()
+                    or entity.casefold() in title.casefold()
+                ]
+                chosen = preferred[0] if preferred else (
+                    normalize_title(title) if title else None
+                )
+                if chosen:
+                    bound = bind_entity_to_question(working.question, chosen)
+                    working = working.model_copy(update={"question": bound})
+                    context = self._resolve_context(working)
+                    verdict.extend_warnings(["ambiguous_reference_resolved_by_document_pin"])
+                else:
+                    context = context.model_copy(
+                        update={
+                            "ambiguous": False,
+                            "clarification_question": None,
+                        }
+                    )
+                    verdict.extend_warnings(["ambiguous_reference_skipped_document_pin"])
+
+        if context.ambiguous and context.clarification_question:
+            verdict.extend_warnings(
+                [
+                    *context.warnings,
+                    "ambiguous_reference",
+                    AWAITING_ENTITY_CLARIFICATION,
+                ]
+            )
             self._gate.enforce_conversation_context(
-                has_active_context=False,
+                has_active_context=bool(working.filters.document_ids)
+                or bool(working.conversation_history),
                 context_switch=False,
                 inferred=False,
                 verdict=verdict,
             )
             self._gate.enforce_retrieval_scope(
-                pinned_document_ids=[],
+                pinned_document_ids=list(working.filters.document_ids),
                 expanded=expanded,
                 verdict=verdict,
             )
@@ -155,6 +246,14 @@ class QueryDocumentsService:
                 warnings=list(verdict.warnings),
                 graph_paths=[],
                 enforced_invariants=list(verdict.enforced),
+                active_conversation_context=self._build_active_context(
+                    pinned_ids=list(working.filters.document_ids),
+                    titles=titles,
+                    entities=list(context.active_entities),
+                    citations=[],
+                ).model_dump(mode="json")
+                if working.filters.document_ids or context.active_entities
+                else None,
             )
             return QueryDocumentsResult(
                 response=response,
@@ -381,6 +480,9 @@ class QueryDocumentsService:
         doc_ids = list(pinned_ids)
         if not doc_ids and citations:
             doc_ids = dominant_document_ids_from_citations(citations)
+        # Label-only context (entities without ids) breaks follow-up pins in the UI.
+        if not doc_ids and entities:
+            doc_ids = match_document_ids_for_entities(entities, titles)
         if not doc_ids and not entities:
             return None
         label = label_for_documents(doc_ids, titles, entities=entities)

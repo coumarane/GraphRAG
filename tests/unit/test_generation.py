@@ -108,8 +108,11 @@ def test_validate_citations_drops_unused_ids_on_insufficient_answer() -> None:
         claimed_ids=["C1"],
         strict=False,
     )
-    assert result.cited_ids == []
-    assert result.citations == []
+    # In-text claim markers are cleared, but provenance cards stay for UI pin.
+    assert result.cited_ids == ["C1"]
+    assert len(result.citations) == 1
+    assert "citations_attached_for_provenance" in result.warnings
+    assert "citations_cleared_on_insufficient_answer" in result.warnings
 
 
 def test_validate_citations_strips_markers_on_shelf_life_abstention() -> None:
@@ -138,11 +141,13 @@ def test_validate_citations_strips_markers_on_shelf_life_abstention() -> None:
         claimed_ids=claimed,
         strict=False,
     )
-    assert result.citations == []
-    assert result.cited_ids == []
+    assert result.cited_ids  # provenance cards kept for UI / sticky pin
     assert "[C1]" not in result.answer
     assert "citations_cleared_on_insufficient_answer" in result.warnings
+    assert "citations_attached_for_provenance" in result.warnings
     assert "answer_missing_citations" not in result.warnings
+    assert len(result.citations) >= 1
+    assert result.citations[0].document_id is not None
 
 
 def test_validate_citations_keeps_sources_on_partial_claim_fidelity_answer() -> None:

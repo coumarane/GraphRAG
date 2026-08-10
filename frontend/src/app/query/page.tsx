@@ -568,9 +568,26 @@ function ChatWorkspace() {
         typeof rawCtx.label === "string" &&
         Array.isArray(rawCtx.document_ids)
       ) {
+        let docIds = rawCtx.document_ids.map(String).filter(Boolean);
+        // Backend may return a label with empty ids; recover pin from citations.
+        if (
+          docIds.length === 0 &&
+          Array.isArray(body.citations) &&
+          body.citations.length
+        ) {
+          docIds = [
+            ...new Set(
+              body.citations
+                .map((item: ChatCitation) =>
+                  item?.document_id ? String(item.document_id) : "",
+                )
+                .filter(Boolean),
+            ),
+          ];
+        }
         nextContext = {
           label: rawCtx.label,
-          documentIds: rawCtx.document_ids.map(String),
+          documentIds: docIds,
           entities: Array.isArray(rawCtx.entities)
             ? rawCtx.entities.map(String)
             : [],

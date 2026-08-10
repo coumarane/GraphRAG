@@ -228,12 +228,17 @@ def validate_citations(
     insufficient = is_insufficient_evidence_answer(answer)
     warnings: list[str] = []
 
-    # Abstention / "not in evidence" answers must not surface source cards.
-    # Models often still attach every retrieved [Cn]; strip them hard.
+    # Abstention / "not in evidence" answers must not pretend the ask is cited.
+    # Still keep provenance source cards so the UI can show which document was used
+    # and sticky conversation context can pin that document_id.
     if insufficient:
         candidate_ids: list[str] = []
         if from_text or claimed:
             warnings.append("citations_cleared_on_insufficient_answer")
+        provenance_ids = list(registry.ids())[:3]
+        if provenance_ids:
+            candidate_ids = provenance_ids
+            warnings.append("citations_attached_for_provenance")
     elif from_text:
         # Prefer markers actually written in the answer over unused JSON IDs.
         candidate_ids = from_text
@@ -257,9 +262,19 @@ def validate_citations(
             )
         warnings.append(f"stripped_unknown_citations:{','.join(unknown)}")
 
+    # Strip in-text [Cn] on full abstention; provenance cards still use registry IDs.
     allowed = set() if insufficient else set(registry.ids())
     cleaned_answer = strip_unknown_citation_refs(answer, allowed_ids=allowed)
     known_ids = [cid for cid in combined if cid in set(registry.ids())]
+    if (
+        not known_ids
+        and registry.ids()
+        and not insufficient
+        and "answer_missing_citations" not in warnings
+    ):
+        # Model discussed evidence without markers — attach top retrieved sources.
+        known_ids = list(registry.ids())[:3]
+        warnings.append("citations_backfilled_from_evidence")
     citations = registry.select(known_ids)
 
     # Identity / page / element checks against registry records.

@@ -35,6 +35,7 @@ _STOP_ENTITY = frozenset(
         "When",
         "How",
         "Why",
+        "Who",
         "The",
         "This",
         "That",
@@ -56,6 +57,7 @@ _STOP_ENTITY = frozenset(
         "Assistant",
     }
 )
+_WH_ENTITY = frozenset({"who", "what", "when", "where", "why", "how", "which"})
 # Datasheet / form-field labels that look product-ish but are not entities.
 _FIELD_LABEL_ENTITY = frozenset(
     {
@@ -197,15 +199,25 @@ class QueryContextResolver:
                     f"{active[0]} and {active[1]}?"
                 )
             elif len(prior_entities) >= 2 and has_pronoun:
-                ambiguous = True
-                active = prior_entities[:2]
-                clarification = (
-                    "Which entity are you referring to: "
-                    + " or ".join(active)
-                    + "?"
-                )
-                warnings.append("ambiguous_pronoun_reference")
-                resolved = question
+                # Question already names one prior entity → no need to clarify.
+                named = [
+                    entity
+                    for entity in prior_entities
+                    if entity.casefold() in question.casefold()
+                ]
+                if len(named) == 1:
+                    active = named[:1]
+                    resolved = self._rewrite_with_entity(question, active[0])
+                else:
+                    ambiguous = True
+                    active = prior_entities[:2]
+                    clarification = (
+                        "Which entity are you referring to: "
+                        + " or ".join(active)
+                        + "?"
+                    )
+                    warnings.append("ambiguous_pronoun_reference")
+                    resolved = question
             elif prior_entities:
                 active = prior_entities[:1]
                 resolved = self._rewrite_with_entity(question, active[0])
@@ -314,6 +326,8 @@ class QueryContextResolver:
                 item.casefold() for item in _FIELD_LABEL_ENTITY
             }:
                 return
+            if cleaned.casefold() in _WH_ENTITY:
+                return
             # Skip short all-caps field labels (INCI, CAS, APHA, …).
             if cleaned.isupper() and len(cleaned) <= 5 and " " not in cleaned:
                 return
@@ -344,6 +358,7 @@ class QueryContextResolver:
             for entity in entities
             if entity not in _FIELD_LABEL_ENTITY
             and entity.casefold() not in {item.casefold() for item in _FIELD_LABEL_ENTITY}
+            and entity.casefold() not in _WH_ENTITY
             and not (entity.isupper() and len(entity) <= 5 and " " not in entity)
         ]
         ranked = filtered or list(entities)
