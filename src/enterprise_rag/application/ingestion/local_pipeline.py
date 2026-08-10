@@ -87,6 +87,15 @@ _MAP_LOCATION_HINT = re.compile(
     r"(?i)\b(head office|factory|factories|branch|laboratory|company introduction|"
     r"research and development|location|sites?|plant)\b"
 )
+_PERCENT_TOKEN = re.compile(r"(?<!\d)\d{1,3}(?:\.\d+)?\s*%")
+_FLAT_CHART_HINT = re.compile(
+    r"(?i)\b("
+    r"irritation|patch test|concentration level|response\s*,?\s*%|"
+    r"bar chart|test report|human skin|no skin irritation|"
+    r"moisture level|time after application|legend|control|"
+    r"series|axis|ranking"
+    r")\b"
+)
 _VISION_PROMPT = """Analyze this page from a technical cosmetics / powder / company brochure PDF.
 Return ONLY valid JSON (no markdown fences) with this shape:
 {
@@ -101,15 +110,19 @@ Return ONLY valid JSON (no markdown fences) with this shape:
     "title": "chart or figure title if present",
     "description": "what the figure shows; for charts describe axes, series names, relative ranking, and trends; for maps list every labeled site",
     "ocr_labels": "legend entries, axis labels, series names, numeric annotations, map pin labels (factories, offices, branches)",
-    "axes": {"x": "Angle of measurement", "y": "L*"},
+    "values_markdown": "| x category | series A | series B | ... |\\n|---|---|---|\\n| ... | ... | ... |",
+    "axes": {"x": "Concentration Level", "y": "Irritation Response, %"},
     "legend": ["series A", "series B"],
-    "series_ranking": "e.g. at L*-15: matte mica highest, then product X, then gloss mica lowest",
+    "series_ranking": "e.g. at 75%: Propylene Glycol highest, BPDO-800N and Control at 0",
     "trends": ["short trend statements grounded in the chart"]
   }]
 }
 Rules:
-- Be precise for SEM/microscopy images, line charts, tables, maps, and chemical formulas.
+- Be precise for SEM/microscopy images, line charts, bar charts, tables, maps, and chemical formulas.
 - For charts: capture every legend series name, axis labels, callouts, and measurement conditions exactly.
+- For bar/line charts: ALWAYS fill values_markdown with one column per legend series and one row per x-axis category. Read bar heights / numeric annotations; do NOT copy y-axis scale ticks (10, 20, 30) as series values.
+- Missing / absent bars at a category mean 0 when the chart baseline is 0. Different series can have different values — do not copy one series onto another.
+- Also copy values_markdown into tables[] when the chart is a quantitative comparison.
 - For maps / company location slides: OCR every pin label (factories, head office, branches, labs, subsidiaries) into ocr_text and figures.ocr_labels.
 - Do not invent unseen numeric values; approximate rankings from the visual if exact numbers are unreadable.
 """
@@ -261,9 +274,29 @@ def _page_element_stats(
     return joined, densities, coverages, image_counts
 
 
+def _looks_like_flat_chart_ocr(text: str) -> bool:
+    """True when OCR flattened a chart into loose % labels without structure."""
+    if not text or not text.strip():
+        return False
+    percent_count = len(_PERCENT_TOKEN.findall(text))
+    if percent_count < 4:
+        return False
+    if _FLAT_CHART_HINT.search(text) or _CHART_PAGE_HINT.search(text):
+        return True
+    # Many percent tokens plus categorical concentration / comparison cues.
+    if percent_count >= 6 and re.search(
+        r"(?i)\b(25\s*%|50\s*%|75\s*%|concentration|comparison|vs\.?|versus)\b",
+        text,
+    ):
+        return True
+    return False
+
+
 def _select_vision_pages(raw: RawParserResult, *, max_pages: int = 15) -> list[int]:
+    if max_pages <= 0:
+        return []
     scored: list[tuple[int, int]] = []
-    forced: list[int] = []
+    forced: list[tuple[int, int]] = []  # (priority, page_number); higher first
     element_texts, element_densities, element_coverages, image_counts = _page_element_stats(raw)
     page_texts = {
         int(k): str(v)
@@ -276,6 +309,7 @@ def _select_vision_pages(raw: RawParserResult, *, max_pages: int = 15) -> list[i
     for page in raw.pages:
         text = page_texts.get(page.page_number, "")
         score = 0
+        force_priority = 0
         density = page.text_density
         if density is None:
             density = element_densities.get(page.page_number, 0.0)
@@ -295,25 +329,32 @@ def _select_vision_pages(raw: RawParserResult, *, max_pages: int = 15) -> list[i
             score += 50
         if _MAP_LOCATION_HINT.search(text) and (image_count >= 1 or density < 250):
             score += 100
-            forced.append(page.page_number)
+            force_priority = max(force_priority, 800)
         if _CHART_PAGE_HINT.search(text):
             score += 120
-            forced.append(page.page_number)
+            force_priority = max(force_priority, 900)
+        # PaddleOCR/etc. often flattens bar charts to text-only % fragments.
+        if _looks_like_flat_chart_ocr(text):
+            score += 140
+            force_priority = max(force_priority, 1000)
         # Prefer sparse visual pages (charts/photos/maps) even without keyword text.
         if coverage >= 0.5 and density < 120:
             score += 80
             if 40 <= page.page_number <= 80:
                 score += 40
-                forced.append(page.page_number)
+                force_priority = max(force_priority, 600)
         if image_count >= 1 and density < 250:
             score += 90
-            forced.append(page.page_number)
+            force_priority = max(force_priority, 700)
+        if force_priority > 0:
+            forced.append((force_priority, page.page_number))
         if score > 0:
             scored.append((score, page.page_number))
-    # Higher score first; on ties prefer earlier pages (company intros often early).
+    # Higher priority/score first; on ties prefer earlier pages.
+    forced.sort(key=lambda item: (-item[0], item[1]))
     scored.sort(key=lambda item: (-item[0], item[1]))
     selected: list[int] = []
-    for page_number in forced:
+    for _, page_number in forced:
         if page_number not in selected:
             selected.append(page_number)
         if len(selected) >= max_pages:
@@ -354,6 +395,8 @@ async def _vision_enrich_pages(
     *,
     max_pages: int = 15,
 ) -> list[RawElement]:
+    if max_pages <= 0:
+        return []
     pages = _select_vision_pages(raw, max_pages=max_pages)
     if not pages:
         return []
@@ -379,7 +422,7 @@ async def _vision_enrich_pages(
                         role=ModelRole.VISION,
                         model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
                         temperature=0.0,
-                        prompt_version="local-pdf-vision-v2-charts",
+                        prompt_version="local-pdf-vision-v3-barcharts",
                     )
                 )
                 payload = _parse_vision_json(response.text)
@@ -418,16 +461,20 @@ async def _vision_enrich_pages(
             if not isinstance(figure, dict):
                 continue
             figure_type = str(figure.get("type") or "figure").strip().lower()
+            values_md = str(
+                figure.get("values_markdown") or figure.get("data_markdown") or ""
+            ).strip()
             bit = (
                 f"[{figure_type}] "
                 f"{figure.get('title') or ''} "
                 f"{figure.get('description') or ''} "
+                f"{values_md} "
                 f"{figure.get('ocr_labels') or ''} "
                 f"{figure.get('series_ranking') or ''}".strip()
             ).strip()
             if bit:
                 figure_bits.append(bit)
-            if figure_type == "chart":
+            if figure_type == "chart" or values_md:
                 chart_figures.append(figure)
 
         enrichment_bits = [
@@ -455,6 +502,9 @@ async def _vision_enrich_pages(
                 )
                 axes = figure.get("axes") if isinstance(figure.get("axes"), dict) else {}
                 ranking = str(figure.get("series_ranking") or "").strip()
+                values_md = str(
+                    figure.get("values_markdown") or figure.get("data_markdown") or ""
+                ).strip()
                 facets = merge_facets(
                     facets_from_chart_axes(axes if isinstance(axes, dict) else {}),
                     extract_condition_facets(conditions),
@@ -465,6 +515,7 @@ async def _vision_enrich_pages(
                                 figure.get("title"),
                                 figure.get("description"),
                                 figure.get("ocr_labels"),
+                                values_md,
                                 ocr,
                             )
                             if part
@@ -477,6 +528,7 @@ async def _vision_enrich_pages(
                     for part in [
                         str(figure.get("title") or summary or "").strip(),
                         str(figure.get("description") or "").strip(),
+                        f"Chart values:\n{values_md}" if values_md else "",
                         f"OCR: {ocr}" if ocr else "",
                         f"Labels: {figure.get('ocr_labels') or ''}".strip(),
                         f"Measurement conditions: {conditions}" if conditions else "",
@@ -493,6 +545,7 @@ async def _vision_enrich_pages(
                     "title": str(figure.get("title") or summary or "").strip() or None,
                     "visual_description": chart_text,
                     "ocr_text": ocr or chart_text,
+                    "values_markdown": values_md or None,
                     "axes": axes,
                     "legend": legend,
                     "trends": trends,
@@ -517,6 +570,17 @@ async def _vision_enrich_pages(
                     )
                 )
                 order += 1
+                if values_md and not any(
+                    isinstance(t, dict) and str(t.get("markdown") or "").strip() == values_md
+                    for t in tables
+                ):
+                    tables = [
+                        *tables,
+                        {
+                            "caption": str(figure.get("title") or summary or f"Page {page_number} chart").strip(),
+                            "markdown": values_md,
+                        },
+                    ]
         elif ocr or summary or figures:
             image_facets = merge_facets(
                 extract_condition_facets(conditions),

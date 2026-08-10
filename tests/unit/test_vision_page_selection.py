@@ -72,3 +72,74 @@ def test_select_vision_tie_break_prefers_earlier_page() -> None:
     )
     selected = _select_vision_pages(raw, max_pages=1)
     assert selected == [1]
+
+
+def test_select_vision_forces_flat_chart_ocr_without_image_element() -> None:
+    """BNB-style patch-test charts: PaddleOCR emits text/% only, no IMAGE element."""
+    chart_bits = [
+        "Test Report : BPDO-800N (1,3-Propanediol)",
+        "Table 1. No Skin Irritation.",
+        "Human Skin Patch Test Results",
+        "Irritation Response, %",
+        "30%",
+        "21.7%",
+        "22.7%",
+        "20%",
+        "10%",
+        "8.2%",
+        "0%",
+        "25%",
+        "50%",
+        "75%",
+        "Concentration Level",
+        "BPDO-800N",
+        "Propylene Glycol",
+        "Control",
+        "No visible irritation reaction is found with 75% 1.3-Propanediol",
+    ]
+    elements = [
+        _el(11, text, order=i) for i, text in enumerate(chart_bits)
+    ] + [
+        _el(12, "Short caption", order=100),
+        _el(12, "", element_type=ElementType.IMAGE, order=101),
+        _el(5, "Dense product description " * 40, order=102),
+    ]
+    raw = RawParserResult(
+        parser_name="paddleocr",
+        page_count=15,
+        pages=[_page(n) for n in range(1, 16)],
+        elements=elements,
+    )
+    selected = _select_vision_pages(raw, max_pages=2)
+    assert 11 in selected
+
+
+def test_select_vision_max_pages_zero_disables() -> None:
+    raw = RawParserResult(
+        parser_name="paddleocr",
+        page_count=3,
+        pages=[_page(n) for n in range(1, 4)],
+        elements=[_el(1, "30% 21.7% patch test irritation concentration", order=0)],
+    )
+    assert _select_vision_pages(raw, max_pages=0) == []
+
+
+def test_select_vision_prioritizes_flat_chart_when_budget_is_one() -> None:
+    elements = [
+        _el(3, "Short caption", order=0),
+        _el(3, "", element_type=ElementType.IMAGE, order=1),
+        _el(
+            11,
+            "Human Skin Patch Test Results Irritation Response, % "
+            "30% 21.7% 22.7% 20% 10% 8.2% 0% 25% 50% 75% Concentration Level "
+            "BPDO-800N Propylene Glycol Control",
+            order=2,
+        ),
+    ]
+    raw = RawParserResult(
+        parser_name="paddleocr",
+        page_count=15,
+        pages=[_page(n) for n in range(1, 16)],
+        elements=elements,
+    )
+    assert _select_vision_pages(raw, max_pages=1) == [11]
