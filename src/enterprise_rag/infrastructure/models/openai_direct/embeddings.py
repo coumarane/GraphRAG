@@ -46,6 +46,10 @@ class OpenAIEmbeddingModel:
         self._api_key = api_key
         self._embed_fn = embed_fn
 
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         model_name = request.model_name or self._model_name
         try:

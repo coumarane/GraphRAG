@@ -73,6 +73,19 @@ extract_text_raw = _extract_text_raw
 
 logger = get_logger(__name__)
 
+
+def resolve_model_label(model: object | None) -> str | None:
+    """Return a human-readable model id (e.g. gpt-4.1), not the Python class name."""
+    if model is None:
+        return None
+    for attr in ("model_name", "_model_name"):
+        value = getattr(model, attr, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    name = type(model).__name__
+    return name if name else None
+
+
 _FIGURE_HINT = re.compile(
     r"(?i)\b(sem|tem|xrd|afm|microscope|micrograph|figure|fig\.|chart|diagram|photo|"
     r"comparison|appearance|tone-?up|soft-?focus|angle of measurement|byk|l\*|mica|"
@@ -747,6 +760,28 @@ class ProcessRegisteredDocumentService:
     semantic_graph: bool = True
     on_commit: object | None = None
 
+    async def _set_document_status(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+        status: DocumentLifecycleStatus,
+        *,
+        updated_at: datetime,
+        metadata_updates: dict[str, object] | None = None,
+    ):
+        """Reload the document before status writes so concurrent title edits are kept."""
+        document = await self.document_repo.get_document(tenant, document_id)
+        if document is None:
+            return None
+        if metadata_updates:
+            meta = dict(document.metadata)
+            meta.update(metadata_updates)
+            document.metadata = meta
+        document.status = status
+        document.updated_at = updated_at
+        await self.document_repo.update_document(tenant, document)
+        return document
+
     async def execute(self, tenant: TenantContext, ingestion_run_id: UUID) -> None:
         run = await self.ingestion_repo.get_run(tenant, ingestion_run_id)
         if run is None:
@@ -767,11 +802,12 @@ class ProcessRegisteredDocumentService:
         run.updated_at = now
         await self.ingestion_repo.update_run(tenant, run)
 
-        document = await self.document_repo.get_document(tenant, run.document_id)
-        if document is not None:
-            document.status = DocumentLifecycleStatus.INGESTING
-            document.updated_at = now
-            await self.document_repo.update_document(tenant, document)
+        document = await self._set_document_status(
+            tenant,
+            run.document_id,
+            DocumentLifecycleStatus.INGESTING,
+            updated_at=now,
+        )
 
         audit = ParsingAuditCollector(
             tenant_id=tenant.tenant_id,
@@ -785,14 +821,8 @@ class ProcessRegisteredDocumentService:
             )
             filename = version.source_filename or Path(version.original_object_key).name
             mime = (version.mime_type or "").lower()
-            embed_name = getattr(self.embedding_model, "model_name", None) or type(
-                self.embedding_model
-            ).__name__
-            vision_name = None
-            if self.chat_model is not None:
-                vision_name = getattr(self.chat_model, "model_name", None) or type(
-                    self.chat_model
-                ).__name__
+            embed_name = resolve_model_label(self.embedding_model)
+            vision_name = resolve_model_label(self.chat_model)
             audit.document_started(
                 original_filename=filename,
                 file_hash=version.content_hash,
@@ -801,8 +831,9 @@ class ProcessRegisteredDocumentService:
                 config_profile="local_pipeline",
                 ocr_strategy="auto",
                 vision_strategy="page_enrichment" if self.chat_model else "disabled",
-                embedding_model=str(embed_name),
-                vision_llm=str(vision_name) if vision_name else None,
+                embedding_model=embed_name,
+                text_llm=vision_name,
+                vision_llm=vision_name,
             )
 
             audit.stage_started("PARSE", tool="parser_registry", input_count=1)
@@ -901,12 +932,12 @@ class ProcessRegisteredDocumentService:
                 audit.stage_started(
                     "VISION_ENRICHMENT",
                     tool="vision",
-                    model_name=str(vision_name),
+                    model_name=vision_name,
                 )
                 audit.record_routing(
                     RoutingReasonCode.VISION_REQUIRED,
                     message="Vision enrichment for sparse/visual PDF pages",
-                    selected_model=str(vision_name),
+                    selected_model=vision_name,
                 )
                 # Vision enrichment for sparse/visual pages regardless of primary parser.
                 vision_elements = await _vision_enrich_pages(
@@ -930,7 +961,7 @@ class ProcessRegisteredDocumentService:
                         audit.element_processed(
                             report,
                             processing_tool="vision_enrichment",
-                            model_name=str(vision_name),
+                            model_name=vision_name,
                             status=ElementProcessingStatus.PROCESSED,
                         )
                 audit.stage_completed(
@@ -972,7 +1003,13 @@ class ProcessRegisteredDocumentService:
                         section_path=list(matched.section_path or []),
                         reached_normalized=True,
                         status=ElementProcessingStatus.PROCESSED,
-                        processing_tool="normalizer",
+                        # Keep vision provenance; only stamp normalizer for parser-only rows.
+                        processing_tool=(
+                            report.processing_tool
+                            if report.detector == "vision"
+                            else "normalizer"
+                        ),
+                        model_name=report.model_name,
                     )
             audit.mark_normalized(normalized_ids)
             audit.stage_completed(
@@ -1095,12 +1132,13 @@ class ProcessRegisteredDocumentService:
             await self.ingestion_repo.update_run(tenant, run)
 
             if document is not None:
-                meta = dict(document.metadata)
-                meta["page_count"] = normalized.page_count
-                document.metadata = meta
-                document.status = DocumentLifecycleStatus.READY
-                document.updated_at = done
-                await self.document_repo.update_document(tenant, document)
+                document = await self._set_document_status(
+                    tenant,
+                    run.document_id,
+                    DocumentLifecycleStatus.READY,
+                    updated_at=done,
+                    metadata_updates={"page_count": normalized.page_count},
+                )
 
             snapshot = audit.document_completed(
                 ingestion_status=run.status.value,
@@ -1142,9 +1180,12 @@ class ProcessRegisteredDocumentService:
             run.updated_at = failed
             await self.ingestion_repo.update_run(tenant, run)
             if document is not None:
-                document.status = DocumentLifecycleStatus.FAILED
-                document.updated_at = failed
-                await self.document_repo.update_document(tenant, document)
+                document = await self._set_document_status(
+                    tenant,
+                    run.document_id,
+                    DocumentLifecycleStatus.FAILED,
+                    updated_at=failed,
+                )
             try:
                 audit.add_issue(
                     severity="error",

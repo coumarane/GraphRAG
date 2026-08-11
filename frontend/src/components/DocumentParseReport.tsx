@@ -16,6 +16,7 @@ type DocumentReport = {
   ocr_strategy: string | null;
   vision_strategy: string | null;
   vision_llm: string | null;
+  text_llm: string | null;
   embedding_model: string | null;
   total_detected_elements: number;
   total_processed_elements: number;
@@ -353,11 +354,15 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
                 <dd className="truncate text-xs">{doc.original_filename || "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-muted">Vision</dt>
+                <dt className="text-xs text-muted">Vision LLM</dt>
                 <dd className="text-xs">
                   {doc.vision_strategy || "—"}
                   {doc.vision_llm ? ` · ${doc.vision_llm}` : ""}
                 </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Text LLM</dt>
+                <dd className="text-xs">{doc.text_llm || doc.vision_llm || "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted">Embedding</dt>
@@ -553,11 +558,18 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
                   <th className="px-3 py-2 font-medium">Type</th>
                   <th className="px-3 py-2 font-medium">Status</th>
                   <th className="px-3 py-2 font-medium">Detector</th>
+                  <th className="px-3 py-2 font-medium">LLM model</th>
                   <th className="px-3 py-2 font-medium">Normalized</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleElements.map((el) => (
+                {visibleElements.map((el) => {
+                  const llmModel =
+                    el.model_name ||
+                    (el.detector === "vision"
+                      ? doc?.vision_llm || doc?.text_llm || null
+                      : null);
+                  return (
                   <tr key={el.element_report_id} className="border-t border-border">
                     <td className="px-3 py-2 tabular-nums">{el.page_number ?? "—"}</td>
                     <td className="px-3 py-2 font-mono">
@@ -566,7 +578,12 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
                     <td className="px-3 py-2">{el.status}</td>
                     <td className="px-3 py-2">
                       {el.detector || el.parser_name || "—"}
-                      {el.model_name ? ` / ${el.model_name}` : ""}
+                    </td>
+                    <td className="px-3 py-2 font-mono">
+                      {llmModel ||
+                        (el.detector === "vision"
+                          ? "—"
+                          : "parser only")}
                     </td>
                     <td className="px-3 py-2">
                       {el.reached_normalized ? "yes" : "no"}
@@ -575,7 +592,8 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
                         : ""}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

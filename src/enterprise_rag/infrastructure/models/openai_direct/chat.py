@@ -106,6 +106,10 @@ class OpenAIChatModel:
         self._temperature = temperature
         self._chat_fn = chat_fn
 
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
     async def generate(self, request: GenerationRequest) -> GenerationResponse:
         model_name = request.model_name or self._model_name
         temperature = (

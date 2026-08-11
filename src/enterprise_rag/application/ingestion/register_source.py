@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,6 +29,25 @@ from enterprise_rag.domain.storage.object_keys import original_object_key, sanit
 from enterprise_rag.domain.storage.protocols import ObjectStore, SourceBytes, SourceLoader
 from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.shared.exceptions import ConflictError
+
+
+def _title_from_source(
+    *,
+    source_filename: str | None,
+    request_title: str | None,
+    loaded_filename: str,
+) -> str:
+    """Name documents from the original upload filename when available.
+
+    Multipart uploads pass ``source_filename``. Prefer that stem so a stale
+    form title cannot mislabel a different file.
+    """
+    file_stem = PurePosixPath(loaded_filename).stem if loaded_filename else None
+    if source_filename:
+        stem = PurePosixPath(sanitize_filename(source_filename)).stem
+        return stem.replace("_", " ")
+    explicit = (request_title or "").strip()
+    return explicit or (file_stem.replace("_", " ") if file_stem else None) or loaded_filename or "Untitled"
 
 
 class RegisterSourceRequest(BaseModel):
@@ -113,6 +133,11 @@ class RegisterSourceService:
                 )
 
         document_id = request.document_id or new_id()
+        display_title = _title_from_source(
+            source_filename=request.source_filename,
+            request_title=request.title,
+            loaded_filename=source.filename,
+        )
         existing_document = await self.document_repo.get_document(tenant, document_id)
         if existing_document is None:
             existing_document = await self.document_repo.create_document(
@@ -120,7 +145,7 @@ class RegisterSourceService:
                 DocumentRecord(
                     document_id=document_id,
                     tenant_id=tenant.tenant_id,
-                    title=request.title or source.filename,
+                    title=display_title,
                     document_type=request.document_type,
                     status=DocumentLifecycleStatus.INGESTING,
                     tags=list(request.tags),
@@ -168,7 +193,7 @@ class RegisterSourceService:
         updated_document = DocumentRecord(
             document_id=existing_document.document_id,
             tenant_id=existing_document.tenant_id,
-            title=request.title or existing_document.title,
+            title=display_title or existing_document.title,
             document_type=request.document_type or existing_document.document_type,
             status=DocumentLifecycleStatus.INGESTING,
             current_version_id=version.version_id,
