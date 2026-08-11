@@ -1,14 +1,21 @@
-"""Operations dashboard: live tenant metrics."""
+"""Operations dashboard: live tenant metrics and OpenAI-style usage."""
 
 from __future__ import annotations
 
 from collections import Counter
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from enterprise_rag.api.dependencies import ContainerDep, TenantDep
+from enterprise_rag.domain.usage.models import (
+    CapabilitySpendRow,
+    DailySpendRow,
+    ModelSpendRow,
+    UsageSummary,
+)
 from enterprise_rag.infrastructure.observability import get_metrics
 
 router = APIRouter(prefix="/ops", tags=["operations"])
@@ -60,7 +67,14 @@ async def dashboard(tenant: TenantDep, container: ContainerDep) -> OpsDashboardR
         status_counts[status] += 1
 
     failed_keys = {"failed", "error", "dead_letter"}
-    processing_keys = {"processing", "registered", "ingesting", "parsing", "chunking", "indexing"}
+    processing_keys = {
+        "processing",
+        "registered",
+        "ingesting",
+        "parsing",
+        "chunking",
+        "indexing",
+    }
     ready_keys = {"ready", "indexed", "active"}
 
     failed = sum(count for key, count in status_counts.items() if key.lower() in failed_keys)
@@ -71,7 +85,9 @@ async def dashboard(tenant: TenantDep, container: ContainerDep) -> OpsDashboardR
 
     recent = sorted(
         docs,
-        key=lambda item: getattr(item, "updated_at", None) or getattr(item, "created_at", None) or "",
+        key=lambda item: getattr(item, "updated_at", None)
+        or getattr(item, "created_at", None)
+        or "",
         reverse=True,
     )[:8]
 
@@ -139,3 +155,56 @@ async def dashboard(tenant: TenantDep, container: ContainerDep) -> OpsDashboardR
         tenant_key=tenant.tenant_key,
         tenant_label=tenant_label,
     )
+
+
+class UsageDashboardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_date: str
+    to_date: str
+    total_spend_usd: float = 0.0
+    total_tokens: int = 0
+    total_requests: int = 0
+    month_spend_usd: float = 0.0
+    daily_spend: list[DailySpendRow] = Field(default_factory=list)
+    by_capability: list[CapabilitySpendRow] = Field(default_factory=list)
+    by_model: list[ModelSpendRow] = Field(default_factory=list)
+
+
+def _parse_day(raw: str | None, *, default: date) -> date:
+    if not raw:
+        return default
+    return date.fromisoformat(raw)
+
+
+@router.get("/usage", response_model=UsageDashboardResponse)
+async def usage_dashboard(
+    tenant: TenantDep,
+    container: ContainerDep,
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+) -> UsageDashboardResponse:
+    """OpenAI-style usage aggregates for the current tenant."""
+    today = datetime.now(UTC).date()
+    end = _parse_day(to_date, default=today)
+    start = _parse_day(from_date, default=end - timedelta(days=13))
+    if start > end:
+        start, end = end, start
+    month_start = date(end.year, end.month, 1)
+
+    start_dt = datetime(start.year, start.month, start.day, tzinfo=UTC)
+    end_dt = datetime(end.year, end.month, end.day, 23, 59, 59, 999999, tzinfo=UTC)
+    month_dt = datetime(month_start.year, month_start.month, month_start.day, tzinfo=UTC)
+
+    repo = container.usage_repo
+    if repo is None:
+        empty = UsageSummary(from_date=start.isoformat(), to_date=end.isoformat())
+        return UsageDashboardResponse(**empty.model_dump())
+
+    summary = await repo.summarize(
+        tenant,
+        start=start_dt,
+        end=end_dt,
+        month_start=month_dt,
+    )
+    return UsageDashboardResponse(**summary.model_dump())

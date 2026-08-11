@@ -9,11 +9,13 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from enterprise_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
 from enterprise_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from enterprise_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
+from enterprise_rag.application.usage.context import usage_context
 from enterprise_rag.domain.chunks.protocols import ChunkVectorStore
 from enterprise_rag.domain.chunks.vectors import ChunkingResult
 from enterprise_rag.domain.elements.enums import ElementType
@@ -828,6 +830,9 @@ class ProcessRegisteredDocumentService:
         return document
 
     async def execute(self, tenant: TenantContext, ingestion_run_id: UUID) -> None:
+        await self._execute_inner(tenant, ingestion_run_id)
+
+    async def _execute_inner(self, tenant: TenantContext, ingestion_run_id: UUID) -> None:
         run = await self.ingestion_repo.get_run(tenant, ingestion_run_id)
         if run is None:
             raise NotFoundError(
@@ -842,6 +847,28 @@ class ProcessRegisteredDocumentService:
                 details={"version_id": str(run.version_id)},
             )
 
+        with usage_context(
+            tenant_id=tenant.tenant_id,
+            document_id=run.document_id,
+            ingestion_run_id=ingestion_run_id,
+        ):
+            await self._run_pipeline(
+                tenant=tenant,
+                ingestion_run_id=ingestion_run_id,
+                run=run,
+                stages=stages,
+                version=version,
+            )
+
+    async def _run_pipeline(
+        self,
+        *,
+        tenant: TenantContext,
+        ingestion_run_id: UUID,
+        run: Any,
+        stages: Any,
+        version: Any,
+    ) -> None:
         now = datetime.now(UTC)
         run.status = IngestionRunStatus.RUNNING
         run.updated_at = now

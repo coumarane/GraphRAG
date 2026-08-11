@@ -19,6 +19,7 @@ from enterprise_rag.infrastructure.persistence.postgres.models.parsing_audit imp
     ProcessingStageRunModel,
     RoutingDecisionModel,
 )
+from enterprise_rag.infrastructure.persistence.postgres.models.usage import ModelUsageEventModel
 from enterprise_rag.infrastructure.persistence.postgres.models.users import UserModel
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "IngestionIssueModel",
     "IngestionRunModel",
     "IngestionStageModel",
+    "ModelUsageEventModel",
     "PageParseReportModel",
     "ParserAttemptModel",
     "ProcessingStageRunModel",

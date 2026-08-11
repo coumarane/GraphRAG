@@ -15,6 +15,7 @@ import {
   Settings,
   Upload,
   AlertTriangle,
+  CircleDollarSign,
 } from "lucide-react";
 import {
   AuthSession,
@@ -66,6 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     items: [
       { href: "/ops", label: "Observability", icon: Activity },
+      { href: "/usage", label: "Usage", icon: CircleDollarSign },
       { href: "/settings", label: "Configuration", icon: Settings },
     ],
   },

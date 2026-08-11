@@ -1,0 +1,26 @@
+# OpenAI list prices used for estimated usage cost (USD per 1M tokens).
+# Update when OpenAI changes published rates. Unknown models estimate $0.
+currency: USD
+updated: "2026-08"
+models:
+  gpt-4o-mini:
+    input_per_1m_usd: 0.15
+    output_per_1m_usd: 0.60
+  gpt-4o:
+    input_per_1m_usd: 2.50
+    output_per_1m_usd: 10.00
+  gpt-4.1:
+    input_per_1m_usd: 2.00
+    output_per_1m_usd: 8.00
+  gpt-4.1-mini:
+    input_per_1m_usd: 0.40
+    output_per_1m_usd: 1.60
+  text-embedding-3-small:
+    input_per_1m_usd: 0.02
+    output_per_1m_usd: 0.0
+  text-embedding-3-large:
+    input_per_1m_usd: 0.13
+    output_per_1m_usd: 0.0
+  text-embedding-ada-002:
+    input_per_1m_usd: 0.10
+    output_per_1m_usd: 0.0

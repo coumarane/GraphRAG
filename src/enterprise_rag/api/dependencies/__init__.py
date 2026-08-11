@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import Depends, Header, Request
 
 from enterprise_rag.application.runtime.container import ServiceContainer
+from enterprise_rag.application.usage.context import UsageContext, set_usage_context
 from enterprise_rag.config.settings import get_settings
 from enterprise_rag.domain.auth.passwords import is_weak_jwt_secret
 from enterprise_rag.domain.auth.tokens import parse_access_token
@@ -35,6 +36,11 @@ def _extract_bearer(authorization: str | None) -> str | None:
     return token.strip()
 
 
+def _bind_usage_context(tenant: TenantContext) -> TenantContext:
+    set_usage_context(UsageContext(tenant_id=tenant.tenant_id))
+    return tenant
+
+
 async def get_tenant_context(
     request: Request,
     container: Annotated[ServiceContainer, Depends(get_container)],
@@ -57,19 +63,23 @@ async def get_tenant_context(
         token = bearer or cookie_token
         if token:
             claims = parse_access_token(token, secret=security.auth_jwt_secret)
-            return TenantContext(
-                tenant_id=claims.tenant_id,
-                tenant_key=claims.tenant_key,
-                principal=claims.email,
-                roles=(claims.role,),
-            ).ensure_authorized()
+            return _bind_usage_context(
+                TenantContext(
+                    tenant_id=claims.tenant_id,
+                    tenant_key=claims.tenant_key,
+                    principal=claims.email,
+                    roles=(claims.role,),
+                ).ensure_authorized()
+            )
 
         service_key = (security.api_service_key or "").strip()
         if service_key and x_api_service_key and x_api_service_key == service_key:
-            return await container.resolve_tenant(
-                tenant_id=_parse_tenant_uuid(x_tenant_id),
-                tenant_key=x_tenant_key,
-                principal=x_principal or "service",
+            return _bind_usage_context(
+                await container.resolve_tenant(
+                    tenant_id=_parse_tenant_uuid(x_tenant_id),
+                    tenant_key=x_tenant_key,
+                    principal=x_principal or "service",
+                )
             )
 
         raise AuthenticationError(
@@ -77,10 +87,12 @@ async def get_tenant_context(
             details={"hint": "Login or provide a valid session / service key"},
         )
 
-    return await container.resolve_tenant(
-        tenant_id=_parse_tenant_uuid(x_tenant_id),
-        tenant_key=x_tenant_key,
-        principal=x_principal,
+    return _bind_usage_context(
+        await container.resolve_tenant(
+            tenant_id=_parse_tenant_uuid(x_tenant_id),
+            tenant_key=x_tenant_key,
+            principal=x_principal,
+        )
     )
 
 

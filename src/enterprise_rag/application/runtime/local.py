@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
+from typing import Any
 from uuid import UUID
 
 from enterprise_rag.application.deletion import DeleteDocumentService, ReindexDocumentService
@@ -24,6 +25,7 @@ from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from enterprise_rag.domain.models.protocols import ChatModel, EmbeddingModel, StructuredExtractor
 from enterprise_rag.domain.storage.protocols import ObjectStore
 from enterprise_rag.domain.tenant import TenantContext
+from enterprise_rag.domain.usage.protocols import UsageRepository
 from enterprise_rag.infrastructure.cache import InMemoryCacheInvalidator
 from enterprise_rag.infrastructure.intake.source_loader import DefaultSourceLoader
 from enterprise_rag.infrastructure.models import (
@@ -48,6 +50,7 @@ from enterprise_rag.infrastructure.persistence.memory import (
     InMemoryIngestionRepository,
     InMemoryObjectStore,
     InMemoryTenantRepository,
+    InMemoryUsageRepository,
 )
 from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
 from enterprise_rag.infrastructure.persistence.qdrant import (
@@ -61,6 +64,7 @@ def _resolve_models(
     *,
     embedding_model: EmbeddingModel | None,
     chat_model: ChatModel | None,
+    usage_recorder: Any | None = None,
 ) -> tuple[EmbeddingModel, ChatModel]:
     if embedding_model is not None and chat_model is not None:
         return embedding_model, chat_model
@@ -87,8 +91,16 @@ def _resolve_models(
         )
 
         return (
-            OpenAIEmbeddingModel(model_name=embed_name, api_key=api_key),
-            OpenAIChatModel(model_name=answer_name, api_key=api_key),
+            OpenAIEmbeddingModel(
+                model_name=embed_name,
+                api_key=api_key,
+                usage_recorder=usage_recorder,
+            ),
+            OpenAIChatModel(
+                model_name=answer_name,
+                api_key=api_key,
+                usage_recorder=usage_recorder,
+            ),
         )
 
     def _fake_grounded(request: object) -> str:
@@ -143,6 +155,7 @@ def build_local_container(
     document_repo: DocumentRepository | None = None,
     ingestion_repo: IngestionRepository | None = None,
     parsing_audit_repo: ParsingAuditRepository | None = None,
+    usage_repo: UsageRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
     auto_process_ingest: bool = False,
     use_live_models: bool = False,
@@ -159,6 +172,7 @@ def build_local_container(
     document_repo = document_repo or InMemoryDocumentRepository()
     ingestion_repo = ingestion_repo or InMemoryIngestionRepository()
     parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
+    usage_repo = usage_repo or InMemoryUsageRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
     source_loader = DefaultSourceLoader(
         max_upload_bytes=max_upload_bytes,
@@ -173,7 +187,9 @@ def build_local_container(
     )
     if use_live_models:
         embedder, chat = _resolve_models(
-            embedding_model=embedding_model, chat_model=chat_model
+            embedding_model=embedding_model,
+            chat_model=chat_model,
+            usage_recorder=usage_repo,
         )
     else:
         embedder = embedding_model or FakeEmbeddingModel()
@@ -289,6 +305,7 @@ def build_local_container(
         reindex_document=reindex_service,
         audit_store=InMemoryAuditStore(),
         parsing_audit_repo=parsing_audit_repo,
+        usage_repo=usage_repo,
         process_ingestion=process,
         auto_process_ingest=auto_process_ingest,
         ready_checks=[lambda: True],

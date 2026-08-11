@@ -83,6 +83,7 @@ class ServiceContainer:
     reindex_document: ReindexDocumentService | None = None
     audit_store: Any | None = None
     parsing_audit_repo: Any | None = None
+    usage_repo: Any | None = None
     process_ingestion: Any | None = None
     auto_process_ingest: bool = False
     elements: dict[tuple[UUID, UUID], list[ElementView]] = field(default_factory=dict)
@@ -125,6 +126,11 @@ class ServiceContainer:
         if self.parsing_audit_repo is None:
             raise ConfigurationError("Parsing audit repository is not configured")
         return self.parsing_audit_repo
+
+    def require_usage_repo(self) -> Any:
+        if self.usage_repo is None:
+            raise ConfigurationError("Usage repository is not configured")
+        return self.usage_repo
 
     def require_retrieve(self) -> RetrieveEvidenceService:
         if self.retrieve is None:
