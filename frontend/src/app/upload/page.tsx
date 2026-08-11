@@ -90,6 +90,7 @@ export default function UploadPage() {
       form.append("parser_requested", "auto");
 
       const response = await fetch("/api/ingest", {
+        credentials: "include",
         method: "POST",
         headers: { "X-Tenant-Key": readTenantKey() },
         body: form,

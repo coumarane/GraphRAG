@@ -228,7 +228,7 @@ class RetrievalSettings(BaseModel):
 
 
 class SecuritySettings(BaseModel):
-    """Upload and resource limits."""
+    """Upload limits and authentication controls."""
 
     max_upload_bytes: int = 104_857_600
     max_pages: int = 2_000
@@ -256,6 +256,14 @@ class SecuritySettings(BaseModel):
     url_allowed_schemes: list[str] = Field(default_factory=lambda: ["https"])
     url_max_redirects: int = 3
     url_timeout_seconds: float = 30.0
+    # Authentication (production: AUTH_ENABLED=true + AUTH_JWT_SECRET >= 32 chars)
+    auth_enabled: bool = False
+    auth_jwt_secret: str = ""
+    auth_jwt_ttl_seconds: int = 43_200
+    auth_cookie_name: str = "erag_session"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    api_service_key: str = ""
 
 
 class ConcurrencySettings(BaseModel):
@@ -505,6 +513,26 @@ def _apply_flat_store_env(init_data: dict[str, Any]) -> None:
         security["max_upload_bytes"] = int(os.environ["MAX_UPLOAD_BYTES"])
     if os.environ.get("MAX_PAGES"):
         security["max_pages"] = int(os.environ["MAX_PAGES"])
+    auth_enabled = os.environ.get("AUTH_ENABLED")
+    if auth_enabled is not None:
+        security["auth_enabled"] = auth_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    if os.environ.get("AUTH_JWT_SECRET"):
+        security["auth_jwt_secret"] = os.environ["AUTH_JWT_SECRET"]
+    if os.environ.get("AUTH_JWT_TTL_SECONDS"):
+        security["auth_jwt_ttl_seconds"] = int(os.environ["AUTH_JWT_TTL_SECONDS"])
+    if os.environ.get("AUTH_COOKIE_NAME"):
+        security["auth_cookie_name"] = os.environ["AUTH_COOKIE_NAME"]
+    if os.environ.get("AUTH_COOKIE_SECURE"):
+        security["auth_cookie_secure"] = os.environ["AUTH_COOKIE_SECURE"].strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    if os.environ.get("AUTH_COOKIE_SAMESITE"):
+        security["auth_cookie_samesite"] = os.environ["AUTH_COOKIE_SAMESITE"].strip().lower()
+    if os.environ.get("API_SERVICE_KEY"):
+        security["api_service_key"] = os.environ["API_SERVICE_KEY"]
     if security:
         init_data["security"] = security
 

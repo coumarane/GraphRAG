@@ -19,6 +19,7 @@ from enterprise_rag.infrastructure.persistence.postgres.models.parsing_audit imp
     ProcessingStageRunModel,
     RoutingDecisionModel,
 )
+from enterprise_rag.infrastructure.persistence.postgres.models.users import UserModel
 
 __all__ = [
     "ContentLossRecordModel",
@@ -34,4 +35,5 @@ __all__ = [
     "ProcessingStageRunModel",
     "RoutingDecisionModel",
     "TenantModel",
+    "UserModel",
 ]

@@ -39,6 +39,7 @@ export default function GraphPage() {
     setResult(null);
     try {
       const response = await fetch("/api/graph", {
+        credentials: "include",
         method: "POST",
         headers: {
           "Content-Type": "application/json",

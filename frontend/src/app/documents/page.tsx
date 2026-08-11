@@ -35,6 +35,7 @@ export default function DocumentsPage() {
     setError(null);
     try {
       const response = await fetch("/api/documents?limit=100", {
+        credentials: "include",
         headers: { "X-Tenant-Key": readTenantKey() },
         cache: "no-store",
       });
@@ -142,7 +143,7 @@ export default function DocumentsPage() {
     <section className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Documents</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Documents</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Use <strong className="font-medium text-foreground">Reprocess</strong>{" "}
             to rebuild indexes from the stored original — no re-upload needed.
@@ -153,13 +154,13 @@ export default function DocumentsPage() {
             type="button"
             onClick={() => void load()}
             disabled={busy}
-            className="rounded border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-accent disabled:opacity-60"
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-accent disabled:opacity-60"
           >
             {busy ? "Refreshing…" : "Refresh"}
           </button>
           <Link
             href="/upload"
-            className="rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+            className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover"
           >
             Upload
           </Link>

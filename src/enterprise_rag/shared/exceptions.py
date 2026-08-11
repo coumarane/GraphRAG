@@ -47,6 +47,13 @@ class TransientError(EnterpriseRagError):
     http_status = 503
 
 
+class RateLimitError(TransientError):
+    """Caller exceeded a rate limit."""
+
+    code = "rate_limit_exceeded"
+    http_status = 429
+
+
 class PermanentError(EnterpriseRagError):
     """Non-retryable failure."""
 
@@ -73,6 +80,13 @@ class AuthorizationError(PermanentError):
 
     code = "authorization_error"
     http_status = 403
+
+
+class AuthenticationError(PermanentError):
+    """Caller is not authenticated."""
+
+    code = "authentication_error"
+    http_status = 401
 
 
 class TenantError(PermanentError):

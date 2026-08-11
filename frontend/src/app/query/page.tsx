@@ -525,6 +525,7 @@ function ChatWorkspace() {
 
     try {
       const response = await fetch("/api/query", {
+        credentials: "include",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -619,32 +620,36 @@ function ChatWorkspace() {
         !nextContext?.documentIds?.length
       ) {
         // First answer with sources but missing active_conversation_context ids.
-        const docIds = [
-          ...new Set(
+        const docIds: string[] = Array.from(
+          new Set(
             body.citations
               .map((item: ChatCitation) =>
                 item?.document_id ? String(item.document_id) : "",
               )
-              .filter(Boolean),
+              .filter((id: string): id is string => id.length > 0),
           ),
-        ];
+        );
         if (docIds.length) {
           const label =
             (typeof rawCtx === "object" &&
             rawCtx &&
-            typeof rawCtx.label === "string"
-              ? rawCtx.label
+            typeof (rawCtx as { label?: unknown }).label === "string"
+              ? (rawCtx as { label: string }).label
               : null) ||
             body.citations.find(
               (item: ChatCitation) => item?.document_name,
             )?.document_name ||
             "active document";
+          const entitiesRaw =
+            typeof rawCtx === "object" &&
+            rawCtx &&
+            Array.isArray((rawCtx as { entities?: unknown }).entities)
+              ? ((rawCtx as { entities: unknown[] }).entities.map(String) as string[])
+              : [];
           nextContext = {
             label: String(label),
             documentIds: docIds,
-            entities: Array.isArray(rawCtx?.entities)
-              ? rawCtx.entities.map(String)
-              : [],
+            entities: entitiesRaw,
           };
         }
       }

@@ -88,6 +88,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     db_session: AsyncSession | None = None
     on_commit: Callable[[], Awaitable[None]] | None = None
     ready_checks: list = []
+    user_repo = None
 
     meta_backend = metadata_store_backend()
     if meta_backend in {"postgres", "postgresql", "pg"}:
@@ -101,6 +102,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         from enterprise_rag.infrastructure.persistence.postgres.repositories.parsing_audit import (
             SqlAlchemyParsingAuditRepository,
         )
+        from enterprise_rag.infrastructure.persistence.users import SqlAlchemyUserRepository
 
         engine = create_engine(resolved.postgres)
         session_factory = create_session_factory(engine)
@@ -109,6 +111,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         document_repo = SqlAlchemyDocumentRepository(db_session)
         ingestion_repo = SqlAlchemyIngestionRepository(db_session)
         parsing_audit_repo = SqlAlchemyParsingAuditRepository(db_session)
+        user_repo = SqlAlchemyUserRepository(db_session)
 
         async def _commit() -> None:
             await db_session.commit()
@@ -128,6 +131,10 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         raise ValueError(
             f"Unsupported METADATA_STORE_BACKEND={meta_backend!r}; use 'memory' or 'postgres'"
         )
+    else:
+        from enterprise_rag.infrastructure.persistence.users import InMemoryUserRepository
+
+        user_repo = InMemoryUserRepository()
 
     container = build_local_container(
         max_upload_bytes=resolved.security.max_upload_bytes,
@@ -148,4 +155,29 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     if ready_checks:
         container.ready_checks = list(container.ready_checks) + ready_checks
     container.db_session = db_session
+    container.user_repo = user_repo
+    if resolved.security.auth_enabled:
+        from enterprise_rag.application.auth import AuthService
+        from enterprise_rag.domain.auth.passwords import is_weak_jwt_secret
+        from enterprise_rag.shared.exceptions import ConfigurationError
+
+        if is_weak_jwt_secret(resolved.security.auth_jwt_secret):
+            raise ConfigurationError(
+                "AUTH_ENABLED requires a strong AUTH_JWT_SECRET (min 32 characters)"
+            )
+        if user_repo is None:
+            raise ConfigurationError("AUTH_ENABLED requires a user repository")
+        # Ensure memory mode also has a tenant repo for bootstrap.
+        if container.tenant_repo is None:
+            from enterprise_rag.infrastructure.persistence.memory import (
+                InMemoryTenantRepository,
+            )
+
+            container.tenant_repo = InMemoryTenantRepository()
+        container.auth_service = AuthService(
+            users=user_repo,
+            tenants=container.tenant_repo,
+            jwt_secret=resolved.security.auth_jwt_secret,
+            jwt_ttl_seconds=resolved.security.auth_jwt_ttl_seconds,
+        )
     return container

@@ -92,6 +92,8 @@ class ServiceContainer:
     metrics: dict[str, int] = field(default_factory=lambda: {"requests_total": 0})
     db_session: Any | None = None
     on_commit: Any | None = None
+    user_repo: Any | None = None
+    auth_service: Any | None = None
 
     async def commit_db(self) -> None:
         """Commit the metadata DB session when Postgres is wired."""
