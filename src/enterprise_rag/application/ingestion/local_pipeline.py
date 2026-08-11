@@ -756,9 +756,6 @@ async def _vision_enrich_pages(
     return extras, enriched_pages
 
 
-_VISUAL_ELEMENT_TYPES = frozenset({"image", "chart", "table", "equation"})
-
-
 def _stamp_hybrid_vision_provenance(
     audit: ParsingAuditCollector,
     *,
@@ -766,7 +763,12 @@ def _stamp_hybrid_vision_provenance(
     vision_model: str | None,
     layout_parser: str,
 ) -> None:
-    """Keep parser-detected visual elements and record the LLM used to interpret them."""
+    """Mark layout elements on vision-enriched pages as hybrid ``{parser}+vision``.
+
+    Scanned OCR pipelines (e.g. PaddleOCR) emit mostly ``text`` lines. Those pages
+    still receive GPT vision interpretation, so every element on an enriched page
+    should show the vision model — not only image/chart/table rows.
+    """
     if not enriched_pages or not vision_model:
         return
     enriched = set(enriched_pages)
@@ -775,8 +777,7 @@ def _stamp_hybrid_vision_provenance(
             continue
         if report.detector == "vision":
             continue
-        element_type = (report.normalized_element_type or "").lower()
-        if element_type not in _VISUAL_ELEMENT_TYPES:
+        if (report.detector or "").endswith("+vision"):
             continue
         audit.update_element(
             report,

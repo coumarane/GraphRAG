@@ -94,15 +94,15 @@ export default function UsagePage() {
       const res = await fetch(`/api/ops/usage?from=${from}&to=${to}`, {
         credentials: "include",
       });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         throw new Error(
           typeof body.detail === "string"
             ? body.detail
-            : body.message || res.statusText,
+            : body.message || `Usage API failed (${res.status})`,
         );
       }
-      setData((await res.json()) as UsagePayload);
+      setData(body as UsagePayload);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setData(null);

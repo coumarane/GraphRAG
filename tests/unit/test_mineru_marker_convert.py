@@ -90,9 +90,23 @@ def test_hybrid_stamp_works_for_layout_parsers() -> None:
             version_id=new_id(),
             ingestion_run_id=new_id(),
         )
-        report = audit.element_detected(
+        image = audit.element_detected(
             page_number=2,
             normalized_element_type="image",
+            detector=parser,
+            parser_name=parser,
+            status=ElementProcessingStatus.DETECTED,
+        )
+        text = audit.element_detected(
+            page_number=2,
+            normalized_element_type="text",
+            detector=parser,
+            parser_name=parser,
+            status=ElementProcessingStatus.DETECTED,
+        )
+        other_page = audit.element_detected(
+            page_number=3,
+            normalized_element_type="text",
             detector=parser,
             parser_name=parser,
             status=ElementProcessingStatus.DETECTED,
@@ -103,11 +117,13 @@ def test_hybrid_stamp_works_for_layout_parsers() -> None:
             vision_model="gpt-4o-mini",
             layout_parser=parser,
         )
-        updated = next(
-            item
-            for item in audit._elements
-            if item.element_report_id == report.element_report_id
-        )
-        assert updated.detector == f"{parser}+vision"
-        assert updated.model_name == "gpt-4o-mini"
-        assert updated.processing_tool == "parser+vision"
+        by_id = {item.element_report_id: item for item in audit._elements}
+        for report_id in (image.element_report_id, text.element_report_id):
+            updated = by_id[report_id]
+            assert updated.detector == f"{parser}+vision"
+            assert updated.model_name == "gpt-4o-mini"
+            assert updated.processing_tool == "parser+vision"
+        untouched = by_id[other_page.element_report_id]
+        assert untouched.detector == parser
+        assert untouched.model_name is None
+

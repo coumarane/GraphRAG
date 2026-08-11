@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from enterprise_rag.domain.usage.models import (
@@ -16,8 +16,11 @@ from enterprise_rag.domain.usage.models import (
 
 
 def _day_key(value: datetime) -> str:
-    if value.tzinfo is not None:
-        value = value.astimezone().replace(tzinfo=None)
+    """Bucket events by UTC calendar day (matches API ``from``/``to`` query params)."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    else:
+        value = value.astimezone(UTC)
     return value.date().isoformat()
 
 

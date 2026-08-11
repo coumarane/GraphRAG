@@ -103,6 +103,36 @@ def test_aggregate_usage_events_daily_and_capability() -> None:
     assert caps["embeddings"].input_tokens == 2000
 
 
+def test_aggregate_buckets_late_utc_evening_on_utc_day() -> None:
+    """Events at 22:44 UTC must stay on that UTC day even in UTC+2 local zones."""
+    tenant = new_id()
+    events = [
+        UsageEvent(
+            event_id=new_id(),
+            tenant_id=tenant,
+            created_at=datetime(2026, 8, 11, 22, 44, tzinfo=UTC),
+            capability=UsageCapability.VISION,
+            provider="openai",
+            model_name="gpt-4o-mini",
+            role="vision",
+            prompt_tokens=1000,
+            completion_tokens=200,
+            total_tokens=1200,
+            estimated_usd=Decimal("0.01"),
+        )
+    ]
+    summary = aggregate_usage_events(
+        events,
+        from_date=date(2026, 8, 11),
+        to_date=date(2026, 8, 11),
+        month_start=date(2026, 8, 1),
+    )
+    assert summary.total_requests == 1
+    assert summary.total_spend_usd == 0.01
+    by_day = {row.date: row for row in summary.daily_spend}
+    assert by_day["2026-08-11"].requests == 1
+
+
 def test_chat_and_embed_adapters_record_usage() -> None:
     repo = InMemoryUsageRepository()
     tenant = new_id()

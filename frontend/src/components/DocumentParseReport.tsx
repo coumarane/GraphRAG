@@ -559,8 +559,11 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
             ) : null}
           </div>
           <p className="text-xs text-muted">
-            Detector = layout source (e.g. Docling). LLM model = vision model when
-            the page was interpreted ({doc?.vision_llm || "none"}).
+            Detector = layout source (e.g. paddleocr / docling). On pages that
+            GPT vision also interpreted, detector becomes{" "}
+            <span className="font-mono">parser+vision</span> and LLM model shows{" "}
+            {doc?.vision_llm || "the vision model"}. Rows still marked
+            &quot;layout only&quot; were not in the vision page budget.
           </p>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="min-w-full text-left text-xs">
