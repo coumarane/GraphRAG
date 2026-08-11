@@ -63,6 +63,25 @@ def test_select_vision_forces_image_sparse_pages() -> None:
     assert 2 in selected
 
 
+def test_select_vision_prioritizes_all_docling_image_pages() -> None:
+    """Pages where Docling found IMAGE elements consume vision budget first."""
+    elements = [
+        _el(1, "Cover", order=0),
+        _el(3, "", element_type=ElementType.IMAGE, order=1),
+        _el(7, "caption", order=2),
+        _el(7, "", element_type=ElementType.IMAGE, order=3),
+        _el(10, "Dense text " * 100, order=4),
+    ]
+    raw = RawParserResult(
+        parser_name="docling",
+        page_count=12,
+        pages=[_page(n) for n in range(1, 13)],
+        elements=elements,
+    )
+    selected = _select_vision_pages(raw, max_pages=2)
+    assert selected == [3, 7]
+
+
 def test_select_vision_tie_break_prefers_earlier_page() -> None:
     raw = RawParserResult(
         parser_name="docling",

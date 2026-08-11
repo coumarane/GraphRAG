@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
 
 type DocumentItem = {
@@ -22,13 +23,30 @@ type ListResponse = {
 
 const TERMINAL = new Set(["ready", "failed", "deleted", "partial"]);
 
-export default function DocumentsPage() {
+function DocumentsPageContent() {
+  const searchParams = useSearchParams();
+  const statusFilter = searchParams.get("status");
   const [data, setData] = useState<ListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+
+  const visibleItems = useMemo(() => {
+    const items = data?.items ?? [];
+    if (!statusFilter) return items;
+    return items.filter(
+      (item) => item.status.toLowerCase() === statusFilter.toLowerCase(),
+    );
+  }, [data?.items, statusFilter]);
+
+  const pageTitle =
+    statusFilter === "failed" ? "Failed Processing" : "Documents";
+  const pageHint =
+    statusFilter === "failed"
+      ? "Documents that failed ingestion. Use Reprocess to retry from the stored original."
+      : "Use Reprocess to rebuild indexes from the stored original — no re-upload needed.";
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -143,10 +161,17 @@ export default function DocumentsPage() {
     <section className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Documents</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{pageTitle}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Use <strong className="font-medium text-foreground">Reprocess</strong>{" "}
-            to rebuild indexes from the stored original — no re-upload needed.
+            {statusFilter === "failed" ? (
+              pageHint
+            ) : (
+              <>
+                Use{" "}
+                <strong className="font-medium text-foreground">Reprocess</strong>{" "}
+                to rebuild indexes from the stored original — no re-upload needed.
+              </>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
@@ -179,17 +204,23 @@ export default function DocumentsPage() {
         </p>
       ) : null}
 
-      {!error && data && data.items.length === 0 ? (
+      {!error && data && visibleItems.length === 0 ? (
         <p className="rounded-lg border border-border bg-surface px-5 py-8 text-sm text-muted">
-          No documents yet.{" "}
-          <Link href="/upload" className="text-accent underline">
-            Upload one
-          </Link>
-          .
+          {statusFilter === "failed" ? (
+            <>No failed documents right now.</>
+          ) : (
+            <>
+              No documents yet.{" "}
+              <Link href="/upload" className="text-accent underline">
+                Upload one
+              </Link>
+              .
+            </>
+          )}
         </p>
       ) : null}
 
-      {data && data.items.length > 0 ? (
+      {data && visibleItems.length > 0 ? (
         <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-sm">
           <table className="w-full min-w-[40rem] text-left text-sm">
             <thead className="border-b border-border bg-background/80 text-xs uppercase tracking-wide text-muted">
@@ -202,7 +233,7 @@ export default function DocumentsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((doc) => (
+              {visibleItems.map((doc) => (
                 <tr
                   key={doc.document_id}
                   className="border-b border-border last:border-0"
@@ -264,10 +295,19 @@ export default function DocumentsPage() {
             </tbody>
           </table>
           <p className="border-t border-border px-4 py-2 font-mono text-xs text-muted">
-            {data.total} document{data.total === 1 ? "" : "s"}
+            {visibleItems.length} document{visibleItems.length === 1 ? "" : "s"}
+            {statusFilter ? ` · filtered by status=${statusFilter}` : ""}
           </p>
         </div>
       ) : null}
     </section>
+  );
+}
+
+export default function DocumentsPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
+      <DocumentsPageContent />
+    </Suspense>
   );
 }

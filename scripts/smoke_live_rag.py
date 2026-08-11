@@ -189,7 +189,7 @@ def main() -> None:
     parser.add_argument("--max-pages", type=int, default=12)
     parser.add_argument("--max-chunks", type=int, default=40)
     parser.add_argument("--embedding-model", default="text-embedding-3-small")
-    parser.add_argument("--answer-model", default="gpt-4.1-mini")
+    parser.add_argument("--answer-model", default="gpt-4o-mini")
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 

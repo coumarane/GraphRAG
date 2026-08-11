@@ -52,6 +52,7 @@ type ElementReport = {
   detector: string | null;
   parser_name: string | null;
   model_name: string | null;
+  processing_tool: string | null;
   reached_normalized: boolean;
   content_loss_reason: string | null;
   failure_reason: string | null;
@@ -354,7 +355,7 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
                 <dd className="truncate text-xs">{doc.original_filename || "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-muted">Vision LLM</dt>
+                <dt className="text-xs text-muted">Vision strategy</dt>
                 <dd className="text-xs">
                   {doc.vision_strategy || "—"}
                   {doc.vision_llm ? ` · ${doc.vision_llm}` : ""}
@@ -367,6 +368,13 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
               <div>
                 <dt className="text-xs text-muted">Embedding</dt>
                 <dd className="text-xs">{doc.embedding_model || "—"}</dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-xs text-muted">Image handling</dt>
+                <dd className="text-xs text-muted">
+                  Layout parser detects image/chart regions; vision LLM
+                  ({doc.vision_llm || "disabled"}) interprets those pages.
+                </dd>
               </div>
               <div className="sm:col-span-2">
                 <dt className="text-xs text-muted">Run id</dt>
@@ -550,6 +558,10 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
               </button>
             ) : null}
           </div>
+          <p className="text-xs text-muted">
+            Detector = layout source (e.g. Docling). LLM model = vision model when
+            the page was interpreted ({doc?.vision_llm || "none"}).
+          </p>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="min-w-full text-left text-xs">
               <thead className="bg-surface text-muted">
@@ -564,11 +576,13 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
               </thead>
               <tbody>
                 {visibleElements.map((el) => {
+                  const hybrid =
+                    el.detector === "vision" ||
+                    (el.detector || "").includes("+vision") ||
+                    (el.processing_tool || "").includes("vision");
                   const llmModel =
                     el.model_name ||
-                    (el.detector === "vision"
-                      ? doc?.vision_llm || doc?.text_llm || null
-                      : null);
+                    (hybrid ? doc?.vision_llm || doc?.text_llm || null : null);
                   return (
                   <tr key={el.element_report_id} className="border-t border-border">
                     <td className="px-3 py-2 tabular-nums">{el.page_number ?? "—"}</td>
@@ -580,10 +594,7 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
                       {el.detector || el.parser_name || "—"}
                     </td>
                     <td className="px-3 py-2 font-mono">
-                      {llmModel ||
-                        (el.detector === "vision"
-                          ? "—"
-                          : "parser only")}
+                      {llmModel || "layout only"}
                     </td>
                     <td className="px-3 py-2">
                       {el.reached_normalized ? "yes" : "no"}

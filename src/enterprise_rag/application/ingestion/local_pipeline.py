@@ -75,7 +75,7 @@ logger = get_logger(__name__)
 
 
 def resolve_model_label(model: object | None) -> str | None:
-    """Return a human-readable model id (e.g. gpt-4.1), not the Python class name."""
+    """Return a human-readable model id (e.g. gpt-4o-mini), not the Python class name."""
     if model is None:
         return None
     for attr in ("model_name", "_model_name"):
@@ -373,13 +373,21 @@ def _select_vision_pages(raw: RawParserResult, *, max_pages: int = 15) -> list[i
             if 40 <= page.page_number <= 80:
                 score += 40
                 force_priority = max(force_priority, 600)
-        if image_count >= 1 and density < 250:
+        if image_count >= 1:
             score += 90
-            force_priority = max(force_priority, 700)
+            # Always try to spend vision budget on pages where the parser found images.
+            force_priority = max(force_priority, 950)
         if force_priority > 0:
             forced.append((force_priority, page.page_number))
         if score > 0:
             scored.append((score, page.page_number))
+    # Also consider pages that only appear via element stats (no RawPage metrics).
+    known_pages = {page.page_number for page in raw.pages}
+    for page_number, image_count in image_counts.items():
+        if page_number in known_pages or image_count < 1:
+            continue
+        forced.append((950, page_number))
+        scored.append((90, page_number))
     # Higher priority/score first; on ties prefer earlier pages.
     forced.sort(key=lambda item: (-item[0], item[1]))
     scored.sort(key=lambda item: (-item[0], item[1]))
@@ -424,14 +432,19 @@ async def _vision_enrich_pages(
     raw: RawParserResult,
     *,
     max_pages: int = 15,
-) -> list[RawElement]:
+) -> tuple[list[RawElement], list[int]]:
+    """Interpret visual pages with an LLM while keeping parser layout elements.
+
+    Returns ``(extra_elements, enriched_page_numbers)``.
+    """
     if max_pages <= 0:
-        return []
+        return [], []
     pages = _select_vision_pages(raw, max_pages=max_pages)
     if not pages:
-        return []
+        return [], []
     start_order = max((el.reading_order for el in raw.elements), default=-1) + 1
     extras: list[RawElement] = []
+    enriched_pages: list[int] = []
     order = start_order
     for page_number in pages:
         payload: dict[str, object] = {}
@@ -471,6 +484,7 @@ async def _vision_enrich_pages(
                     continue
         if not payload:
             continue
+        enriched_pages.append(page_number)
 
         ocr = str(payload.get("ocr_text") or "").strip()
         summary = str(payload.get("page_summary") or "").strip()
@@ -736,8 +750,39 @@ async def _vision_enrich_pages(
             order += 1
 
     if extras:
-        raw.warnings.append(f"vision_enriched_pages={len(pages)}")
-    return extras
+        raw.warnings.append(f"vision_enriched_pages={len(enriched_pages)}")
+    return extras, enriched_pages
+
+
+_VISUAL_ELEMENT_TYPES = frozenset({"image", "chart", "table", "equation"})
+
+
+def _stamp_hybrid_vision_provenance(
+    audit: ParsingAuditCollector,
+    *,
+    enriched_pages: list[int],
+    vision_model: str | None,
+    layout_parser: str,
+) -> None:
+    """Keep parser-detected visual elements and record the LLM used to interpret them."""
+    if not enriched_pages or not vision_model:
+        return
+    enriched = set(enriched_pages)
+    for report in list(audit._elements):
+        if report.page_number not in enriched:
+            continue
+        if report.detector == "vision":
+            continue
+        element_type = (report.normalized_element_type or "").lower()
+        if element_type not in _VISUAL_ELEMENT_TYPES:
+            continue
+        audit.update_element(
+            report,
+            detector=f"{layout_parser}+vision",
+            processing_tool="parser+vision",
+            model_name=vision_model,
+            parser_name=report.parser_name or layout_parser,
+        )
 
 
 @dataclass
@@ -830,7 +875,7 @@ class ProcessRegisteredDocumentService:
                 file_size_bytes=version.byte_size,
                 config_profile="local_pipeline",
                 ocr_strategy="auto",
-                vision_strategy="page_enrichment" if self.chat_model else "disabled",
+                vision_strategy="parser_layout+llm_vision" if self.chat_model else "disabled",
                 embedding_model=embed_name,
                 text_llm=vision_name,
                 vision_llm=vision_name,
@@ -936,11 +981,15 @@ class ProcessRegisteredDocumentService:
                 )
                 audit.record_routing(
                     RoutingReasonCode.VISION_REQUIRED,
-                    message="Vision enrichment for sparse/visual PDF pages",
+                    message=(
+                        "Hybrid parse: layout/parser detects structure; "
+                        f"{vision_name or 'vision LLM'} interprets image-heavy pages"
+                    ),
                     selected_model=vision_name,
+                    selected_tool=primary,
                 )
-                # Vision enrichment for sparse/visual pages regardless of primary parser.
-                vision_elements = await _vision_enrich_pages(
+                # Docling (or other parser) keeps layout; LLM interprets visual pages.
+                vision_elements, enriched_pages = await _vision_enrich_pages(
                     self.chat_model,
                     data,
                     raw,
@@ -964,6 +1013,12 @@ class ProcessRegisteredDocumentService:
                             model_name=vision_name,
                             status=ElementProcessingStatus.PROCESSED,
                         )
+                _stamp_hybrid_vision_provenance(
+                    audit,
+                    enriched_pages=enriched_pages,
+                    vision_model=vision_name,
+                    layout_parser=primary,
+                )
                 audit.stage_completed(
                     "VISION_ENRICHMENT",
                     status=StageRunStatus.COMPLETED,
@@ -1003,10 +1058,13 @@ class ProcessRegisteredDocumentService:
                         section_path=list(matched.section_path or []),
                         reached_normalized=True,
                         status=ElementProcessingStatus.PROCESSED,
-                        # Keep vision provenance; only stamp normalizer for parser-only rows.
+                        # Keep hybrid/vision provenance; stamp normalizer only for text-only rows.
                         processing_tool=(
                             report.processing_tool
                             if report.detector == "vision"
+                            or (report.detector or "").endswith("+vision")
+                            or (report.processing_tool or "").startswith("parser+vision")
+                            or report.processing_tool == "vision_enrichment"
                             else "normalizer"
                         ),
                         model_name=report.model_name,

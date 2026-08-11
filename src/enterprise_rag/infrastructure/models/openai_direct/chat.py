@@ -96,7 +96,7 @@ class OpenAIChatModel:
     def __init__(
         self,
         *,
-        model_name: str = "gpt-4.1",
+        model_name: str = "gpt-4o-mini",
         api_key: str | None = None,
         temperature: float = 0.0,
         chat_fn: ChatCompleteFn | None = None,

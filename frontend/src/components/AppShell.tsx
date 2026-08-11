@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -77,8 +77,42 @@ function initials(name: string | null | undefined, email: string): string {
   return ((parts[0]?.[0] || "U") + (parts[1]?.[0] || "")).toUpperCase();
 }
 
+function navItemActive(
+  href: string,
+  pathname: string | null,
+  searchParams: URLSearchParams,
+): boolean {
+  if (!pathname) return false;
+  const [base, query = ""] = href.split("?");
+  const required = new URLSearchParams(query);
+
+  if (base === "/") {
+    return pathname === "/";
+  }
+
+  const pathMatches =
+    pathname === base || pathname.startsWith(`${base}/`);
+  if (!pathMatches) return false;
+
+  // Query-scoped items (e.g. Failed Processing) must match their params.
+  if ([...required.keys()].length > 0) {
+    for (const [key, value] of required.entries()) {
+      if (searchParams.get(key) !== value) return false;
+    }
+    return true;
+  }
+
+  // Plain /documents must not stay active when a status filter is applied.
+  if (base === "/documents" && searchParams.get("status")) {
+    return false;
+  }
+
+  return true;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
   const isLogin = pathname === "/login";
@@ -143,11 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon;
-                  const base = item.href.split("?")[0];
-                  const active =
-                    base === "/"
-                      ? pathname === "/"
-                      : pathname === base || pathname.startsWith(`${base}/`);
+                  const active = navItemActive(item.href, pathname, searchParams);
                   return (
                     <Link
                       key={item.href}

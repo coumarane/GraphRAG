@@ -131,12 +131,12 @@ class ModelSettings(BaseModel):
 
     implementation: ModelImplementation = ModelImplementation.LANGCHAIN
     provider: str = "openai"
-    text_model: str = "gpt-4.1"
-    vision_model: str = "gpt-4.1"
-    extraction_model: str = "gpt-4.1"
-    summarization_model: str = "gpt-4.1"
-    query_model: str = "gpt-4.1"
-    answer_model: str = "gpt-4.1"
+    text_model: str = "gpt-4o-mini"
+    vision_model: str = "gpt-4o-mini"
+    extraction_model: str = "gpt-4o-mini"
+    summarization_model: str = "gpt-4o-mini"
+    query_model: str = "gpt-4o-mini"
+    answer_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-large"
     api_key: SecretStr | None = None
     request_timeout_seconds: float = 60.0
@@ -406,7 +406,8 @@ class Settings(BaseSettings):
             init_data["app"].setdefault("environment", env_name)
 
         # Ensure flat .env keys are visible even when the shell did not export them.
-        # pydantic-settings loads `_env_file` later; OpenAI mapping needs os.environ now.
+        # Model ids from .env always win so local cost switches (e.g. gpt-4o-mini)
+        # are not blocked by a stale exported shell value.
         if env_file:
             env_path = Path(env_file)
             if env_path.is_file():
@@ -417,7 +418,9 @@ class Settings(BaseSettings):
                     key, value = line.split("=", 1)
                     key = key.strip()
                     value = value.strip().strip("'").strip('"')
-                    os.environ.setdefault(key, value)
+                    model_key = key.startswith("OPENAI_") and key.endswith("_MODEL")
+                    if model_key or key not in os.environ:
+                        os.environ[key] = value
 
         # Map conventional OpenAI env vars into models.* when present.
         openai_key = os.environ.get("OPENAI_API_KEY")
