@@ -159,3 +159,40 @@ async def test_followup_with_named_entity_does_not_ask_which_entity() -> None:
     assert AWAITING_ENTITY_CLARIFICATION not in outcome.response.warnings
     assert "which entity are you referring to" not in outcome.response.answer.casefold()
     assert "Who?" not in outcome.response.answer
+
+
+@pytest.mark.asyncio
+async def test_followup_without_client_pin_still_skips_clarify() -> None:
+    """UI may show SY-KNP label while sending empty document_ids."""
+    tenant = TenantContext(tenant_id=new_id())
+    doc_id = uuid4()
+    service = _service({doc_id: "【Presentation】 SY-KNP.pdf"})
+    await service._retrieve._vectors.ensure_collection(vector_size=2)  # type: ignore[attr-defined]
+
+    outcome = await service.query(
+        tenant,
+        QueryRequest(
+            question=(
+                "On the contract-farming map for A. capillaris / SY-KNP: "
+                "how many farmer locations are shown as pins in Japan, "
+                "and does that match the text about contracted farmers?"
+            ),
+            mode=RetrievalMode.NAIVE,
+            filters=RetrievalFilters(document_ids=[]),
+            conversation_history=[
+                {"role": "user", "content": "Who manufactures SY-KNP?"},
+                {
+                    "role": "assistant",
+                    "content": (
+                        "For SY-KNP: evidence does not directly name a manufacturer."
+                    ),
+                },
+            ],
+            rerank=False,
+        ),
+    )
+    assert AWAITING_ENTITY_CLARIFICATION not in outcome.response.warnings
+    assert "which entity are you referring to" not in outcome.response.answer.casefold()
+    ctx = outcome.response.active_conversation_context
+    assert ctx is not None
+    assert str(doc_id) in {str(item) for item in (ctx.get("document_ids") or [])}

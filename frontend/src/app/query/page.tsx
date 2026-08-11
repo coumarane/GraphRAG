@@ -585,6 +585,25 @@ function ChatWorkspace() {
             ),
           ];
         }
+        // Keep prior pin when backend returns label-only (empty ids) for same topic.
+        if (
+          docIds.length === 0 &&
+          activeThread.conversationContext?.documentIds?.length
+        ) {
+          const priorLabel = (
+            activeThread.conversationContext.label || ""
+          ).toLowerCase();
+          const nextLabel = rawCtx.label.toLowerCase();
+          if (
+            !priorLabel ||
+            !nextLabel ||
+            priorLabel === nextLabel ||
+            priorLabel.includes(nextLabel) ||
+            nextLabel.includes(priorLabel)
+          ) {
+            docIds = [...activeThread.conversationContext.documentIds];
+          }
+        }
         nextContext = {
           label: rawCtx.label,
           documentIds: docIds,
@@ -594,6 +613,40 @@ function ChatWorkspace() {
         };
       } else if (uniqueWarnings.includes("context_switch_detected")) {
         nextContext = null;
+      } else if (
+        Array.isArray(body.citations) &&
+        body.citations.length &&
+        !nextContext?.documentIds?.length
+      ) {
+        // First answer with sources but missing active_conversation_context ids.
+        const docIds = [
+          ...new Set(
+            body.citations
+              .map((item: ChatCitation) =>
+                item?.document_id ? String(item.document_id) : "",
+              )
+              .filter(Boolean),
+          ),
+        ];
+        if (docIds.length) {
+          const label =
+            (typeof rawCtx === "object" &&
+            rawCtx &&
+            typeof rawCtx.label === "string"
+              ? rawCtx.label
+              : null) ||
+            body.citations.find(
+              (item: ChatCitation) => item?.document_name,
+            )?.document_name ||
+            "active document";
+          nextContext = {
+            label: String(label),
+            documentIds: docIds,
+            entities: Array.isArray(rawCtx?.entities)
+              ? rawCtx.entities.map(String)
+              : [],
+          };
+        }
       }
       const assistantMessage = createMessage("assistant", unwrapped.answer, {
         citations: Array.isArray(body.citations)

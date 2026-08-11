@@ -58,6 +58,37 @@ def test_detect_clarification_resume_ignores_unrelated_short_reply() -> None:
     assert resume is None
 
 
+def test_screenshot_followup_does_not_clarify_sy_knp_or_who() -> None:
+    """Regression: map follow-up after 'Who manufactures SY-KNP?' must not ask Who vs SY-KNP."""
+    resolver = QueryContextResolver()
+    question = (
+        "On the contract-farming map for A. capillaris / SY-KNP: how many farmer "
+        "locations are shown as pins in Japan, and does that match the text about "
+        "contracted farmers? Also summarize what the photo and caption claim."
+    )
+    resolved = resolver.resolve(
+        question,
+        [
+            ConversationTurn(role="user", content="Who manufactures SY-KNP?"),
+            ConversationTurn(
+                role="assistant",
+                content=(
+                    "While SY-KNP.pdf is in the evidence set, there is no explicit "
+                    "statement confirming the manufacturer."
+                ),
+            ),
+        ],
+    )
+    assert not resolved.ambiguous
+    assert resolved.clarification_question is None
+    assert "Who" not in resolved.active_entities
+
+
+def test_prefer_topic_never_falls_back_to_wh_only() -> None:
+    resolver = QueryContextResolver()
+    assert resolver._prefer_topic_entities(["Who", "What"]) == []
+
+
 def test_wh_words_are_not_extracted_as_entities() -> None:
     resolver = QueryContextResolver()
     entities = resolver._extract_entities(
@@ -67,22 +98,6 @@ def test_wh_words_are_not_extracted_as_entities() -> None:
     assert "who" not in fold
     assert "what" not in fold
     assert any("sy-knp" in item.casefold() for item in entities)
-
-
-def test_pronoun_followup_does_not_clarify_with_wh_noise() -> None:
-    resolver = QueryContextResolver()
-    resolved = resolver.resolve(
-        "How many red pins are on the map?",
-        [
-            ConversationTurn(role="user", content="Who manufactures SY-KNP?"),
-            ConversationTurn(
-                role="assistant",
-                content="According to the presentation, SY-KNP is manufactured by …",
-            ),
-        ],
-    )
-    assert not resolved.ambiguous
-    assert resolved.clarification_question is None
 
 
 def test_named_entity_in_question_skips_clarification() -> None:

@@ -145,7 +145,7 @@ class QueryContextResolver:
                     prior_entities.append(entity)
         prior_entities = self._prefer_topic_entities(prior_entities)
 
-        current_entities = self._extract_entities(question)
+        current_entities = self._prefer_topic_entities(self._extract_entities(question))
         switch = self._is_context_switch(question, prior_entities, current_entities)
         has_pronoun = bool(_PRONOUN_RE.search(question))
         ambiguous = False
@@ -200,14 +200,39 @@ class QueryContextResolver:
                 )
             elif len(prior_entities) >= 2 and has_pronoun:
                 # Question already names one prior entity → no need to clarify.
+                # Require word-ish boundaries so "Who" cannot match inside "how".
                 named = [
                     entity
                     for entity in prior_entities
-                    if entity.casefold() in question.casefold()
+                    if entity.casefold() not in _WH_ENTITY
+                    and re.search(
+                        rf"(?i)(?<![A-Za-z0-9]){re.escape(entity)}(?![A-Za-z0-9])",
+                        question,
+                    )
                 ]
                 if len(named) == 1:
                     active = named[:1]
                     resolved = self._rewrite_with_entity(question, active[0])
+                elif current_entities:
+                    # Prefer an explicit product mention in the current question.
+                    overlap = [
+                        entity
+                        for entity in current_entities
+                        if entity.casefold() not in _WH_ENTITY
+                    ]
+                    if len(overlap) == 1:
+                        active = overlap[:1]
+                        resolved = self._rewrite_with_entity(question, active[0])
+                    else:
+                        ambiguous = True
+                        active = prior_entities[:2]
+                        clarification = (
+                            "Which entity are you referring to: "
+                            + " or ".join(active)
+                            + "?"
+                        )
+                        warnings.append("ambiguous_pronoun_reference")
+                        resolved = question
                 else:
                     ambiguous = True
                     active = prior_entities[:2]
@@ -312,14 +337,14 @@ class QueryContextResolver:
         entities: list[str] = []
 
         def _add(candidate: str) -> None:
-            cleaned = candidate.strip().rstrip(".")
+            cleaned = candidate.strip().rstrip("?.!,;:")
             cleaned = re.sub(r"(?i)^(about|for|regarding)\s+", "", cleaned).strip()
             if not cleaned:
                 return
             parts = cleaned.split()
-            while parts and parts[0] in _STOP_ENTITY:
+            while parts and parts[0].rstrip("?.!,;:") in _STOP_ENTITY:
                 parts = parts[1:]
-            cleaned = " ".join(parts).strip()
+            cleaned = " ".join(parts).strip().rstrip("?.!,;:")
             if len(cleaned) < 2:
                 return
             if cleaned in _FIELD_LABEL_ENTITY or cleaned.casefold() in {
@@ -361,7 +386,8 @@ class QueryContextResolver:
             and entity.casefold() not in _WH_ENTITY
             and not (entity.isupper() and len(entity) <= 5 and " " not in entity)
         ]
-        ranked = filtered or list(entities)
+        # Never fall back to Wh-/field-label-only lists — empty is safer than "Who".
+        ranked = list(filtered)
 
         def _score(entity: str) -> tuple[int, int, int]:
             has_digit = any(ch.isdigit() for ch in entity)

@@ -187,7 +187,10 @@ class QueryDocumentsService:
                 )
                 verdict.extend_warnings(["document_scope_inferred_before_clarify"])
 
-        context = self._resolve_context(working)
+        context = self._resolve_context(
+            working,
+            known_entities=early_entities or None,
+        )
         if context.ambiguous and context.clarification_question:
             pinned_for_clarify = list(working.filters.document_ids)
             # Single pinned document already defines scope — don't derail the Q.
@@ -197,9 +200,12 @@ class QueryDocumentsService:
                 preferred = [
                     entity
                     for entity in context.active_entities
-                    if entity.casefold() in title_norm
-                    or title_norm in entity.casefold()
-                    or entity.casefold() in title.casefold()
+                    if entity.casefold() not in {"who", "what", "when", "where", "why", "how"}
+                    and (
+                        entity.casefold() in title_norm
+                        or title_norm in entity.casefold()
+                        or entity.casefold() in title.casefold()
+                    )
                 ]
                 chosen = preferred[0] if preferred else (
                     normalize_title(title) if title else None
@@ -207,7 +213,10 @@ class QueryDocumentsService:
                 if chosen:
                     bound = bind_entity_to_question(working.question, chosen)
                     working = working.model_copy(update={"question": bound})
-                    context = self._resolve_context(working)
+                    context = self._resolve_context(
+                        working,
+                        known_entities=[chosen],
+                    )
                     verdict.extend_warnings(["ambiguous_reference_resolved_by_document_pin"])
                 else:
                     context = context.model_copy(
@@ -217,6 +226,17 @@ class QueryDocumentsService:
                         }
                     )
                     verdict.extend_warnings(["ambiguous_reference_skipped_document_pin"])
+            elif early_entities:
+                # Active conversation already has one product entity — keep it.
+                unique = list(dict.fromkeys(early_entities))
+                if len(unique) == 1:
+                    bound = bind_entity_to_question(working.question, unique[0])
+                    working = working.model_copy(update={"question": bound})
+                    context = self._resolve_context(
+                        working,
+                        known_entities=unique,
+                    )
+                    verdict.extend_warnings(["ambiguous_reference_resolved_by_active_entity"])
 
         if context.ambiguous and context.clarification_question:
             verdict.extend_warnings(
@@ -492,10 +512,19 @@ class QueryDocumentsService:
             entities=list(entities[:3]),
         )
 
-    def _resolve_context(self, request: QueryRequest) -> ResolvedQueryContext:
+    def _resolve_context(
+        self,
+        request: QueryRequest,
+        *,
+        known_entities: list[str] | None = None,
+    ) -> ResolvedQueryContext:
         history = [
             ConversationTurn(role=str(item.get("role", "user")), content=str(item["content"]))
             for item in request.conversation_history
             if item.get("content")
         ]
-        return self._context_resolver.resolve(request.question, history)
+        return self._context_resolver.resolve(
+            request.question,
+            history,
+            known_entities=known_entities,
+        )
