@@ -9,8 +9,9 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { AtSign, Paperclip, Plus, Send, Sparkles } from "lucide-react";
+import { AtSign, Paperclip, Send, Sparkles } from "lucide-react";
 import { readTenantKey } from "@/components/AppShell";
+import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
 import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,14 +19,19 @@ import { readCachedSession } from "@/lib/auth";
 import {
   createEmptyThread,
   createMessage,
+  createProject,
   isScopeExpandAffirmative,
+  loadChatProjects,
   loadChatThreads,
+  saveChatProjects,
   saveChatThreads,
   titleFromQuestion,
+  upsertProject,
   upsertThread,
   type ChatCitation,
   type ChatGraphPath,
   type ChatMessage,
+  type ChatProject,
   type ChatThread,
 } from "@/lib/chatHistory";
 
@@ -504,7 +510,9 @@ function ChatWorkspace() {
   const searchParams = useSearchParams();
   const [tenantKey, setTenantKey] = useState("demo");
   const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [projects, setProjects] = useState<ChatProject[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -544,6 +552,7 @@ function ChatWorkspace() {
 
   useEffect(() => {
     const loaded = loadChatThreads(tenantKey);
+    setProjects(loadChatProjects(tenantKey));
     if (loaded.length) {
       setThreads(loaded);
       setActiveId(loaded[0].id);
@@ -552,6 +561,7 @@ function ChatWorkspace() {
       setThreads([fresh]);
       setActiveId(fresh.id);
     }
+    setSelectedProjectId(null);
     setHydrated(true);
   }, [tenantKey]);
 
@@ -576,6 +586,11 @@ function ChatWorkspace() {
   }, [threads, tenantKey, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    saveChatProjects(tenantKey, projects);
+  }, [projects, tenantKey, hydrated]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeThread?.messages.length, busy]);
 
@@ -583,6 +598,7 @@ function ChatWorkspace() {
     const fresh = createEmptyThread({
       mode: activeThread?.mode ?? "auto",
       documentId: activeThread?.documentId ?? "",
+      projectId: selectedProjectId,
     });
     setThreads((prev) => upsertThread(prev, fresh));
     setActiveId(fresh.id);
@@ -597,13 +613,31 @@ function ChatWorkspace() {
     setThreads((prev) => {
       const remaining = prev.filter((thread) => thread.id !== threadId);
       if (!remaining.length) {
-        const fresh = createEmptyThread();
+        const fresh = createEmptyThread({ projectId: selectedProjectId });
         setActiveId(fresh.id);
         return [fresh];
       }
       if (activeId === threadId) setActiveId(remaining[0].id);
       return remaining;
     });
+  }
+
+  function patchThread(threadId: string, patch: Partial<ChatThread>) {
+    setThreads((prev) => {
+      const current = prev.find((thread) => thread.id === threadId);
+      if (!current) return prev;
+      return upsertThread(prev, {
+        ...current,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      });
+    });
+  }
+
+  function handleCreateProject(name: string): string {
+    const project = createProject(name);
+    setProjects((prev) => upsertProject(prev, project));
+    return project.id;
   }
 
   function updateActive(patch: Partial<ChatThread>) {
@@ -882,46 +916,52 @@ function ChatWorkspace() {
     : "Workspace";
 
   return (
-    <div className="-mx-6 -my-6 grid h-[calc(100vh-3.5rem)] min-h-[28rem] overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside className="flex min-h-0 flex-col border-r border-border bg-sidebar">
-        <div className="border-b border-border p-3">
-          <Button type="button" onClick={startNewChat} className="w-full" size="sm">
-            <Plus className="h-4 w-4" />
-            New chat
-          </Button>
-        </div>
-        <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {threads.map((thread) => {
-            const active = thread.id === activeThread.id;
-            return (
-              <li key={thread.id} className="group relative">
-                <button
-                  type="button"
-                  onClick={() => setActiveId(thread.id)}
-                  className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                    active
-                      ? "bg-accent-soft text-foreground"
-                      : "text-muted hover:bg-surface hover:text-foreground"
-                  }`}
-                >
-                  <span className="line-clamp-2 pr-6">{thread.title}</span>
-                  <span className="mt-1 block font-mono text-[10px] text-muted">
-                    {thread.messages.length} msg
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Delete chat"
-                  onClick={() => deleteChat(thread.id)}
-                  className="absolute top-2 right-2 hidden rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-danger/10 hover:text-danger group-hover:inline-flex"
-                >
-                  ×
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </aside>
+    <div className="-mx-6 -my-6 grid h-[calc(100vh-3.5rem)] min-h-[28rem] overflow-hidden lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <ChatHistorySidebar
+        threads={threads}
+        projects={projects}
+        activeId={activeThread.id}
+        selectedProjectId={selectedProjectId}
+        onSelectThread={setActiveId}
+        onSelectProject={setSelectedProjectId}
+        onNewChat={startNewChat}
+        onRenameThread={(threadId, title) => patchThread(threadId, { title })}
+        onTogglePinThread={(threadId) => {
+          const thread = threads.find((item) => item.id === threadId);
+          if (!thread) return;
+          patchThread(threadId, { pinned: !thread.pinned });
+        }}
+        onArchiveThread={(threadId) =>
+          patchThread(threadId, { archived: true, pinned: false })
+        }
+        onDeleteThread={deleteChat}
+        onMoveThread={(threadId, projectId) =>
+          patchThread(threadId, { projectId })
+        }
+        onTogglePinProject={(projectId) => {
+          setProjects((prev) => {
+            const project = prev.find((item) => item.id === projectId);
+            if (!project) return prev;
+            return upsertProject(prev, {
+              ...project,
+              pinned: !project.pinned,
+              updatedAt: new Date().toISOString(),
+            });
+          });
+        }}
+        onCreateProject={handleCreateProject}
+        onRenameProject={(projectId, name) => {
+          setProjects((prev) => {
+            const project = prev.find((item) => item.id === projectId);
+            if (!project) return prev;
+            return upsertProject(prev, {
+              ...project,
+              name,
+              updatedAt: new Date().toISOString(),
+            });
+          });
+        }}
+      />
 
       <section className="flex min-h-0 min-w-0 flex-col bg-background">
         <div className="shrink-0 border-b border-border px-4 py-2.5">

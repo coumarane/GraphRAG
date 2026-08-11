@@ -37,6 +37,14 @@ export type ConversationContext = {
   entities?: string[];
 };
 
+export type ChatProject = {
+  id: string;
+  name: string;
+  pinned?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ChatThread = {
   id: string;
   title: string;
@@ -49,12 +57,20 @@ export type ChatThread = {
   pendingExpandQuestion?: string | null;
   /** Sticky context established by the first Q/A (not a manual UUID filter). */
   conversationContext?: ConversationContext | null;
+  pinned?: boolean;
+  archived?: boolean;
+  projectId?: string | null;
 };
 
 const STORAGE_PREFIX = "enterprise-rag-chats:";
+const PROJECTS_PREFIX = "enterprise-rag-chat-projects:";
 
 function storageKey(tenantKey: string): string {
   return `${STORAGE_PREFIX}${tenantKey || "demo"}`;
+}
+
+function projectsKey(tenantKey: string): string {
+  return `${PROJECTS_PREFIX}${tenantKey || "demo"}`;
 }
 
 function newId(): string {
@@ -65,12 +81,14 @@ function newId(): string {
 }
 
 export function createEmptyThread(
-  overrides?: Partial<Pick<ChatThread, "mode" | "documentId">>,
+  overrides?: Partial<
+    Pick<ChatThread, "mode" | "documentId" | "projectId" | "title">
+  >,
 ): ChatThread {
   const now = new Date().toISOString();
   return {
     id: newId(),
-    title: "New chat",
+    title: overrides?.title ?? "New chat",
     documentId: overrides?.documentId ?? "",
     mode: overrides?.mode ?? "auto",
     createdAt: now,
@@ -78,6 +96,20 @@ export function createEmptyThread(
     messages: [],
     pendingExpandQuestion: null,
     conversationContext: null,
+    pinned: false,
+    archived: false,
+    projectId: overrides?.projectId ?? null,
+  };
+}
+
+export function createProject(name: string): ChatProject {
+  const now = new Date().toISOString();
+  return {
+    id: newId(),
+    name: name.trim() || "Untitled project",
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -85,6 +117,15 @@ export function isScopeExpandAffirmative(text: string): boolean {
   return /^(yes|y|yeah|yep|sure|ok|okay|please do|go ahead|search(?:\s+all)?|expand|broader|all documents)\.?$/i.test(
     text.trim(),
   );
+}
+
+function normalizeThread(thread: ChatThread): ChatThread {
+  return {
+    ...thread,
+    pinned: Boolean(thread.pinned),
+    archived: Boolean(thread.archived),
+    projectId: thread.projectId ?? null,
+  };
 }
 
 export function loadChatThreads(tenantKey: string): ChatThread[] {
@@ -96,6 +137,7 @@ export function loadChatThreads(tenantKey: string): ChatThread[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((thread) => thread && typeof thread.id === "string")
+      .map(normalizeThread)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch {
     return [];
@@ -107,12 +149,45 @@ export function saveChatThreads(tenantKey: string, threads: ChatThread[]): void 
   window.localStorage.setItem(storageKey(tenantKey), JSON.stringify(threads));
 }
 
+export function loadChatProjects(tenantKey: string): ChatProject[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(projectsKey(tenantKey));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatProject[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((project) => project && typeof project.id === "string")
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  } catch {
+    return [];
+  }
+}
+
+export function saveChatProjects(
+  tenantKey: string,
+  projects: ChatProject[],
+): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(projectsKey(tenantKey), JSON.stringify(projects));
+}
+
 export function upsertThread(
   threads: ChatThread[],
   thread: ChatThread,
 ): ChatThread[] {
   const others = threads.filter((item) => item.id !== thread.id);
-  return [thread, ...others].sort((a, b) =>
+  return [normalizeThread(thread), ...others].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+}
+
+export function upsertProject(
+  projects: ChatProject[],
+  project: ChatProject,
+): ChatProject[] {
+  const others = projects.filter((item) => item.id !== project.id);
+  return [project, ...others].sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
 }
@@ -129,8 +204,6 @@ export function buildConversationalQuestion(
 ): string {
   const prior = history.slice(-4);
   if (!prior.length) return latestQuestion;
-  // Keep prior USER turns for pronoun resolution; truncate assistant text hard so
-  // earlier product lines (e.g. METASHINE) do not dominate retrieval embeddings.
   const transcript = prior
     .map((message) => {
       const role = message.role === "user" ? "User" : "Assistant";
