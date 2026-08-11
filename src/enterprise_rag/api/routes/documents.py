@@ -88,6 +88,7 @@ async def ingest_document(
                 local_path=local_path,
                 source_url=source_url,
                 title=title or (file.filename if file else None),
+                source_filename=file.filename if file and file.filename else None,
                 document_type=document_type,
                 tags=tag_list,
                 security_labels=label_list,

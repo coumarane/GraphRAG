@@ -92,10 +92,22 @@ class DocumentRepository(Protocol):
     async def get_version_by_content_hash(
         self,
         tenant: TenantContext,
-        document_id: UUID,
+        document_id: UUID | None,
         content_hash: str,
     ) -> DocumentVersionRecord | None:
-        """Find a duplicate version by content hash."""
+        """Find a version by content hash.
+
+        When ``document_id`` is set, search is limited to that document.
+        When ``document_id`` is ``None``, search is tenant-wide.
+        """
+        ...
+
+    async def lock_for_content_hash(
+        self,
+        tenant: TenantContext,
+        content_hash: str,
+    ) -> None:
+        """Acquire a transaction-scoped lock for duplicate detection."""
         ...
 
 

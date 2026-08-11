@@ -118,16 +118,24 @@ class InMemoryDocumentRepository:
     async def get_version_by_content_hash(
         self,
         tenant: TenantContext,
-        document_id: UUID,
+        document_id: UUID | None,
         content_hash: str,
     ) -> DocumentVersionRecord | None:
         for version in self.versions.values():
-            if (
-                version.tenant_id == tenant.tenant_id
-                and version.document_id == document_id
-                and version.content_hash == content_hash
-            ):
-                return version
+            if version.tenant_id != tenant.tenant_id:
+                continue
+            if version.content_hash != content_hash:
+                continue
+            if document_id is not None and version.document_id != document_id:
+                continue
+            return version
+        return None
+
+    async def lock_for_content_hash(
+        self,
+        tenant: TenantContext,
+        content_hash: str,
+    ) -> None:
         return None
 
     @staticmethod

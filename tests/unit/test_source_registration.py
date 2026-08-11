@@ -19,6 +19,7 @@ from enterprise_rag.infrastructure.persistence.postgres.repositories import (
     SqlAlchemyIngestionRepository,
     SqlAlchemyTenantRepository,
 )
+from enterprise_rag.shared.exceptions import ConflictError
 
 
 class InMemoryObjectStore:
@@ -116,10 +117,24 @@ async def test_register_source_stores_original(session: AsyncSession, tmp_path: 
     assert result.original_object_key in store.objects
     assert result.duplicate_version is False
 
-    # Second registration with same bytes should detect duplicate version.
-    again = await service.execute(
+    # Second registration with same bytes is rejected (tenant-wide).
+    with pytest.raises(ConflictError) as exc_info:
+        await service.execute(
+            tenant,
+            RegisterSourceRequest(local_path=str(path)),
+        )
+    assert exc_info.value.details["document_id"] == str(result.document_id)
+    assert exc_info.value.details["version_id"] == str(result.version_id)
+
+    # force_new_version allows re-registering identical content.
+    forced = await service.execute(
         tenant,
-        RegisterSourceRequest(local_path=str(path), document_id=result.document_id),
+        RegisterSourceRequest(
+            local_path=str(path),
+            document_id=result.document_id,
+            force_new_version=True,
+        ),
     )
-    assert again.duplicate_version is True
-    assert again.version_id == result.version_id
+    assert forced.duplicate_version is False
+    assert forced.version_id != result.version_id
+    assert forced.document_id == result.document_id
