@@ -66,7 +66,7 @@ def _resolve_models(
         return embedding_model, chat_model
 
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    embed_name = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
+    embed_name = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     answer_name = os.environ.get("OPENAI_ANSWER_MODEL", "gpt-4o-mini")
     if not api_key:
         try:

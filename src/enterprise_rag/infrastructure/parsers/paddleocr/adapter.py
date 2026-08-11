@@ -21,7 +21,11 @@ PaddleOCRConvertFn = Callable[[bytes, str, ParseOptions], dict[str, Any]]
 
 
 class PaddleOCRParser:
-    """PaddleOCR adapter for scanned PDFs and images."""
+    """PaddleOCR adapter for scanned PDFs and images.
+
+    After OCR layout/text extraction, the local ingest pipeline can still run
+    hybrid GPT vision enrichment on image-heavy pages (``paddleocr+vision``).
+    """
 
     name = ParserName.PADDLEOCR.value
 
@@ -32,12 +36,14 @@ class PaddleOCRParser:
     ) -> None:
         self._inspector = inspector or PdfiumInspector()
         self._convert_fn = convert_fn or paddleocr_convert
+        self._uses_default_convert = convert_fn is None
 
     async def inspect(self, source: ParseSource) -> ParserInspection:
         return await self._inspector.inspect(source)
 
     async def parse(self, source: ParseSource, options: ParseOptions) -> RawParserResult:
-        require_optional_dependency("paddleocr", extra_name="parsers-ocr")
+        if self._uses_default_convert:
+            require_optional_dependency("paddleocr", extra_name="parsers-ocr")
         data = source.require_bytes()
         payload = await run_parser_sync(
             lambda: self._convert_fn(data, source.filename, options)

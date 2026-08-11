@@ -43,7 +43,7 @@ models:
   summarization_model: gpt-4o-mini
   query_model: gpt-4o-mini
   answer_model: gpt-4o-mini
-  embedding_model: text-embedding-3-large
+  embedding_model: text-embedding-3-small
   request_timeout_seconds: 60
   max_retries: 3
 

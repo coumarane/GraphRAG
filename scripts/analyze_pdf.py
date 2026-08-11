@@ -196,20 +196,22 @@ def _analyze_pdfium_rich(data: bytes) -> dict[str, Any]:
 
 def _parser_available(name: str) -> bool:
     module_map = {
-        "docling": "docling",
-        "mineru": "magic_pdf",
-        "marker": "marker",
-        "paddleocr": "paddleocr",
-        "pdfium": "pypdfium2",
+        "docling": ("docling",),
+        "mineru": ("mineru", "magic_pdf"),
+        "marker": ("marker",),
+        "paddleocr": ("paddleocr",),
+        "pdfium": ("pypdfium2",),
     }
-    module = module_map.get(name)
-    if not module:
+    modules = module_map.get(name)
+    if not modules:
         return False
-    try:
-        __import__(module)
-        return True
-    except Exception:
-        return False
+    for module in modules:
+        try:
+            __import__(module)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 async def _try_parser_compare(path: Path, data: bytes) -> dict[str, Any]:

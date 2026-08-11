@@ -15,7 +15,11 @@ from enterprise_rag.shared.exceptions import ValidationError
 
 
 class PdfiumParser:
-    """Reliable text extraction fallback when heavier parsers are unavailable."""
+    """Reliable text extraction fallback when heavier parsers are unavailable.
+
+    After layout/text extraction, the local ingest pipeline can still run hybrid
+    GPT vision enrichment on image-heavy pages (``pdfium+vision``).
+    """
 
     name = ParserName.PDFIUM.value
 

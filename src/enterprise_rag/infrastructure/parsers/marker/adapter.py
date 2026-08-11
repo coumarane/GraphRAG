@@ -12,23 +12,20 @@ from enterprise_rag.domain.parsing.types import (
     ParseSource,
     RawParserResult,
 )
-from enterprise_rag.infrastructure.parsers.base import require_optional_dependency, run_parser_sync
+from enterprise_rag.infrastructure.parsers.base import run_parser_sync
 from enterprise_rag.infrastructure.parsers.convert import dict_to_raw_result
+from enterprise_rag.infrastructure.parsers.marker.convert import marker_convert
 from enterprise_rag.infrastructure.parsers.pdfium.inspector import PdfiumInspector
 
 MarkerConvertFn = Callable[[bytes, str], dict[str, Any]]
 
 
-def _default_marker_convert(data: bytes, filename: str) -> dict[str, Any]:
-    require_optional_dependency("marker", extra_name="parsers-full")
-    raise NotImplementedError(
-        "Marker SDK conversion requires a pinned marker integration; "
-        "inject convert_fn for runtime use"
-    )
-
-
 class MarkerParser:
-    """Marker adapter used as PDF structured-text fallback."""
+    """Marker adapter used as PDF structured-text fallback.
+
+    After layout extraction, the local ingest pipeline can still run hybrid
+    GPT vision enrichment on image-heavy pages (``marker+vision``).
+    """
 
     name = ParserName.MARKER.value
 
@@ -38,7 +35,7 @@ class MarkerParser:
         convert_fn: MarkerConvertFn | None = None,
     ) -> None:
         self._inspector = inspector or PdfiumInspector()
-        self._convert_fn = convert_fn or _default_marker_convert
+        self._convert_fn = convert_fn or marker_convert
 
     async def inspect(self, source: ParseSource) -> ParserInspection:
         return await self._inspector.inspect(source)

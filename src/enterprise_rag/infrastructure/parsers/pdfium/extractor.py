@@ -89,6 +89,21 @@ def extract_pdf_raw(data: bytes, *, filename: str, max_pages: int) -> RawParserR
                     is_scanned=len(text) < 40,
                 )
             )
+            if coverage >= 0.5:
+                # Sparse/native-image pages: emit an image marker for hybrid vision.
+                elements.append(
+                    RawElement(
+                        element_type=ElementType.IMAGE,
+                        page_start=page_number,
+                        page_end=page_number,
+                        reading_order=order,
+                        section_path=[f"Page {page_number}"],
+                        raw_content=None,
+                        normalized_content=None,
+                        metadata={"source": "pdfium_sparse_page"},
+                    )
+                )
+                order += 1
             if not text:
                 continue
             page_facets = extract_condition_facets(text)

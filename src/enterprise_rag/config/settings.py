@@ -137,7 +137,7 @@ class ModelSettings(BaseModel):
     summarization_model: str = "gpt-4o-mini"
     query_model: str = "gpt-4o-mini"
     answer_model: str = "gpt-4o-mini"
-    embedding_model: str = "text-embedding-3-large"
+    embedding_model: str = "text-embedding-3-small"
     api_key: SecretStr | None = None
     request_timeout_seconds: float = 60.0
     max_retries: int = 3

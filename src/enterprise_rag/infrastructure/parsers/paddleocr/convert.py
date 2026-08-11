@@ -120,6 +120,21 @@ def paddleocr_convert(data: bytes, filename: str, options: ParseOptions) -> dict
                 ),
             }
         )
+        # Mark the page as visual so hybrid vision can prioritize + stamp it.
+        elements.append(
+            {
+                "type": "image",
+                "page": page_number,
+                "reading_order": order,
+                "text": "",
+                "section_path": [f"Page {page_number}"],
+                "metadata": {
+                    "source": "paddleocr_page_image",
+                    "ocr_line_count": len(lines),
+                },
+            }
+        )
+        order += 1
 
     if not elements:
         raise ParserError(
@@ -139,6 +154,8 @@ def paddleocr_convert(data: bytes, filename: str, options: ParseOptions) -> dict
                     el["text"]
                     for el in elements
                     if el["page"] == page["page_number"]
+                    and el.get("type") != "image"
+                    and el.get("text")
                 )[:4000]
                 for page in pages
             },
