@@ -13,6 +13,12 @@ export type ChatCitation = {
   modality?: string;
 };
 
+export type ChatGraphPath = {
+  nodes?: string[];
+  relationships?: string[];
+  supporting_citations?: string[];
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -22,6 +28,7 @@ export type ChatMessage = {
   warnings?: string[];
   retrieval_mode?: string;
   retrieval_trace_id?: string;
+  graph_paths?: ChatGraphPath[];
 };
 
 export type ConversationContext = {

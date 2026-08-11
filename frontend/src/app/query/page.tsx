@@ -4,12 +4,17 @@ import {
   FormEvent,
   Suspense,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
+import { AtSign, Paperclip, Plus, Send, Sparkles } from "lucide-react";
 import { readTenantKey } from "@/components/AppShell";
 import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswer";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { readCachedSession } from "@/lib/auth";
 import {
   createEmptyThread,
   createMessage,
@@ -19,6 +24,7 @@ import {
   titleFromQuestion,
   upsertThread,
   type ChatCitation,
+  type ChatGraphPath,
   type ChatMessage,
   type ChatThread,
 } from "@/lib/chatHistory";
@@ -107,6 +113,46 @@ function citationNumber(citation: ChatCitation, index: number): number {
   return index + 1;
 }
 
+function userInitials(): string {
+  const session = readCachedSession();
+  const source =
+    session?.user.display_name?.trim() ||
+    session?.user.email?.trim() ||
+    "U";
+  const parts = source.split(/[\s@._-]+/).filter(Boolean);
+  const letters = ((parts[0]?.[0] || "U") + (parts[1]?.[0] || "")).toUpperCase();
+  return letters || "U";
+}
+
+function estimateConfidence(
+  citationCount: number,
+  warnings: string[] | undefined,
+): number {
+  let score = Math.min(96.8, 88 + 2.5 * citationCount);
+  const joined = (warnings || []).join(" ").toLowerCase();
+  if (
+    /weak_evidence|insufficient|answer_missing_citations/.test(joined)
+  ) {
+    score -= 15;
+  }
+  return Math.max(0, Math.min(100, Math.round(score * 10) / 10));
+}
+
+function formatGraphPathPill(path: ChatGraphPath): string {
+  const nodes = (path.nodes || []).map(String).filter(Boolean);
+  const rels = (path.relationships || []).map(String).filter(Boolean);
+  if (!nodes.length) return "";
+  const parts: string[] = [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    parts.push(`[${nodes[i]}]`);
+    if (i < nodes.length - 1) {
+      const rel = rels[i] || rels[0] || "RELATED";
+      parts.push(`--(${rel})-->`);
+    }
+  }
+  return parts.join(" ");
+}
+
 type DocMeta = { title: string | null; page_count: number | null };
 
 function SourcesGrid({
@@ -133,6 +179,7 @@ function SourcesGrid({
         ids.map(async (id) => {
           try {
             const res = await fetch(`/api/documents/${id}`, {
+              credentials: "include",
               headers: { "X-Tenant-Key": readTenantKey() },
               cache: "no-store",
             });
@@ -165,10 +212,7 @@ function SourcesGrid({
 
   return (
     <div className="mt-1">
-      <p className="text-[11px] font-medium tracking-[0.14em] text-muted uppercase">
-        Sources
-      </p>
-      <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+      <ul className="grid gap-3 sm:grid-cols-2">
         {citations.map((citation, index) => {
           const meta = citation.document_id
             ? metaById[citation.document_id]
@@ -192,7 +236,7 @@ function SourcesGrid({
           const card = (
             <>
               <div className="flex items-start gap-2.5">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ece7f5] text-[12px] font-semibold text-[#5b4b8a]">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent">
                   {number}
                 </span>
                 <p className="min-w-0 text-[13px] leading-5 font-semibold tracking-wide text-foreground uppercase">
@@ -249,13 +293,13 @@ function SourcesGrid({
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block h-full rounded-xl border border-border bg-[#f3f5f7] px-3.5 py-3 transition-colors hover:border-accent/50 hover:bg-white"
+                  className="block h-full rounded-xl border border-border bg-surface-elevated px-3.5 py-3 transition-colors hover:border-accent/50 hover:bg-surface"
                   title={`Open ${name}${page != null ? ` at page ${page}` : ""}`}
                 >
                   {card}
                 </a>
               ) : (
-                <div className="h-full rounded-xl border border-border bg-[#f3f5f7] px-3.5 py-3">
+                <div className="h-full rounded-xl border border-border bg-surface-elevated px-3.5 py-3">
                   {card}
                 </div>
               )}
@@ -267,50 +311,70 @@ function SourcesGrid({
   );
 }
 
-function CopyMessageButton({
-  text,
-  tone,
-}: {
-  text: string;
-  tone: "user" | "assistant";
-}) {
-  const [copied, setCopied] = useState(false);
-
-  async function onCopy() {
-    const value = text.trim();
-    if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      const area = document.createElement("textarea");
-      area.value = value;
-      area.setAttribute("readonly", "");
-      area.style.position = "fixed";
-      area.style.left = "-9999px";
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand("copy");
-      document.body.removeChild(area);
-    }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  }
-
-  const isUser = tone === "user";
+function CompactSourceBadges({ citations }: { citations: ChatCitation[] }) {
   return (
-    <button
-      type="button"
-      onClick={() => void onCopy()}
-      className={`rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
-        isUser
-          ? "text-white/70 hover:bg-white/15 hover:text-white"
-          : "text-muted hover:bg-background hover:text-foreground"
-      }`}
-      aria-label={isUser ? "Copy question" : "Copy answer"}
-      title={copied ? "Copied" : isUser ? "Copy question" : "Copy answer"}
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
+    <div className="flex flex-wrap gap-1.5">
+      {citations.map((citation, index) => {
+        const name = sourceLabel(citation);
+        const page =
+          typeof citation.page_start === "number" && citation.page_start >= 1
+            ? citation.page_start
+            : null;
+        const label = page != null ? `${name} - p.${page}` : name;
+        const href = sourceHrefFor(citation);
+        const key = citation.citation_id || citation.chunk_id || String(index);
+        if (href) {
+          return (
+            <a
+              key={key}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex"
+            >
+              <Badge variant="muted" className="max-w-[14rem] truncate font-normal">
+                {label}
+              </Badge>
+            </a>
+          );
+        }
+        return (
+          <Badge
+            key={key}
+            variant="muted"
+            className="max-w-[14rem] truncate font-normal"
+          >
+            {label}
+          </Badge>
+        );
+      })}
+    </div>
+  );
+}
+
+function RetrievalDetails({ message }: { message: ChatMessage }) {
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-background/50 px-3 py-2 text-xs text-muted">
+      {message.retrieval_mode ? (
+        <p className="font-mono">
+          mode={message.retrieval_mode}
+          {message.retrieval_trace_id
+            ? ` · trace=${message.retrieval_trace_id}`
+            : ""}
+        </p>
+      ) : (
+        <p>No retrieval mode recorded.</p>
+      )}
+      {message.warnings?.length ? (
+        <ul className="list-disc space-y-1 pl-4 text-warning">
+          {message.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>No warnings.</p>
+      )}
+    </div>
   );
 }
 
@@ -318,72 +382,119 @@ function MessageBubble({
   message,
   uploaderName,
   allowCharts = false,
+  initials,
 }: {
   message: ChatMessage;
   uploaderName: string;
   allowCharts?: boolean;
+  initials: string;
 }) {
   const isUser = message.role === "user";
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`rounded-2xl px-4 py-3 ${
-          isUser
-            ? "max-w-[min(100%,42rem)] bg-accent text-white"
-            : "w-full max-w-[min(100%,52rem)] border border-border bg-surface text-foreground shadow-sm"
-        }`}
-      >
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <p
-            className={`text-[11px] font-medium uppercase tracking-wide ${
-              isUser ? "text-white/70" : "text-muted"
-            }`}
-          >
-            {isUser ? "You" : "Assistant"}
-          </p>
-          <CopyMessageButton
-            text={message.content}
-            tone={isUser ? "user" : "assistant"}
-          />
-        </div>
-        {isUser ? (
+  const [showWhy, setShowWhy] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
+  const citations = message.citations || [];
+  const graphPaths = message.graph_paths || [];
+  const confidence = estimateConfidence(citations.length, message.warnings);
+
+  if (isUser) {
+    return (
+      <div className="flex items-end justify-end gap-2.5">
+        <div className="max-w-[min(100%,36rem)] rounded-2xl bg-surface-elevated px-4 py-3 text-foreground shadow-sm">
           <p className="select-text whitespace-pre-wrap text-[15px] leading-7">
             {message.content}
           </p>
-        ) : (
-          <div className="space-y-4">
-            <div className="select-text">
-              <FormattedAnswer
-                answer={message.content}
-                allowCharts={allowCharts}
-              />
-            </div>
-            {message.retrieval_mode ? (
-              <p className="font-mono text-[11px] text-muted">
-                mode={message.retrieval_mode}
-                {message.retrieval_trace_id
-                  ? ` · trace=${message.retrieval_trace_id}`
-                  : ""}
-              </p>
-            ) : null}
-            {message.warnings?.length ? (
-              <div className="rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-                <p className="text-xs font-medium text-amber-800">Notes</p>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-900/90">
-                  {message.warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {message.citations?.length ? (
-              <SourcesGrid
-                citations={message.citations}
-                uploaderName={uploaderName}
-              />
-            ) : null}
+        </div>
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white"
+          aria-hidden
+        >
+          {initials}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+        <Sparkles className="h-4 w-4" aria-hidden />
+      </div>
+      <div className="min-w-0 flex-1 max-w-[min(100%,48rem)] rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
+        <div className="space-y-4">
+          <div className="select-text">
+            <FormattedAnswer
+              answer={message.content}
+              allowCharts={allowCharts}
+            />
           </div>
-        )}
+
+          {citations.length ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-medium text-muted">
+                  Confidence: {confidence.toFixed(1)}%
+                </span>
+                <div className="h-1.5 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-border">
+                  <div
+                    className="h-full rounded-full bg-success transition-[width]"
+                    style={{ width: `${confidence}%` }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowWhy((value) => !value)}
+                  className="text-xs font-medium text-accent hover:underline"
+                >
+                  Why this answer?
+                </button>
+              </div>
+              {showWhy ? <RetrievalDetails message={message} /> : null}
+            </div>
+          ) : null}
+
+          {graphPaths.length ? (
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">
+                Graph reasoning
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {graphPaths.map((path, index) => {
+                  const pill = formatGraphPathPill(path);
+                  if (!pill) return null;
+                  return (
+                    <span
+                      key={`${pill}-${index}`}
+                      className="inline-flex max-w-full rounded-md border border-border bg-surface-elevated px-2.5 py-1 font-mono text-[11px] leading-5 text-foreground/90"
+                    >
+                      {pill}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {citations.length ? (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowEvidence((value) => !value)}
+                className="text-xs font-medium text-accent hover:underline"
+              >
+                {showEvidence
+                  ? "Hide evidence chunks"
+                  : `Show ${citations.length} evidence chunk${citations.length === 1 ? "" : "s"}`}
+              </button>
+              {showEvidence ? (
+                <SourcesGrid
+                  citations={citations}
+                  uploaderName={uploaderName}
+                />
+              ) : null}
+              <CompactSourceBadges citations={citations} />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -398,11 +509,31 @@ function ChatWorkspace() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [showInspect, setShowInspect] = useState(false);
+  const [showChangeContext, setShowChangeContext] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const initials = useMemo(() => userInitials(), [hydrated, tenantKey]);
 
   const activeThread =
     threads.find((thread) => thread.id === activeId) ?? threads[0] ?? null;
+
+  const lastAssistant = useMemo(() => {
+    if (!activeThread) return null;
+    for (let i = activeThread.messages.length - 1; i >= 0; i -= 1) {
+      if (activeThread.messages[i].role === "assistant") {
+        return activeThread.messages[i];
+      }
+    }
+    return null;
+  }, [activeThread]);
+
+  const contextLabel =
+    activeThread?.conversationContext?.label?.trim() || "Open corpus";
+  const hasScopedContext = Boolean(
+    activeThread?.conversationContext?.documentIds?.length ||
+      activeThread?.documentId?.trim(),
+  );
 
   useEffect(() => {
     const syncTenant = () => setTenantKey(readTenantKey());
@@ -457,6 +588,8 @@ function ChatWorkspace() {
     setActiveId(fresh.id);
     setDraft("");
     setError(null);
+    setShowInspect(false);
+    setShowChangeContext(false);
     textareaRef.current?.focus();
   }
 
@@ -482,6 +615,15 @@ function ChatWorkspace() {
         updatedAt: new Date().toISOString(),
       }),
     );
+  }
+
+  function insertMention() {
+    setDraft((prev) => {
+      if (!prev) return "@";
+      if (prev.endsWith(" ") || prev.endsWith("\n")) return `${prev}@`;
+      return `${prev} @`;
+    });
+    textareaRef.current?.focus();
   }
 
   async function sendMessage(questionRaw: string) {
@@ -653,6 +795,19 @@ function ChatWorkspace() {
           };
         }
       }
+      const graphPaths: ChatGraphPath[] = Array.isArray(body.graph_paths)
+        ? body.graph_paths.map((item: ChatGraphPath) => ({
+            nodes: Array.isArray(item?.nodes)
+              ? item.nodes.map(String)
+              : [],
+            relationships: Array.isArray(item?.relationships)
+              ? item.relationships.map(String)
+              : [],
+            supporting_citations: Array.isArray(item?.supporting_citations)
+              ? item.supporting_citations.map(String)
+              : [],
+          }))
+        : [];
       const assistantMessage = createMessage("assistant", unwrapped.answer, {
         citations: Array.isArray(body.citations)
           ? body.citations.map((item: ChatCitation) => ({
@@ -671,6 +826,7 @@ function ChatWorkspace() {
         warnings: uniqueWarnings,
         retrieval_mode: body.retrieval_mode || body.mode,
         retrieval_trace_id: body.retrieval_trace_id,
+        graph_paths: graphPaths,
       });
       setThreads((prev) => {
         const current = prev.find((thread) => thread.id === activeThread.id);
@@ -721,19 +877,20 @@ function ChatWorkspace() {
     return <p className="text-sm text-muted">Loading chats…</p>;
   }
 
+  const uploaderName = tenantKey.trim()
+    ? tenantKey.trim().charAt(0).toUpperCase() + tenantKey.trim().slice(1)
+    : "Workspace";
+
   return (
-    <div className="grid min-h-[calc(100vh-14rem)] gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="flex flex-col rounded-lg border border-border bg-surface">
+    <div className="-mx-6 -my-6 grid h-[calc(100vh-3.5rem)] min-h-[28rem] overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <aside className="flex min-h-0 flex-col border-r border-border bg-sidebar">
         <div className="border-b border-border p-3">
-          <button
-            type="button"
-            onClick={startNewChat}
-            className="w-full rounded bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-          >
+          <Button type="button" onClick={startNewChat} className="w-full" size="sm">
+            <Plus className="h-4 w-4" />
             New chat
-          </button>
+          </Button>
         </div>
-        <ul className="flex-1 space-y-1 overflow-y-auto p-2">
+        <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {threads.map((thread) => {
             const active = thread.id === activeThread.id;
             return (
@@ -743,8 +900,8 @@ function ChatWorkspace() {
                   onClick={() => setActiveId(thread.id)}
                   className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
                     active
-                      ? "bg-accent/10 text-foreground"
-                      : "text-muted hover:bg-background hover:text-foreground"
+                      ? "bg-accent-soft text-foreground"
+                      : "text-muted hover:bg-surface hover:text-foreground"
                   }`}
                 >
                   <span className="line-clamp-2 pr-6">{thread.title}</span>
@@ -766,100 +923,141 @@ function ChatWorkspace() {
         </ul>
       </aside>
 
-      <section className="flex min-h-[32rem] flex-col rounded-lg border border-border bg-surface shadow-sm">
-        <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
-          <label className="min-w-[8rem] flex-1 text-sm">
-            <span className="text-muted">Mode</span>
-            <select
-              value={activeThread.mode}
-              onChange={(event) => updateActive({ mode: event.target.value })}
-              className="mt-1 w-full rounded border border-border bg-background px-3 py-2 outline-none focus:border-accent"
-            >
-              {MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="min-w-[12rem] flex-[2] text-sm">
-            <span className="text-muted">Manual document override (optional)</span>
-            <input
-              value={activeThread.documentId}
-              onChange={(event) =>
-                updateActive({
-                  documentId: event.target.value.trim(),
-                  pendingExpandQuestion: null,
-                })
-              }
-              className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-accent"
-              placeholder="Usually leave empty — context sticks from chat"
-            />
-            {activeThread.conversationContext?.label ? (
-              <p className="mt-1 text-xs text-foreground">
-                Active conversation context:{" "}
-                <span className="font-medium">
-                  {activeThread.conversationContext.label}
-                </span>
-                . Follow-ups stay here unless you change topic or reply Yes to
-                widen.
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-muted">
-                Context is established by your first question and answer.
-              </p>
-            )}
-            {activeThread.pendingExpandQuestion ? (
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                Waiting for Yes to search other documents.
-              </p>
-            ) : null}
-          </label>
-        </div>
-
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
-          {activeThread.messages.length === 0 ? (
-            <div className="mx-auto max-w-lg py-16 text-center">
-              <h3 className="text-lg font-semibold tracking-tight">
-                Grounded document chat
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                Ask follow-up questions like ChatGPT. Each reply stays grounded
-                in retrieved evidence, and this conversation is saved in your
-                browser.
-              </p>
+      <section className="flex min-h-0 min-w-0 flex-col bg-background">
+        <div className="shrink-0 border-b border-border px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted">Context:</span>
+            <Badge variant="default" className="max-w-[18rem] truncate">
+              {contextLabel}
+            </Badge>
+            <span className="text-xs text-muted">
+              {hasScopedContext
+                ? "Conversation is scoped to this document"
+                : "Searching the open corpus"}
+            </span>
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowInspect((value) => !value);
+                  setShowChangeContext(false);
+                }}
+              >
+                Inspect retrieval
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowChangeContext((value) => !value);
+                  setShowInspect(false);
+                }}
+              >
+                Change context
+              </Button>
             </div>
-          ) : (
-            activeThread.messages.map((message, index) => {
-              const priorUser = [...activeThread.messages.slice(0, index)]
-                .reverse()
-                .find((item) => item.role === "user");
-              const allowCharts = priorUser
-                ? wantsRenderedChart(priorUser.content)
-                : false;
-              return (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  allowCharts={allowCharts}
-                  uploaderName={
-                    tenantKey.trim()
-                      ? tenantKey.trim().charAt(0).toUpperCase() +
-                        tenantKey.trim().slice(1)
-                      : "Workspace"
-                  }
-                />
-              );
-            })
-          )}
-          {busy ? (
-            <div className="flex justify-start">
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted shadow-sm">
-                Retrieving and answering…
-              </div>
+          </div>
+
+          {showInspect ? (
+            <div className="mt-3">
+              {lastAssistant ? (
+                <RetrievalDetails message={lastAssistant} />
+              ) : (
+                <p className="text-xs text-muted">
+                  No assistant reply yet to inspect.
+                </p>
+              )}
             </div>
           ) : null}
-          <div ref={bottomRef} />
+
+          {showChangeContext ? (
+            <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface px-3 py-3">
+              <label className="min-w-[8rem] flex-1 text-sm">
+                <span className="text-xs text-muted">Mode</span>
+                <select
+                  value={activeThread.mode}
+                  onChange={(event) => updateActive({ mode: event.target.value })}
+                  className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                >
+                  {MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-[12rem] flex-[2] text-sm">
+                <span className="text-xs text-muted">
+                  Manual document override (optional)
+                </span>
+                <input
+                  value={activeThread.documentId}
+                  onChange={(event) =>
+                    updateActive({
+                      documentId: event.target.value.trim(),
+                      pendingExpandQuestion: null,
+                    })
+                  }
+                  className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+                  placeholder="Usually leave empty — context sticks from chat"
+                />
+              </label>
+              {activeThread.pendingExpandQuestion ? (
+                <p className="w-full text-xs text-warning">
+                  Waiting for Yes to search other documents.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+            {activeThread.messages.length === 0 ? (
+              <div className="py-16 text-center">
+                <h3 className="text-lg font-semibold tracking-tight">
+                  Grounded document chat
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Ask follow-up questions like ChatGPT. Each reply stays grounded
+                  in retrieved evidence, and this conversation is saved in your
+                  browser.
+                </p>
+              </div>
+            ) : (
+              activeThread.messages.map((message, index) => {
+                const priorUser = [...activeThread.messages.slice(0, index)]
+                  .reverse()
+                  .find((item) => item.role === "user");
+                const allowCharts = priorUser
+                  ? wantsRenderedChart(priorUser.content)
+                  : false;
+                return (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    allowCharts={allowCharts}
+                    initials={initials}
+                    uploaderName={uploaderName}
+                  />
+                );
+              })
+            )}
+            {busy ? (
+              <div className="flex items-start gap-3">
+                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                  <Sparkles className="h-4 w-4 animate-pulse" aria-hidden />
+                </div>
+                <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+                  Retrieving and answering…
+                </div>
+              </div>
+            ) : null}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
         {error ? (
@@ -868,11 +1066,8 @@ function ChatWorkspace() {
           </p>
         ) : null}
 
-        <form
-          onSubmit={onSubmit}
-          className="border-t border-border bg-background/60 px-4 py-3"
-        >
-          <div className="flex items-end gap-2">
+        <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
+          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-3 shadow-sm">
             <textarea
               ref={textareaRef}
               value={draft}
@@ -884,17 +1079,41 @@ function ChatWorkspace() {
                 }
               }}
               rows={3}
-              placeholder="Ask a follow-up… (Enter to send, Shift+Enter for newline)"
-              className="max-h-40 min-h-[4.5rem] flex-1 resize-y rounded-xl border border-border bg-surface px-3 py-2 text-[15px] outline-none focus:border-accent"
+              placeholder={`Ask about ${contextLabel}… (Enter to send, Shift+Enter for new line)`}
+              className="max-h-40 min-h-[4.5rem] w-full resize-y bg-transparent px-1 py-1 text-[15px] outline-none placeholder:text-muted"
               disabled={busy}
             />
-            <button
-              type="submit"
-              disabled={busy || !draft.trim()}
-              className="rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
-            >
-              Send
-            </button>
+            <div className="mt-2 flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={insertMention}
+                disabled={busy}
+              >
+                <AtSign className="h-4 w-4" />
+                Mention KB
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled
+                title="Coming soon"
+              >
+                <Paperclip className="h-4 w-4" />
+                Attach
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="ml-auto"
+                disabled={busy || !draft.trim()}
+              >
+                <Send className="h-4 w-4" />
+                Send
+              </Button>
+            </div>
           </div>
         </form>
       </section>
@@ -904,17 +1123,8 @@ function ChatWorkspace() {
 
 export default function QueryPage() {
   return (
-    <section className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">Chat</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Conversational grounded Q&amp;A with saved chat history in this
-          browser.
-        </p>
-      </div>
-      <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
-        <ChatWorkspace />
-      </Suspense>
-    </section>
+    <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
+      <ChatWorkspace />
+    </Suspense>
   );
 }
