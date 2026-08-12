@@ -8,6 +8,7 @@ from enterprise_rag.infrastructure.models.fake import (
     FakeTokenCounter,
     FakeVisionModel,
 )
+from enterprise_rag.infrastructure.models.heuristic_reranker import HeuristicReranker
 from enterprise_rag.infrastructure.models.langchain_openai import LangChainOpenAIEmbeddingModel
 from enterprise_rag.infrastructure.models.openai_direct import OpenAIChatModel, OpenAIEmbeddingModel
 
@@ -18,6 +19,7 @@ __all__ = [
     "FakeStructuredExtractor",
     "FakeTokenCounter",
     "FakeVisionModel",
+    "HeuristicReranker",
     "LangChainOpenAIEmbeddingModel",
     "OpenAIChatModel",
     "OpenAIEmbeddingModel",

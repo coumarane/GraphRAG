@@ -77,7 +77,177 @@ async def test_auto_selects_multimodal_for_chart_questions() -> None:
         mode=RetrievalMode.AUTO,
     )
     assert RetrievalMode.MULTIMODAL in analysis.selected_modes
+    assert RetrievalMode.HYBRID in analysis.selected_modes
     assert Modality.CHART in analysis.modality_hints
+
+
+@pytest.mark.asyncio
+async def test_auto_texture_evaluation_chart_not_multimodal_only() -> None:
+    analysis = analyze_query(
+        "Texture evaluation chart",
+        mode=RetrievalMode.AUTO,
+    )
+    assert RetrievalMode.MULTIMODAL in analysis.selected_modes
+    assert RetrievalMode.HYBRID in analysis.selected_modes
+    lowered = analysis.normalized_question.casefold()
+    assert "miu" in lowered or "friction" in lowered or "smoothness" in lowered
+    assert "silkyflake" not in lowered
+
+
+@pytest.mark.asyncio
+async def test_analyze_query_uses_current_question_not_chat_history() -> None:
+    wrapped = "\n".join(
+        [
+            "Conversation so far:",
+            "User: Give me heavy metal content for METASHINE RC HC ZC",
+            "Assistant: RC series Cd 0.4 ppm Pb <3 ppm",
+            "",
+            "Current question: Texture evaluation chart",
+            "",
+            "Answer the current question using retrieved document evidence.",
+        ]
+    )
+    analysis = analyze_query(wrapped, mode=RetrievalMode.AUTO)
+    assert "texture" in analysis.normalized_question.casefold()
+    assert "metashine" not in analysis.normalized_question.casefold()
+    assert "assay" not in analysis.intent_labels
+    assert RetrievalMode.HYBRID in analysis.selected_modes
+
+
+@pytest.mark.asyncio
+async def test_condition_range_query_prefers_chart_modality() -> None:
+    analysis = analyze_query(
+        "Over which pH range was the tinting test performed?",
+        mode=RetrievalMode.AUTO,
+    )
+    assert analysis.features.asks_condition_range
+    assert analysis.features.prefer_chart
+    assert Modality.CHART in analysis.modality_hints
+    assert Modality.TABLE not in analysis.modality_hints
+
+
+@pytest.mark.asyncio
+async def test_tinting_ph_range_prefers_axis_not_mic_table() -> None:
+    tenant = TenantContext(tenant_id=new_id())
+    document_id = new_id()
+    version_id = new_id()
+    axis = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text=(
+            "Effect of pH values in aqueous solution\n"
+            "pH 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0\n"
+            "Little/No tinting under alkaline conditions"
+        ),
+        modality=Modality.CHART,
+        chunk_type=ChunkType.CHART,
+        page_start=10,
+        page_end=10,
+        document_name="SY-KNP.pdf",
+    )
+    mic = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text="MIC minimum inhibitory concentration at pH 5, pH 7, pH 9 — no growth",
+        modality=Modality.TABLE,
+        chunk_type=ChunkType.TABLE,
+        page_start=8,
+        page_end=8,
+        document_name="SY-KNP.pdf",
+    )
+    chunk_store = InMemoryChunkLookupStore()
+    await chunk_store.upsert(tenant, [axis, mic])
+    embedder = FakeEmbeddingModel()
+    vectors = InMemoryChunkVectorStore()
+    await vectors.ensure_collection(vector_size=2)
+    embedded = await EmbedChunksService(embedder).embed([axis, mic])
+    await vectors.upsert(tenant, embedded.records)
+    lexical = InMemoryLexicalSearchStore()
+    await lexical.upsert(tenant, [axis, mic])
+    service = RetrieveEvidenceService(
+        embedding_model=embedder,
+        vector_store=vectors,
+        chunk_store=chunk_store,
+        lexical_store=lexical,
+        reranker=FakeReranker(),
+    )
+    outcome = await service.retrieve(
+        tenant,
+        RetrievalRequest(
+            question="Over which pH range was the tinting test performed?",
+            mode=RetrievalMode.AUTO,
+            top_k=4,
+            rerank=False,
+        ),
+    )
+    assert outcome.result.evidence
+    top = outcome.result.evidence[0]
+    lowered = (top.text or "").casefold()
+    assert "tint" in lowered or "3.0" in lowered or "10.0" in lowered
+    assert "minimum inhibitory" not in lowered
+
+
+@pytest.mark.asyncio
+async def test_solar_radiation_expands_to_nir_synonyms() -> None:
+    analysis = analyze_query("solar radiation data", mode=RetrievalMode.AUTO)
+    lowered = analysis.normalized_question.casefold()
+    assert "near-infrared" in lowered or "nir" in lowered
+    assert Modality.DIAGRAM in analysis.modality_hints
+
+
+@pytest.mark.asyncio
+async def test_texture_evaluation_expands_to_generic_surface_terms() -> None:
+    analysis = analyze_query(
+        "Texture evaluation chart MIU MMD",
+        mode=RetrievalMode.AUTO,
+    )
+    lowered = analysis.normalized_question.casefold()
+    assert "friction" in lowered or "smoothness" in lowered
+    assert "surface" in lowered
+    # Must not inject brochure-specific product SKUs.
+    assert "ftd008fy" not in lowered
+    assert "silkyflake" not in lowered
+
+
+@pytest.mark.asyncio
+async def test_auto_selects_assay_modes_for_heavy_metal_content() -> None:
+    analysis = analyze_query(
+        "Give me the heavy metal content",
+        mode=RetrievalMode.AUTO,
+    )
+    assert "assay" in analysis.intent_labels
+    assert Modality.TABLE in analysis.modality_hints
+    assert RetrievalMode.HYBRID in analysis.selected_modes
+    assert RetrievalMode.MULTIMODAL in analysis.selected_modes
+
+
+@pytest.mark.asyncio
+async def test_heuristic_reranker_prefers_assay_over_coating() -> None:
+    from enterprise_rag.domain.models.contracts import RerankItem, RerankRequest
+    from enterprise_rag.infrastructure.models import HeuristicReranker
+
+    reranker = HeuristicReranker()
+    response = await reranker.rerank(
+        RerankRequest(
+            query="Give me the heavy metal content",
+            items=[
+                RerankItem(
+                    id="coating",
+                    text="TC series Fe2O3 coated series deep interference effects",
+                    metadata={"modality": "text"},
+                ),
+                RerankItem(
+                    id="assay",
+                    text="Heavy metal content Cd 0.4 ppm As 0.7 ppm Pb <3 ppm N.D.",
+                    metadata={"modality": "table"},
+                ),
+            ],
+            top_n=2,
+        )
+    )
+    assert response.results[0].id == "assay"
 
 
 @pytest.mark.asyncio

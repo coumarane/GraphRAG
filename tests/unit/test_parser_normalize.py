@@ -145,6 +145,20 @@ async def test_docling_adapter_with_injected_convert() -> None:
     assert_matches_contract("normalized-document", document.model_dump(mode="json"))
 
 
+def test_docling_page_helpers_use_provenance() -> None:
+    from types import SimpleNamespace
+
+    from enterprise_rag.infrastructure.parsers.docling.adapter import (
+        _map_label,
+        _page_from_item,
+    )
+
+    item = SimpleNamespace(prov=[SimpleNamespace(page_no=12)])
+    assert _page_from_item(item) == 12
+    assert _map_label("section_header") == "heading"
+    assert _map_label("picture") == "image"
+
+
 @pytest.mark.asyncio
 async def test_mineru_marker_paddle_adapters_with_injected_convert() -> None:
     payload = _sample_payload()

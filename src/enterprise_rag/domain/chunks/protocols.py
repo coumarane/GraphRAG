@@ -45,3 +45,12 @@ class ChunkVectorStore(Protocol):
     ) -> int:
         """Delete all points for a document version. Returns deleted count."""
         ...
+
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+    ) -> int:
+        """Delete all points for a document across versions. Returns deleted count."""
+        ...

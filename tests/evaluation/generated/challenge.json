@@ -1,0 +1,544 @@
+[
+  {
+    "id": "97c21456-405f-4c84-84b6-d5769527998a-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Chart Appendix?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "charts.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "97c21456-405f-4c84-84b6-d5769527998a",
+        "page": 1,
+        "text": "Chart Appendix"
+      }
+    ]
+  },
+  {
+    "id": "97c21456-405f-4c84-84b6-d5769527998a-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Chart Appendix'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "charts.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "97c21456-405f-4c84-84b6-d5769527998a",
+        "page": 1,
+        "text": "Chart Appendix"
+      }
+    ]
+  },
+  {
+    "id": "97c21456-405f-4c84-84b6-d5769527998a-table",
+    "type": "TABLE",
+    "question": "What numeric property values (density/viscosity/concentration) are reported?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "charts.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "97c21456-405f-4c84-84b6-d5769527998a",
+        "page": 1,
+        "text": "Chart Appendix"
+      }
+    ]
+  },
+  {
+    "id": "97c21456-405f-4c84-84b6-d5769527998a-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "charts.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "97c21456-405f-4c84-84b6-d5769527998a-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "charts.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "daaedaf3-8495-4935-8f6e-a8546da75086-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Supplier Comparison Tables?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "complex_tables.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "daaedaf3-8495-4935-8f6e-a8546da75086",
+        "page": 1,
+        "text": "Supplier Comparison Tables"
+      }
+    ]
+  },
+  {
+    "id": "daaedaf3-8495-4935-8f6e-a8546da75086-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Supplier Comparison Tables'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "complex_tables.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "daaedaf3-8495-4935-8f6e-a8546da75086",
+        "page": 1,
+        "text": "Supplier Comparison Tables"
+      }
+    ]
+  },
+  {
+    "id": "daaedaf3-8495-4935-8f6e-a8546da75086-table",
+    "type": "TABLE",
+    "question": "What numeric property values (density/viscosity/concentration) are reported?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "complex_tables.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "daaedaf3-8495-4935-8f6e-a8546da75086",
+        "page": 1,
+        "text": "Supplier Comparison Tables"
+      }
+    ]
+  },
+  {
+    "id": "daaedaf3-8495-4935-8f6e-a8546da75086-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "complex_tables.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "daaedaf3-8495-4935-8f6e-a8546da75086-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [
+      {
+        "document_id": "daaedaf3-8495-4935-8f6e-a8546da75086",
+        "page": 1,
+        "text": "Supplier Comparison Tables"
+      }
+    ],
+    "source_document": "complex_tables.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "af471a28-5880-4d70-966c-64c806d7d45b-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Scanned Lab Notes?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "scanned.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "af471a28-5880-4d70-966c-64c806d7d45b",
+        "page": 1,
+        "text": "Scanned Lab Notes"
+      }
+    ]
+  },
+  {
+    "id": "af471a28-5880-4d70-966c-64c806d7d45b-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Scanned Lab Notes'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "scanned.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "af471a28-5880-4d70-966c-64c806d7d45b",
+        "page": 1,
+        "text": "Scanned Lab Notes"
+      }
+    ]
+  },
+  {
+    "id": "af471a28-5880-4d70-966c-64c806d7d45b-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "scanned.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "af471a28-5880-4d70-966c-64c806d7d45b-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "scanned.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Rheology Equations?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ]
+  },
+  {
+    "id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Rheology Equations'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ]
+  },
+  {
+    "id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac-table",
+    "type": "TABLE",
+    "question": "What numeric property values (density/viscosity/concentration) are reported?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ]
+  },
+  {
+    "id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac-eq",
+    "type": "EQUATION",
+    "question": "What does the equation calculate, using the document's definition?",
+    "difficulty": "hard",
+    "must_answer": true,
+    "source_document": "scientific_equations.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac",
+        "page": 1,
+        "text": "Rheology Equations"
+      }
+    ]
+  },
+  {
+    "id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "scientific_equations.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "c1f7d403-264a-4ef7-99b2-22b50fa557ac-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "scientific_equations.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "b285e629-5a58-4755-9c20-4a77dbd25db0-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Supplier A Datasheet?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "shared_entities_a.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "b285e629-5a58-4755-9c20-4a77dbd25db0",
+        "page": 1,
+        "text": "Supplier A Datasheet"
+      }
+    ]
+  },
+  {
+    "id": "b285e629-5a58-4755-9c20-4a77dbd25db0-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Supplier A Datasheet'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "shared_entities_a.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "b285e629-5a58-4755-9c20-4a77dbd25db0",
+        "page": 1,
+        "text": "Supplier A Datasheet"
+      }
+    ]
+  },
+  {
+    "id": "b285e629-5a58-4755-9c20-4a77dbd25db0-table",
+    "type": "TABLE",
+    "question": "What numeric property values (density/viscosity/concentration) are reported?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "shared_entities_a.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "b285e629-5a58-4755-9c20-4a77dbd25db0",
+        "page": 1,
+        "text": "Supplier A Datasheet"
+      }
+    ]
+  },
+  {
+    "id": "b285e629-5a58-4755-9c20-4a77dbd25db0-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "shared_entities_a.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "b285e629-5a58-4755-9c20-4a77dbd25db0-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [
+      {
+        "document_id": "b285e629-5a58-4755-9c20-4a77dbd25db0",
+        "page": 1,
+        "text": "Supplier A Datasheet"
+      }
+    ],
+    "source_document": "shared_entities_a.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "853fedaa-9793-487f-b7d0-2f7ce9acda42-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Supplier B Datasheet?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "shared_entities_b.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "853fedaa-9793-487f-b7d0-2f7ce9acda42",
+        "page": 1,
+        "text": "Supplier B Datasheet"
+      }
+    ]
+  },
+  {
+    "id": "853fedaa-9793-487f-b7d0-2f7ce9acda42-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Supplier B Datasheet'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "shared_entities_b.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "853fedaa-9793-487f-b7d0-2f7ce9acda42",
+        "page": 1,
+        "text": "Supplier B Datasheet"
+      }
+    ]
+  },
+  {
+    "id": "853fedaa-9793-487f-b7d0-2f7ce9acda42-table",
+    "type": "TABLE",
+    "question": "What numeric property values (density/viscosity/concentration) are reported?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "shared_entities_b.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "853fedaa-9793-487f-b7d0-2f7ce9acda42",
+        "page": 1,
+        "text": "Supplier B Datasheet"
+      }
+    ]
+  },
+  {
+    "id": "853fedaa-9793-487f-b7d0-2f7ce9acda42-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "shared_entities_b.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "853fedaa-9793-487f-b7d0-2f7ce9acda42-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [
+      {
+        "document_id": "853fedaa-9793-487f-b7d0-2f7ce9acda42",
+        "page": 1,
+        "text": "Supplier B Datasheet"
+      }
+    ],
+    "source_document": "shared_entities_b.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc-fact",
+    "type": "FACTUAL",
+    "question": "According to the document, what is stated near: Viscosity Study Report?",
+    "difficulty": "easy",
+    "must_answer": true,
+    "source_document": "text_heavy.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc",
+        "page": 1,
+        "text": "Viscosity Study Report"
+      }
+    ]
+  },
+  {
+    "id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc-para",
+    "type": "PARAPHRASE",
+    "question": "In other words, what does the source claim about 'Viscosity Study Report'?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "text_heavy.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc",
+        "page": 1,
+        "text": "Viscosity Study Report"
+      }
+    ]
+  },
+  {
+    "id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc-table",
+    "type": "TABLE",
+    "question": "What numeric property values (density/viscosity/concentration) are reported?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "source_document": "text_heavy.pdf",
+    "source_page": 1,
+    "expected_evidence": [
+      {
+        "document_id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc",
+        "page": 1,
+        "text": "Viscosity Study Report"
+      }
+    ]
+  },
+  {
+    "id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc-neg",
+    "type": "NEGATIVE",
+    "question": "What clinical trial proved this ingredient cures eczema?",
+    "difficulty": "easy",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "text_heavy.pdf",
+    "source_page": 1
+  },
+  {
+    "id": "a9c68e4b-1e1e-43d8-885e-3927fdf9bacc-partial",
+    "type": "PARTIAL",
+    "question": "What is the density at 25\u00b0C?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "expected_evidence": [],
+    "source_document": "text_heavy.pdf",
+    "source_page": 1,
+    "notes": "Must not invent temperature condition if absent."
+  },
+  {
+    "id": "cross-compare",
+    "type": "CROSS_DOCUMENT",
+    "question": "Do any documents report conflicting values for density?",
+    "difficulty": "hard",
+    "must_answer": true,
+    "expected_evidence": [],
+    "source_document": "multi"
+  },
+  {
+    "id": "cross-agg",
+    "type": "AGGREGATION",
+    "question": "List all products or ingredients mentioned across the documents.",
+    "difficulty": "medium",
+    "must_answer": true,
+    "expected_evidence": [],
+    "source_document": "multi"
+  },
+  {
+    "id": "follow-up-template",
+    "type": "FOLLOW_UP",
+    "question": "What is its recommended concentration?",
+    "difficulty": "medium",
+    "must_answer": true,
+    "notes": "Requires prior entity in conversation."
+  },
+  {
+    "id": "context-switch-template",
+    "type": "CONTEXT_SWITCH",
+    "question": "Forget that. Which products contain titanium dioxide?",
+    "difficulty": "medium",
+    "must_answer": true
+  },
+  {
+    "id": "ambiguous-template",
+    "type": "AMBIGUOUS",
+    "question": "What is its density?",
+    "difficulty": "hard",
+    "must_answer": false,
+    "notes": "After comparing two products, should ask clarification."
+  }
+]

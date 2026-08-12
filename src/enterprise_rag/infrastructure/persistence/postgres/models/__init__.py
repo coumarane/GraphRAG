@@ -10,12 +10,32 @@ from enterprise_rag.infrastructure.persistence.postgres.models.ingestion import 
     IngestionStageModel,
     ParserAttemptModel,
 )
+from enterprise_rag.infrastructure.persistence.postgres.models.parsing_audit import (
+    ContentLossRecordModel,
+    DocumentParseReportModel,
+    ElementParseReportModel,
+    IngestionIssueModel,
+    PageParseReportModel,
+    ProcessingStageRunModel,
+    RoutingDecisionModel,
+)
+from enterprise_rag.infrastructure.persistence.postgres.models.usage import ModelUsageEventModel
+from enterprise_rag.infrastructure.persistence.postgres.models.users import UserModel
 
 __all__ = [
+    "ContentLossRecordModel",
     "DocumentModel",
+    "DocumentParseReportModel",
     "DocumentVersionModel",
+    "ElementParseReportModel",
+    "IngestionIssueModel",
     "IngestionRunModel",
     "IngestionStageModel",
+    "ModelUsageEventModel",
+    "PageParseReportModel",
     "ParserAttemptModel",
+    "ProcessingStageRunModel",
+    "RoutingDecisionModel",
     "TenantModel",
+    "UserModel",
 ]

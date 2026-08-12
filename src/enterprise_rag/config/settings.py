@@ -64,6 +64,12 @@ class AppSettings(BaseModel):
     log_level: str = "INFO"
     service_name: str = "enterprise-rag"
     json_logs: bool = False
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
 
 
 class PostgresSettings(BaseModel):
@@ -125,13 +131,13 @@ class ModelSettings(BaseModel):
 
     implementation: ModelImplementation = ModelImplementation.LANGCHAIN
     provider: str = "openai"
-    text_model: str = "gpt-4.1"
-    vision_model: str = "gpt-4.1"
-    extraction_model: str = "gpt-4.1"
-    summarization_model: str = "gpt-4.1"
-    query_model: str = "gpt-4.1"
-    answer_model: str = "gpt-4.1"
-    embedding_model: str = "text-embedding-3-large"
+    text_model: str = "gpt-4o-mini"
+    vision_model: str = "gpt-4o-mini"
+    extraction_model: str = "gpt-4o-mini"
+    summarization_model: str = "gpt-4o-mini"
+    query_model: str = "gpt-4o-mini"
+    answer_model: str = "gpt-4o-mini"
+    embedding_model: str = "text-embedding-3-small"
     api_key: SecretStr | None = None
     request_timeout_seconds: float = 60.0
     max_retries: int = 3
@@ -222,7 +228,7 @@ class RetrievalSettings(BaseModel):
 
 
 class SecuritySettings(BaseModel):
-    """Upload and resource limits."""
+    """Upload limits and authentication controls."""
 
     max_upload_bytes: int = 104_857_600
     max_pages: int = 2_000
@@ -250,6 +256,14 @@ class SecuritySettings(BaseModel):
     url_allowed_schemes: list[str] = Field(default_factory=lambda: ["https"])
     url_max_redirects: int = 3
     url_timeout_seconds: float = 30.0
+    # Authentication (production: AUTH_ENABLED=true + AUTH_JWT_SECRET >= 32 chars)
+    auth_enabled: bool = False
+    auth_jwt_secret: str = ""
+    auth_jwt_ttl_seconds: int = 43_200
+    auth_cookie_name: str = "erag_session"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    api_service_key: str = ""
 
 
 class ConcurrencySettings(BaseModel):
@@ -391,6 +405,23 @@ class Settings(BaseSettings):
         if isinstance(init_data["app"], dict):
             init_data["app"].setdefault("environment", env_name)
 
+        # Ensure flat .env keys are visible even when the shell did not export them.
+        # Model ids from .env always win so local cost switches (e.g. gpt-4o-mini)
+        # are not blocked by a stale exported shell value.
+        if env_file:
+            env_path = Path(env_file)
+            if env_path.is_file():
+                for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip().strip("'").strip('"')
+                    model_key = key.startswith("OPENAI_") and key.endswith("_MODEL")
+                    if model_key or key not in os.environ:
+                        os.environ[key] = value
+
         # Map conventional OpenAI env vars into models.* when present.
         openai_key = os.environ.get("OPENAI_API_KEY")
         if openai_key:
@@ -485,6 +516,26 @@ def _apply_flat_store_env(init_data: dict[str, Any]) -> None:
         security["max_upload_bytes"] = int(os.environ["MAX_UPLOAD_BYTES"])
     if os.environ.get("MAX_PAGES"):
         security["max_pages"] = int(os.environ["MAX_PAGES"])
+    auth_enabled = os.environ.get("AUTH_ENABLED")
+    if auth_enabled is not None:
+        security["auth_enabled"] = auth_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    if os.environ.get("AUTH_JWT_SECRET"):
+        security["auth_jwt_secret"] = os.environ["AUTH_JWT_SECRET"]
+    if os.environ.get("AUTH_JWT_TTL_SECONDS"):
+        security["auth_jwt_ttl_seconds"] = int(os.environ["AUTH_JWT_TTL_SECONDS"])
+    if os.environ.get("AUTH_COOKIE_NAME"):
+        security["auth_cookie_name"] = os.environ["AUTH_COOKIE_NAME"]
+    if os.environ.get("AUTH_COOKIE_SECURE"):
+        security["auth_cookie_secure"] = os.environ["AUTH_COOKIE_SECURE"].strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    if os.environ.get("AUTH_COOKIE_SAMESITE"):
+        security["auth_cookie_samesite"] = os.environ["AUTH_COOKIE_SAMESITE"].strip().lower()
+    if os.environ.get("API_SERVICE_KEY"):
+        security["api_service_key"] = os.environ["API_SERVICE_KEY"]
     if security:
         init_data["security"] = security
 

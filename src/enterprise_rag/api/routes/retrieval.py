@@ -13,6 +13,8 @@ from enterprise_rag.api.schemas import (
     RetrievalSearchRequest,
     RetrievalSearchResponse,
 )
+from enterprise_rag.application.usage.context import usage_context
+from enterprise_rag.domain.ids import new_id
 from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters, RetrievalRequest
 from enterprise_rag.shared.exceptions import ConfigurationError
 
@@ -26,23 +28,25 @@ async def retrieval_search(
     container: ContainerDep,
 ) -> RetrievalSearchResponse:
     service = container.require_retrieve()
-    outcome = await service.retrieve(
-        tenant,
-        RetrievalRequest(
-            question=body.question,
-            mode=body.mode,
-            filters=RetrievalFilters(
-                document_ids=list(body.document_ids),
-                modalities=list(body.modalities),
-                tags=list(body.tags),
-                security_labels=list(body.security_labels),
+    with usage_context(tenant_id=tenant.tenant_id, query_id=new_id()):
+        outcome = await service.retrieve(
+            tenant,
+            RetrievalRequest(
+                question=body.question,
+                mode=body.mode,
+                filters=RetrievalFilters(
+                    document_ids=list(body.document_ids),
+                    modalities=list(body.modalities),
+                    tags=list(body.tags),
+                    security_labels=list(body.security_labels),
+                ),
+                top_k=body.top_k,
+                graph_depth=body.graph_depth,
+                include_graph_paths=body.include_graph_paths,
+                rerank=body.rerank,
             ),
-            top_k=body.top_k,
-            graph_depth=body.graph_depth,
-            include_graph_paths=body.include_graph_paths,
-            rerank=body.rerank,
-        ),
-    )
+        )
+    await container.commit_db()
     result = outcome.result
     return RetrievalSearchResponse(
         mode=result.mode,
@@ -60,24 +64,28 @@ async def query_documents(
     container: ContainerDep,
 ) -> QueryApiResponse:
     service = container.require_query()
-    outcome = await service.query(
-        tenant,
-        QueryRequest(
-            question=body.question,
-            mode=body.mode,
-            filters=RetrievalFilters(
-                document_ids=list(body.document_ids),
-                modalities=list(body.modalities),
-                tags=list(body.tags),
-                security_labels=list(body.security_labels),
+    with usage_context(tenant_id=tenant.tenant_id, query_id=new_id()):
+        outcome = await service.query(
+            tenant,
+            QueryRequest(
+                question=body.question,
+                mode=body.mode,
+                filters=RetrievalFilters(
+                    document_ids=list(body.document_ids),
+                    modalities=list(body.modalities),
+                    tags=list(body.tags),
+                    security_labels=list(body.security_labels),
+                ),
+                top_k=body.top_k,
+                graph_depth=body.graph_depth,
+                include_graph_paths=body.include_graph_paths,
+                rerank=body.rerank,
+                answer_model_override=body.answer_model_override,
+                conversation_history=list(body.conversation_history),
+                expand_document_scope=body.expand_document_scope,
             ),
-            top_k=body.top_k,
-            graph_depth=body.graph_depth,
-            include_graph_paths=body.include_graph_paths,
-            rerank=body.rerank,
-            answer_model_override=body.answer_model_override,
-        ),
-    )
+        )
+    await container.commit_db()
     return outcome.response
 
 

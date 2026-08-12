@@ -1,0 +1,34 @@
+"""Authentication domain."""
+
+from enterprise_rag.domain.auth.models import (
+    AuthTenantView,
+    AuthUserView,
+    CreateUserRequest,
+    LoginRequest,
+    SessionClaims,
+    UserRecord,
+)
+from enterprise_rag.domain.auth.passwords import (
+    hash_password,
+    is_weak_jwt_secret,
+    validate_password_strength,
+    verify_password,
+)
+from enterprise_rag.domain.auth.protocols import UserRepository
+from enterprise_rag.domain.auth.tokens import issue_access_token, parse_access_token
+
+__all__ = [
+    "AuthTenantView",
+    "AuthUserView",
+    "CreateUserRequest",
+    "LoginRequest",
+    "SessionClaims",
+    "UserRecord",
+    "UserRepository",
+    "hash_password",
+    "is_weak_jwt_secret",
+    "issue_access_token",
+    "parse_access_token",
+    "validate_password_strength",
+    "verify_password",
+]

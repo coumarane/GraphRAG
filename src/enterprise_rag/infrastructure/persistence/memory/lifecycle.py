@@ -68,6 +68,25 @@ class InMemoryDocumentRepository:
     ) -> DocumentRecord | None:
         return self.documents.get((tenant.tenant_id, document_id))
 
+    async def list_documents(
+        self,
+        tenant: TenantContext,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[DocumentRecord], int]:
+        items = [
+            document
+            for (owner, _document_id), document in self.documents.items()
+            if owner == tenant.tenant_id
+        ]
+        items.sort(
+            key=lambda doc: doc.updated_at or doc.created_at or doc.document_id.hex,
+            reverse=True,
+        )
+        total = len(items)
+        return items[offset : offset + limit], total
+
     async def update_document(
         self,
         tenant: TenantContext,
@@ -99,16 +118,24 @@ class InMemoryDocumentRepository:
     async def get_version_by_content_hash(
         self,
         tenant: TenantContext,
-        document_id: UUID,
+        document_id: UUID | None,
         content_hash: str,
     ) -> DocumentVersionRecord | None:
         for version in self.versions.values():
-            if (
-                version.tenant_id == tenant.tenant_id
-                and version.document_id == document_id
-                and version.content_hash == content_hash
-            ):
-                return version
+            if version.tenant_id != tenant.tenant_id:
+                continue
+            if version.content_hash != content_hash:
+                continue
+            if document_id is not None and version.document_id != document_id:
+                continue
+            return version
+        return None
+
+    async def lock_for_content_hash(
+        self,
+        tenant: TenantContext,
+        content_hash: str,
+    ) -> None:
         return None
 
     @staticmethod

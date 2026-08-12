@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from typing import Any
 
+from enterprise_rag.application.usage.record import record_model_usage
 from enterprise_rag.domain.models.contracts import (
     ChatMessage,
     ContentPartType,
@@ -18,6 +20,7 @@ from enterprise_rag.domain.models.contracts import (
     TextContentPart,
     TokenUsage,
 )
+from enterprise_rag.domain.usage.protocols import UsageRecorder
 from enterprise_rag.shared.exceptions import ConfigurationError, ModelError
 
 ChatCompleteFn = Callable[[list[dict[str, Any]], str, float], tuple[str, TokenUsage]]
@@ -96,15 +99,21 @@ class OpenAIChatModel:
     def __init__(
         self,
         *,
-        model_name: str = "gpt-4.1",
+        model_name: str = "gpt-4o-mini",
         api_key: str | None = None,
         temperature: float = 0.0,
         chat_fn: ChatCompleteFn | None = None,
+        usage_recorder: UsageRecorder | None = None,
     ) -> None:
         self._model_name = model_name
         self._api_key = api_key
         self._temperature = temperature
         self._chat_fn = chat_fn
+        self._usage_recorder = usage_recorder
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     async def generate(self, request: GenerationRequest) -> GenerationResponse:
         model_name = request.model_name or self._model_name
@@ -112,6 +121,7 @@ class OpenAIChatModel:
             request.temperature if request.temperature is not None else self._temperature
         )
         payload = [_message_to_openai(message) for message in request.messages]
+        started = time.perf_counter()
         try:
             if self._chat_fn is not None:
                 text, usage = self._chat_fn(payload, model_name, temperature)
@@ -127,14 +137,26 @@ class OpenAIChatModel:
             raise
         except Exception as exc:
             raise ModelError("OpenAI chat completion failed", cause=exc) from exc
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        role = request.role or ModelRole.ANSWER
+        await record_model_usage(
+            self._usage_recorder,
+            provider="openai",
+            model_name=model_name,
+            role=role,
+            usage=usage,
+            latency_ms=latency_ms,
+            correlation_id=request.correlation_id,
+        )
         return GenerationResponse(
             text=text,
             call=ModelCallMetadata(
                 provider="openai",
                 model_name=model_name,
-                role=request.role or ModelRole.ANSWER,
+                role=role,
                 prompt_version=request.prompt_version,
                 correlation_id=request.correlation_id,
+                latency_ms=latency_ms,
                 usage=usage,
             ),
         )

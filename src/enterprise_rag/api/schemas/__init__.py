@@ -2,7 +2,10 @@
 
 from enterprise_rag.api.schemas.common import (
     AssetResponse,
+    ChunkListResponse,
+    ChunkPreviewItem,
     DeletionAcceptedResponse,
+    DocumentListResponse,
     DocumentResponse,
     ElementItem,
     ElementListResponse,
@@ -14,6 +17,7 @@ from enterprise_rag.api.schemas.common import (
     IngestionRunResponse,
     QueryApiRequest,
     QueryApiResponse,
+    ReprocessAcceptedResponse,
     RetrievalSearchRequest,
     RetrievalSearchResponse,
     StageProgressItem,
@@ -21,7 +25,10 @@ from enterprise_rag.api.schemas.common import (
 
 __all__ = [
     "AssetResponse",
+    "ChunkListResponse",
+    "ChunkPreviewItem",
     "DeletionAcceptedResponse",
+    "DocumentListResponse",
     "DocumentResponse",
     "ElementItem",
     "ElementListResponse",
@@ -33,6 +40,7 @@ __all__ = [
     "IngestionRunResponse",
     "QueryApiRequest",
     "QueryApiResponse",
+    "ReprocessAcceptedResponse",
     "RetrievalSearchRequest",
     "RetrievalSearchResponse",
     "StageProgressItem",

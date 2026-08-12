@@ -1,0 +1,576 @@
+{
+  "documents": [
+    {
+      "filename": "charts.pdf",
+      "document_id": "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+      "version_id": "3d69e24f-aa70-4e8a-90c4-f33341285f6c",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Chart Appendix\r\nFigure 1: Viscosity versus Temperature chart.\r\nThe chart supports the claim that viscosity falls as temperature rises.\r\nSeries Sample A: 20C->12cP, 40C->8cP."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "complex_tables.pdf",
+      "document_id": "e9db56bb-9ea1-4aa9-969f-026ffcc84b50",
+      "version_id": "e2297052-ffbd-4373-89a6-b1174a799e5e",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Supplier Comparison Tables\r\nSupplier A density = 0.97 g/mL at 25C.\r\nSupplier B density = 0.94 g/mL at 25C.\r\nTable columns: Supplier | Density | Viscosity | Lot."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "scanned.pdf",
+      "document_id": "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+      "version_id": "98e952d4-fb00-49a7-a6fb-bb3defcda6f5",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Scanned Lab Notes\r\nOCR candidate page with sparse extractable text.\r\nObserved haze in sample A after heating."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "scientific_equations.pdf",
+      "document_id": "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+      "version_id": "cdd1061b-8959-4b47-af82-cccc9c4e3380",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Rheology Equations\r\nEquation 4 calculates dynamic viscosity eta = tau / gamma_dot.\r\nWhere tau is shear stress and gamma_dot is shear rate.\r\nEquation 4 is used for Newtonian silicone oils."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "shared_entities_a.pdf",
+      "document_id": "0488823c-dfe6-4892-90b9-f894fefb8de2",
+      "version_id": "8ce38dda-6261-4364-a57f-0f87938a58c2",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Supplier A Datasheet\r\nIngredient X density is 0.970 g/mL.\r\nIngredient X is linked to Regulation EU-1234.\r\nSilicone oil grade SO-100."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "shared_entities_b.pdf",
+      "document_id": "83e00a62-4c3f-438d-b269-6968f73d391f",
+      "version_id": "851fd5b7-faa6-415b-931a-2843ac9b03ee",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Supplier B Datasheet\r\nIngredient X density is 0.940 g/mL.\r\nConflicting measurement versus Supplier A.\r\nSilicone oil grade SO-100 shared across suppliers."
+      },
+      "ingestion_ok": true
+    },
+    {
+      "filename": "text_heavy.pdf",
+      "document_id": "63d00e34-3de0-44c3-894c-fba8e579efe0",
+      "version_id": "398b646e-db44-4bfd-9236-abb31bb5a114",
+      "pages": 1,
+      "elements": 1,
+      "chunks": 2,
+      "page_texts": {
+        "1": "Viscosity Study Report\r\nSilicone oil viscosity decreases with temperature.\r\nAt 20C the measured viscosity is 12 cP.\r\nAt 40C the measured viscosity is 8 cP.\r\nPackaging process uses sealed HDPE containers.\r\nIngredient X is restricted under Regulation EU-1234."
+      },
+      "ingestion_ok": true
+    }
+  ],
+  "document_ingestion_success_rate": 1.0,
+  "questions": 31,
+  "retrieval": {
+    "HitRate@1": 0.17647058823529413,
+    "HitRate@3": 0.5294117647058824,
+    "HitRate@5": 0.6470588235294118,
+    "HitRate@10": 1.0,
+    "MRR": 0.4201680672268907
+  },
+  "mean_citation_validity": 1.0,
+  "mean_groundedness": 0.0,
+  "no_answer_accuracy": 1.0,
+  "conversation": {
+    "follow_up_resolution": true,
+    "context_switch": true,
+    "pronoun_after_switch": true
+  },
+  "cases": [
+    {
+      "id": "baa0e3aa-4997-4523-a480-44b38b2dce3a-q001",
+      "type": "factual",
+      "question": "What does the document say about: Chart Appendix?",
+      "rank": 1,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "baa0e3aa-4997-4523-a480-44b38b2dce3a-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Chart Appendix'.",
+      "rank": 1,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f"
+      ]
+    },
+    {
+      "id": "baa0e3aa-4997-4523-a480-44b38b2dce3a-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "baa0e3aa-4997-4523-a480-44b38b2dce3a-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "e9db56bb-9ea1-4aa9-969f-026ffcc84b50-q001",
+      "type": "factual",
+      "question": "What does the document say about: Supplier Comparison Tables?",
+      "rank": 6,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0"
+      ]
+    },
+    {
+      "id": "e9db56bb-9ea1-4aa9-969f-026ffcc84b50-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Supplier Comparison Tables'.",
+      "rank": 6,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "e9db56bb-9ea1-4aa9-969f-026ffcc84b50-q003",
+      "type": "table",
+      "question": "What density value is reported?",
+      "rank": 6,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a"
+      ]
+    },
+    {
+      "id": "e9db56bb-9ea1-4aa9-969f-026ffcc84b50-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "e9db56bb-9ea1-4aa9-969f-026ffcc84b50-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "5f334479-7d11-4db5-b1f7-b5e4aec39d17-q001",
+      "type": "factual",
+      "question": "What does the document say about: Scanned Lab Notes?",
+      "rank": 6,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "5f334479-7d11-4db5-b1f7-b5e4aec39d17-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Scanned Lab Notes'.",
+      "rank": 3,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f"
+      ]
+    },
+    {
+      "id": "5f334479-7d11-4db5-b1f7-b5e4aec39d17-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "5f334479-7d11-4db5-b1f7-b5e4aec39d17-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0-q001",
+      "type": "factual",
+      "question": "What does the document say about: Rheology Equations?",
+      "rank": 2,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f"
+      ]
+    },
+    {
+      "id": "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Rheology Equations'.",
+      "rank": 4,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0-q003",
+      "type": "equation",
+      "question": "What does Equation 4 calculate?",
+      "rank": 2,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a"
+      ]
+    },
+    {
+      "id": "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "0488823c-dfe6-4892-90b9-f894fefb8de2-q001",
+      "type": "factual",
+      "question": "What does the document say about: Supplier A Datasheet?",
+      "rank": 7,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0"
+      ]
+    },
+    {
+      "id": "0488823c-dfe6-4892-90b9-f894fefb8de2-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Supplier A Datasheet'.",
+      "rank": 6,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "0488823c-dfe6-4892-90b9-f894fefb8de2-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "0488823c-dfe6-4892-90b9-f894fefb8de2-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "83e00a62-4c3f-438d-b269-6968f73d391f-q001",
+      "type": "factual",
+      "question": "What does the document say about: Supplier B Datasheet?",
+      "rank": 4,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0"
+      ]
+    },
+    {
+      "id": "83e00a62-4c3f-438d-b269-6968f73d391f-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Supplier B Datasheet'.",
+      "rank": 3,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "83e00a62-4c3f-438d-b269-6968f73d391f-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "83e00a62-4c3f-438d-b269-6968f73d391f-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "63d00e34-3de0-44c3-894c-fba8e579efe0-q001",
+      "type": "factual",
+      "question": "What does the document say about: Viscosity Study Report?",
+      "rank": 2,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "63d00e34-3de0-44c3-894c-fba8e579efe0-q002",
+      "type": "paraphrase",
+      "question": "Summarize the information related to 'Viscosity Study Report'.",
+      "rank": 2,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "63d00e34-3de0-44c3-894c-fba8e579efe0-neg001",
+      "type": "negative",
+      "question": "What is the CEO's birthday?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "5f334479-7d11-4db5-b1f7-b5e4aec39d17"
+      ]
+    },
+    {
+      "id": "63d00e34-3de0-44c3-894c-fba8e579efe0-neg002",
+      "type": "negative",
+      "question": "What is this product's 2035 forecast revenue?",
+      "rank": null,
+      "answer_preview": "I could not find this information in the provided documents.",
+      "citations": 0,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2"
+      ]
+    },
+    {
+      "id": "cross-001",
+      "type": "cross_document",
+      "question": "Compare density values across the documents.",
+      "rank": 1,
+      "answer_preview": "Based on the evidence, see the cited excerpt. [C1]",
+      "citations": 1,
+      "retrieved_docs": [
+        "baa0e3aa-4997-4523-a480-44b38b2dce3a",
+        "63d00e34-3de0-44c3-894c-fba8e579efe0",
+        "83e00a62-4c3f-438d-b269-6968f73d391f",
+        "0488823c-dfe6-4892-90b9-f894fefb8de2",
+        "d8f888b2-dfa5-4b0f-9f2f-e2ea6d2933d0"
+      ]
+    }
+  ],
+  "dataset_path": "tests/evaluation/generated/questions.json",
+  "elapsed_sec": 0.48,
+  "mode": "offline_fake",
+  "parser_note": "Live ingest path uses pdfium (+ optional vision). Docling/MinerU/Marker/PaddleOCR optional packages are not installed."
+}

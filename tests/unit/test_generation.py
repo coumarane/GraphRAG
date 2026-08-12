@@ -94,6 +94,121 @@ def test_validate_citations_strips_unknown_ids() -> None:
     assert len(result.citations) == 1
 
 
+def test_validate_citations_drops_unused_ids_on_insufficient_answer() -> None:
+    tenant = TenantContext(tenant_id=new_id())
+    evidence = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="METASHINE RC particle size table",
+    )
+    registry = CitationRegistry(tenant, [evidence])
+    result = validate_citations(
+        tenant=tenant,
+        answer="There is no texture evaluation chart in the provided evidence.",
+        registry=registry,
+        claimed_ids=["C1"],
+        strict=False,
+    )
+    # In-text claim markers are cleared, but provenance cards stay for UI pin.
+    assert result.cited_ids == ["C1"]
+    assert len(result.citations) == 1
+    assert "citations_attached_for_provenance" in result.warnings
+    assert "citations_cleared_on_insufficient_answer" in result.warnings
+
+
+def test_validate_citations_strips_markers_on_shelf_life_abstention() -> None:
+    """Models often cite every retrieved chunk while saying 'not found'."""
+    tenant = TenantContext(tenant_id=new_id())
+    evidences = [
+        _evidence(
+            tenant_id=tenant.tenant_id,
+            text=f"SY-KNP antimicrobial note {idx}",
+        )
+        for idx in range(12)
+    ]
+    registry = CitationRegistry(tenant, evidences)
+    claimed = [f"C{i}" for i in range(1, 13)]
+    markers = " ".join(f"[{cid}]" for cid in claimed)
+    answer = (
+        "For SY-KNP: The available evidence does not provide explicit information "
+        "regarding the shelf life or specific storage conditions for SY-KNP. "
+        "Therefore, no shelf life or storage condition details can be confirmed "
+        f"from the provided evidence. {markers}"
+    )
+    result = validate_citations(
+        tenant=tenant,
+        answer=answer,
+        registry=registry,
+        claimed_ids=claimed,
+        strict=False,
+    )
+    assert result.cited_ids  # provenance cards kept for UI / sticky pin
+    assert "[C1]" not in result.answer
+    assert "citations_cleared_on_insufficient_answer" in result.warnings
+    assert "citations_attached_for_provenance" in result.warnings
+    assert "answer_missing_citations" not in result.warnings
+    assert len(result.citations) >= 1
+    assert result.citations[0].document_id is not None
+
+
+def test_validate_citations_keeps_sources_on_partial_claim_fidelity_answer() -> None:
+    """Tested/example % answers must keep citations despite 'no recommended level' hedge."""
+    tenant = TenantContext(tenant_id=new_id())
+    e1 = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="Cream formulation example: butylene glycol 5.0%.",
+    )
+    e2 = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="Moisturizing cream uses 8.0% butylene glycol.",
+    )
+    registry = CitationRegistry(tenant, [e1, e2])
+    answer = (
+        "For cream formulations: One example cream formulation contains 5.0% "
+        "butylene glycol [C1]. Another moisturizing cream formulation uses 8.0% "
+        "butylene glycol [C2]. These are tested or example levels in specific cream "
+        "formulas. The evidence does not specify an official or recommended use "
+        "level for butylene glycol in creams, but shows that 5–8% is used in "
+        "practice in these formulations."
+    )
+    result = validate_citations(
+        tenant=tenant,
+        answer=answer,
+        registry=registry,
+        claimed_ids=["C1", "C2"],
+        strict=False,
+    )
+    assert [c.citation_id for c in result.citations] == ["C1", "C2"]
+    assert "citations_cleared_on_insufficient_answer" not in result.warnings
+    assert "[C1]" in result.answer
+
+
+def test_validate_numeric_grounding_flags_column_misread() -> None:
+    from enterprise_rag.domain.citations import validate_numeric_grounding
+
+    tenant = TenantContext(tenant_id=new_id())
+    evidence = _evidence(
+        tenant_id=tenant.tenant_id,
+        text="High purity glass Component Regular Glass TA GLASS\nPb 4-7 N.D.\nCr 5> N.D.\nSb 5> N.D.",
+    )
+    registry = CitationRegistry(tenant, [evidence])
+    result = validate_citations(
+        tenant=tenant,
+        answer=(
+            "For TA glass:\n"
+            "- Lead (Pb): Not detected (N.D.) [C1]\n"
+            "- Chromium (Cr): Less than 5 ppm [C1]\n"
+        ),
+        registry=registry,
+        claimed_ids=["C1"],
+        strict=False,
+    )
+    assert any(w.startswith("ungrounded_numeric:chromium") for w in result.warnings)
+    assert result.valid is False
+    # Supported N.D. claim should not warn for lead.
+    assert not any(w.startswith("ungrounded_numeric:lead") for w in result.warnings)
+    assert validate_numeric_grounding(answer=result.answer, citations=result.citations)
+
+
 def test_validate_citations_strict_raises() -> None:
     tenant = TenantContext(tenant_id=new_id())
     evidence = _evidence(tenant_id=tenant.tenant_id, text="fact")
@@ -117,6 +232,19 @@ def test_parse_structured_generation() -> None:
     assert parsed.structured
     assert parsed.citation_ids == ["C1"]
     assert extract_citation_ids(parsed.answer) == ["C1"]
+
+
+def test_parse_generation_coerces_string_warnings() -> None:
+    payload = {
+        "answer": "Pb is N.D. [C1].",
+        "citation_ids": ["C1"],
+        "warnings": "Units not specified in the source.",
+    }
+    parsed = parse_generation_text(json.dumps(payload))
+    assert parsed.structured
+    assert parsed.answer == "Pb is N.D. [C1]."
+    assert parsed.warnings == ["Units not specified in the source."]
+    assert "{" not in parsed.answer
 
 
 def test_remap_graph_paths_to_citation_ids() -> None:

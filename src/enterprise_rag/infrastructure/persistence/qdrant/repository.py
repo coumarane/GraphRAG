@@ -42,7 +42,10 @@ class QdrantChunkVectorStore:
                 details={"extra": "qdrant", "module": "qdrant_client"},
                 cause=exc,
             ) from exc
-        kwargs: dict[str, Any] = {"url": self._settings.url}
+        kwargs: dict[str, Any] = {
+            "url": self._settings.url,
+            "check_compatibility": False,
+        }
         if self._settings.api_key is not None:
             kwargs["api_key"] = self._settings.api_key.get_secret_value()
         self._client = QdrantClient(**kwargs)
@@ -110,8 +113,14 @@ class QdrantChunkVectorStore:
                     payload=_payload_dict(record.payload),
                 )
             )
+        batch_size = 32
         try:
-            client.upsert(collection_name=self._collection, points=points, wait=True)
+            for start in range(0, len(points), batch_size):
+                client.upsert(
+                    collection_name=self._collection,
+                    points=points[start : start + batch_size],
+                    wait=True,
+                )
         except Exception as exc:
             raise StorageError("Qdrant upsert failed", cause=exc) from exc
         return len(points)
@@ -150,13 +159,25 @@ class QdrantChunkVectorStore:
                 )
             )
         try:
-            results = client.search(
-                collection_name=self._collection,
-                query_vector=(request.vector_name, request.query_vector),
-                query_filter=qm.Filter(must=must),
-                limit=request.top_k,
-                with_payload=True,
-            )
+            # qdrant-client >=1.14 uses query_points; older clients expose search().
+            if hasattr(client, "query_points"):
+                response = client.query_points(
+                    collection_name=self._collection,
+                    query=list(request.query_vector),
+                    using=request.vector_name,
+                    query_filter=qm.Filter(must=must),
+                    limit=request.top_k,
+                    with_payload=True,
+                )
+                results = list(getattr(response, "points", []) or [])
+            else:
+                results = client.search(
+                    collection_name=self._collection,
+                    query_vector=(request.vector_name, request.query_vector),
+                    query_filter=qm.Filter(must=must),
+                    limit=request.top_k,
+                    with_payload=True,
+                )
         except Exception as exc:
             raise StorageError("Qdrant search failed", cause=exc) from exc
 
@@ -209,6 +230,41 @@ class QdrantChunkVectorStore:
             )
         except Exception as exc:
             raise StorageError("Qdrant delete failed", cause=exc) from exc
+        status = getattr(result, "status", None)
+        return 0 if status is None else 1
+
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+    ) -> int:
+        client = self._get_client()
+        try:
+            from qdrant_client.http import models as qm
+        except ImportError as exc:
+            raise ConfigurationError("qdrant_client models unavailable", cause=exc) from exc
+        try:
+            result = client.delete(
+                collection_name=self._collection,
+                points_selector=qm.FilterSelector(
+                    filter=qm.Filter(
+                        must=[
+                            qm.FieldCondition(
+                                key="tenant_id",
+                                match=qm.MatchValue(value=str(tenant.tenant_id)),
+                            ),
+                            qm.FieldCondition(
+                                key="document_id",
+                                match=qm.MatchValue(value=str(document_id)),
+                            ),
+                        ]
+                    )
+                ),
+                wait=True,
+            )
+        except Exception as exc:
+            raise StorageError("Qdrant document delete failed", cause=exc) from exc
         status = getattr(result, "status", None)
         return 0 if status is None else 1
 

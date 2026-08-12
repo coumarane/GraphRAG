@@ -85,13 +85,79 @@ def assemble_context(
     *,
     top_k: int,
     prefer_modality_diversity: bool = True,
+    prefer_tables: bool = False,
+    prefer_charts: bool = False,
 ) -> list[RetrievedEvidence]:
     """Bound context size while preferring modality diversity when requested."""
     deduped = deduplicate_evidence(evidence)
+    if top_k <= 0:
+        return []
+    if prefer_tables:
+        table_like = [
+            item
+            for item in deduped
+            if item.modality is Modality.TABLE
+            or any(
+                hint in (item.text or "").casefold()
+                for hint in ("ppm", "n.d", "heavy metal", "impurit", "assay")
+            )
+        ]
+        reserved = max(1, min(len(table_like), (top_k + 1) // 2))
+        selected: list[RetrievedEvidence] = []
+        seen: set[UUID] = set()
+        for item in table_like:
+            if len(selected) >= reserved:
+                break
+            selected.append(item)
+            seen.add(item.chunk_id)
+        for item in deduped:
+            if len(selected) >= top_k:
+                break
+            if item.chunk_id in seen:
+                continue
+            selected.append(item)
+            seen.add(item.chunk_id)
+        return selected[:top_k]
+
+    if prefer_charts:
+        chart_like = [
+            item
+            for item in deduped
+            if item.modality in {Modality.CHART, Modality.IMAGE, Modality.COMPOSITE}
+            or any(
+                hint in (item.text or "").casefold()
+                for hint in (
+                    "soft-focus",
+                    "soft focus",
+                    "byk-mac",
+                    "angle of measurement",
+                    "tone-up",
+                    "synthetic mica (matte",
+                    "synthetic mica (gloss",
+                )
+            )
+        ]
+        reserved = max(1, min(len(chart_like), (top_k + 1) // 2))
+        selected: list[RetrievedEvidence] = []
+        seen: set[UUID] = set()
+        for item in chart_like:
+            if len(selected) >= reserved:
+                break
+            selected.append(item)
+            seen.add(item.chunk_id)
+        for item in deduped:
+            if len(selected) >= top_k:
+                break
+            if item.chunk_id in seen:
+                continue
+            selected.append(item)
+            seen.add(item.chunk_id)
+        return selected[:top_k]
+
     if not prefer_modality_diversity or top_k <= 1:
         return deduped[:top_k]
 
-    selected: list[RetrievedEvidence] = []
+    selected = []
     seen_modalities: set[Modality] = set()
     deferred: list[RetrievedEvidence] = []
     for item in deduped:
@@ -107,6 +173,48 @@ def assemble_context(
             break
         selected.append(item)
     return selected[:top_k]
+
+
+def ensure_document_coverage(
+    selected: Sequence[RetrievedEvidence],
+    pool: Sequence[RetrievedEvidence],
+    *,
+    document_ids: Sequence[UUID],
+    top_k: int,
+    min_per_doc: int = 1,
+) -> list[RetrievedEvidence]:
+    """Reserve evidence slots so multi-doc filters are not drowned by one large corpus."""
+    if top_k <= 0:
+        return []
+    if len(document_ids) < 2:
+        return list(selected)[:top_k]
+
+    by_doc: dict[UUID, list[RetrievedEvidence]] = {doc_id: [] for doc_id in document_ids}
+    for item in [*selected, *pool]:
+        bucket = by_doc.get(item.document_id)
+        if bucket is None:
+            continue
+        if any(existing.chunk_id == item.chunk_id for existing in bucket):
+            continue
+        bucket.append(item)
+
+    reserved: list[RetrievedEvidence] = []
+    used: set[UUID] = set()
+    for doc_id in document_ids:
+        for item in by_doc.get(doc_id, [])[: max(1, min_per_doc)]:
+            if item.chunk_id in used:
+                continue
+            reserved.append(item)
+            used.add(item.chunk_id)
+
+    remainder: list[RetrievedEvidence] = []
+    for item in selected:
+        if item.chunk_id in used:
+            continue
+        remainder.append(item)
+        used.add(item.chunk_id)
+
+    return (reserved + remainder)[:top_k]
 
 
 def document_name_map(

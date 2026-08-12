@@ -40,6 +40,16 @@ class ChunkLookupStore(Protocol):
         """Upsert chunks for later lookup. Returns written count."""
         ...
 
+    async def delete_version(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+        version_id: UUID,
+    ) -> int:
+        """Remove chunks for a document version. Returns deleted count."""
+        ...
+
 
 class LexicalSearchStore(Protocol):
     """Sparse / full-text style chunk search."""
@@ -62,4 +72,14 @@ class LexicalSearchStore(Protocol):
         chunks: list[ChunkBase],
     ) -> int:
         """Index chunk text for lexical search."""
+        ...
+
+    async def delete_version(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+        version_id: UUID,
+    ) -> int:
+        """Remove lexical entries for a document version. Returns deleted count."""
         ...

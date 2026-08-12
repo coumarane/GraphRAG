@@ -24,23 +24,33 @@ class ParserRouteProfile:
 DEFAULT_ROUTE_PROFILES: dict[ParserProfile, ParserRouteProfile] = {
     ParserProfile.FAST: ParserRouteProfile(
         primary=ParserName.DOCLING,
-        fallbacks=(ParserName.MARKER,),
+        fallbacks=(ParserName.MARKER, ParserName.PDFIUM),
     ),
     ParserProfile.BALANCED: ParserRouteProfile(
         primary=ParserName.DOCLING,
-        fallbacks=(ParserName.MINERU, ParserName.MARKER, ParserName.PADDLEOCR),
+        fallbacks=(
+            ParserName.MINERU,
+            ParserName.MARKER,
+            ParserName.PADDLEOCR,
+            ParserName.PDFIUM,
+        ),
     ),
     ParserProfile.SCIENTIFIC: ParserRouteProfile(
         primary=ParserName.MINERU,
-        fallbacks=(ParserName.DOCLING, ParserName.MARKER),
+        fallbacks=(ParserName.DOCLING, ParserName.MARKER, ParserName.PDFIUM),
     ),
     ParserProfile.SCANNED: ParserRouteProfile(
         primary=ParserName.PADDLEOCR,
-        fallbacks=(ParserName.MINERU,),
+        fallbacks=(ParserName.MINERU, ParserName.PDFIUM),
     ),
     ParserProfile.ACCURATE: ParserRouteProfile(
         primary=ParserName.MINERU,
-        fallbacks=(ParserName.DOCLING, ParserName.MARKER, ParserName.PADDLEOCR),
+        fallbacks=(
+            ParserName.DOCLING,
+            ParserName.MARKER,
+            ParserName.PADDLEOCR,
+            ParserName.PDFIUM,
+        ),
     ),
 }
 

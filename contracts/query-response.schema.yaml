@@ -39,3 +39,25 @@ properties:
   graph_paths:
     type: array
     items: {type: object}
+  active_conversation_context:
+    type: [object, 'null']
+    properties:
+      label: {type: string}
+      document_ids:
+        type: array
+        items: {type: string, format: uuid}
+      entities:
+        type: array
+        items: {type: string}
+  enforced_invariants:
+    type: array
+    items:
+      type: string
+      enum:
+        - grounded_generation
+        - conversation_context
+        - retrieval_scope
+        - evidence_sufficiency
+        - citation_traceability
+        - security_authorization
+

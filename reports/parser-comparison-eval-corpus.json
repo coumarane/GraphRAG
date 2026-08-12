@@ -1,0 +1,452 @@
+[
+  {
+    "filename": "charts.pdf",
+    "path": "evaluation/corpus/charts.pdf",
+    "file_size": 781,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 173.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.55,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 1,
+        "equations": 0,
+        "images": 0,
+        "latency_ms": 0.7,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  },
+  {
+    "filename": "complex_tables.pdf",
+    "path": "evaluation/corpus/complex_tables.pdf",
+    "file_size": 768,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 2,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 160.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.55,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 1,
+        "equations": 2,
+        "images": 0,
+        "latency_ms": 0.5,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  },
+  {
+    "filename": "scanned.pdf",
+    "path": "evaluation/corpus/scanned.pdf",
+    "file_size": 704,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 109.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.55,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "low",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 0,
+        "equations": 0,
+        "images": 0,
+        "latency_ms": 0.5,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  },
+  {
+    "filename": "scientific_equations.pdf",
+    "path": "evaluation/corpus/scientific_equations.pdf",
+    "file_size": 795,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 5,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 187.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.55,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "low",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 0,
+        "equations": 5,
+        "images": 0,
+        "latency_ms": 0.4,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  },
+  {
+    "filename": "shared_entities_a.pdf",
+    "path": "evaluation/corpus/shared_entities_a.pdf",
+    "file_size": 740,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 132.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.55,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "low",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 0,
+        "equations": 0,
+        "images": 0,
+        "latency_ms": 0.5,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  },
+  {
+    "filename": "shared_entities_b.pdf",
+    "path": "evaluation/corpus/shared_entities_b.pdf",
+    "file_size": 761,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 153.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.55,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "low",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 0,
+        "equations": 0,
+        "images": 0,
+        "latency_ms": 0.5,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  },
+  {
+    "filename": "text_heavy.pdf",
+    "path": "evaluation/corpus/text_heavy.pdf",
+    "file_size": 891,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 257.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ],
+    "parser_comparison": {
+      "docling": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for docling is not installed"
+      },
+      "mineru": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for mineru is not installed"
+      },
+      "marker": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for marker is not installed"
+      },
+      "paddleocr": {
+        "status": "NEEDS_REVIEW",
+        "reason": "optional dependency for paddleocr is not installed"
+      },
+      "pdfium": {
+        "status": "ok",
+        "pages": 1,
+        "text_native_pages": 1,
+        "scanned_pages": 0,
+        "tables": 1,
+        "equations": 0,
+        "images": 0,
+        "latency_ms": 0.6,
+        "text_accuracy": "NEEDS_REVIEW",
+        "reading_order": "NEEDS_REVIEW"
+      }
+    }
+  }
+]

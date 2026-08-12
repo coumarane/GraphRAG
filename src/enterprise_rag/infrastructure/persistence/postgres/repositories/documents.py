@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from enterprise_rag.domain.ingestion.records import (
@@ -118,6 +118,28 @@ class SqlAlchemyDocumentRepository:
         model = result.scalar_one_or_none()
         return document_to_record(model) if model is not None else None
 
+    async def list_documents(
+        self,
+        tenant: TenantContext,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[DocumentRecord], int]:
+        tenant.ensure_authorized()
+        await set_tenant_context(self._session, tenant)
+        base = select(DocumentModel).where(DocumentModel.tenant_id == tenant.tenant_id)
+        total_result = await self._session.execute(
+            select(DocumentModel.document_id).where(
+                DocumentModel.tenant_id == tenant.tenant_id
+            )
+        )
+        total = len(list(total_result.scalars().all()))
+        result = await self._session.execute(
+            base.order_by(DocumentModel.updated_at.desc().nullslast()).offset(offset).limit(limit)
+        )
+        models = list(result.scalars().all())
+        return [document_to_record(model) for model in models], total
+
     async def update_document(
         self,
         tenant: TenantContext,
@@ -197,22 +219,44 @@ class SqlAlchemyDocumentRepository:
     async def get_version_by_content_hash(
         self,
         tenant: TenantContext,
-        document_id: UUID,
+        document_id: UUID | None,
         content_hash: str,
     ) -> DocumentVersionRecord | None:
         tenant.ensure_authorized()
         if not content_hash:
             raise ValidationError("content_hash is required for duplicate detection")
         await set_tenant_context(self._session, tenant)
+        clauses = [
+            DocumentVersionModel.tenant_id == tenant.tenant_id,
+            DocumentVersionModel.content_hash == content_hash.lower(),
+        ]
+        if document_id is not None:
+            clauses.append(DocumentVersionModel.document_id == document_id)
         result = await self._session.execute(
-            select(DocumentVersionModel).where(
-                DocumentVersionModel.tenant_id == tenant.tenant_id,
-                DocumentVersionModel.document_id == document_id,
-                DocumentVersionModel.content_hash == content_hash.lower(),
-            )
+            select(DocumentVersionModel).where(*clauses).limit(1)
         )
         model = result.scalar_one_or_none()
         return version_to_record(model) if model is not None else None
+
+    async def lock_for_content_hash(
+        self,
+        tenant: TenantContext,
+        content_hash: str,
+    ) -> None:
+        tenant.ensure_authorized()
+        if not content_hash:
+            raise ValidationError("content_hash is required for duplicate detection")
+        await set_tenant_context(self._session, tenant)
+        bind = self._session.get_bind()
+        dialect = getattr(getattr(bind, "dialect", None), "name", "")
+        if dialect != "postgresql":
+            return
+        # Transaction-scoped advisory lock; released on commit/rollback.
+        lock_key = int(content_hash[:15], 16)
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": lock_key},
+        )
 
 
 def assert_tenant_context_present(tenant: TenantContext | None) -> TenantContext:

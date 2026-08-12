@@ -1,0 +1,1075 @@
+[
+  {
+    "filename": "ADEKA NOL L or F or P Flyer 2023 (1).pdf",
+    "path": "sample_data/ADEKA NOL L or F or P Flyer 2023 (1).pdf",
+    "file_size": 480111,
+    "pages": 2,
+    "text_native_pages": 2,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 2,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 2630.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "MARKETING"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "AMITOSE 2GA, DGA-Presentation (1).pdf",
+    "path": "sample_data/AMITOSE 2GA, DGA-Presentation (1).pdf",
+    "file_size": 1391932,
+    "pages": 23,
+    "text_native_pages": 23,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 4,
+    "equations": 7,
+    "headers_detected": true,
+    "footers_detected": false,
+    "multi_column_pages": 10,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 705.7,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "ASTAXANTHIN-Catalog.pdf",
+    "path": "sample_data/ASTAXANTHIN-Catalog.pdf",
+    "file_size": 2909605,
+    "pages": 32,
+    "text_native_pages": 31,
+    "scanned_pages": 1,
+    "images": 1,
+    "tables": 11,
+    "equations": 21,
+    "headers_detected": true,
+    "footers_detected": false,
+    "multi_column_pages": 11,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 1291.0,
+    "scanned_page_ratio": 0.031,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRODUCT_SPECIFICATION"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "Acerola Extract WB-E TDS.pdf",
+    "path": "sample_data/Acerola Extract WB-E TDS.pdf",
+    "file_size": 138370,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 1339.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "low",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "BNB CHEM-Product Catalog.pdf",
+    "path": "sample_data/BNB CHEM-Product Catalog.pdf",
+    "file_size": 6312190,
+    "pages": 15,
+    "text_native_pages": 0,
+    "scanned_pages": 15,
+    "images": 15,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [],
+    "mean_chars_per_page": 0.0,
+    "scanned_page_ratio": 1.0,
+    "parser_recommendation": "paddleocr",
+    "parser_profile": "scanned",
+    "parser_confidence": 0.9,
+    "parser_reason": "high scanned-page ratio / low text density",
+    "classification": [
+      "SCANNED",
+      "IMAGE_HEAVY",
+      "PRODUCT_SPECIFICATION"
+    ],
+    "pdf_type": "SCANNED",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "paddleocr",
+      "mineru"
+    ]
+  },
+  {
+    "filename": "BORON NITRIDE SHP-6- Presentation.pdf",
+    "path": "sample_data/BORON NITRIDE SHP-6- Presentation.pdf",
+    "file_size": 995014,
+    "pages": 24,
+    "text_native_pages": 24,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 5,
+    "equations": 9,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 1,
+    "languages": [
+      "en",
+      "ja"
+    ],
+    "mean_chars_per_page": 354.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "CALMARU-Presentation-V3.pdf",
+    "path": "sample_data/CALMARU-Presentation-V3.pdf",
+    "file_size": 2080517,
+    "pages": 28,
+    "text_native_pages": 28,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 4,
+    "equations": 8,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 1,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 263.2,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "CARFIL 1.3-BG.pdf",
+    "path": "sample_data/CARFIL 1.3-BG.pdf",
+    "file_size": 2193880,
+    "pages": 19,
+    "text_native_pages": 18,
+    "scanned_pages": 1,
+    "images": 1,
+    "tables": 4,
+    "equations": 2,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 4,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 500.8,
+    "scanned_page_ratio": 0.053,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "Cosme Herbest JUNSAI-Presentation.pdf",
+    "path": "sample_data/Cosme Herbest JUNSAI-Presentation.pdf",
+    "file_size": 3679994,
+    "pages": 20,
+    "text_native_pages": 19,
+    "scanned_pages": 1,
+    "images": 1,
+    "tables": 5,
+    "equations": 19,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 317.6,
+    "scanned_page_ratio": 0.05,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "DOCNATURA CJSO-Presentation 1.pdf",
+    "path": "sample_data/DOCNATURA CJSO-Presentation 1.pdf",
+    "file_size": 200438,
+    "pages": 3,
+    "text_native_pages": 3,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 2,
+    "headers_detected": true,
+    "footers_detected": false,
+    "multi_column_pages": 2,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 1573.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "EMULGEN 2020G-SPEC & COMPOSITION.PDF",
+    "path": "sample_data/EMULGEN 2020G-SPEC & COMPOSITION.PDF",
+    "file_size": 171180,
+    "pages": 1,
+    "text_native_pages": 1,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 878.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "FINEPINOLEOIL - ICE Presentation.pdf",
+    "path": "sample_data/FINEPINOLEOIL - ICE Presentation.pdf",
+    "file_size": 392701,
+    "pages": 7,
+    "text_native_pages": 7,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 0,
+    "equations": 1,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 305.3,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "low",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "HIBISCUS EXTRACT (B)-BG-LEAFLET.pdf",
+    "path": "sample_data/HIBISCUS EXTRACT (B)-BG-LEAFLET.pdf",
+    "file_size": 442912,
+    "pages": 4,
+    "text_native_pages": 3,
+    "scanned_pages": 1,
+    "images": 1,
+    "tables": 1,
+    "equations": 1,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 1044.0,
+    "scanned_page_ratio": 0.25,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "MIXED",
+      "MARKETING"
+    ],
+    "pdf_type": "MIXED",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "INGREDIENTS BY SEPROSYS - Presentation.pdf",
+    "path": "sample_data/INGREDIENTS BY SEPROSYS - Presentation.pdf",
+    "file_size": 2780959,
+    "pages": 44,
+    "text_native_pages": 40,
+    "scanned_pages": 4,
+    "images": 4,
+    "tables": 0,
+    "equations": 16,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 11,
+    "languages": [
+      "en",
+      "fr"
+    ],
+    "mean_chars_per_page": 477.4,
+    "scanned_page_ratio": 0.091,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "MACBIOBRIDE MG-T-Leaflet.pdf",
+    "path": "sample_data/MACBIOBRIDE MG-T-Leaflet.pdf",
+    "file_size": 856537,
+    "pages": 4,
+    "text_native_pages": 4,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 10,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en",
+      "ja",
+      "zh",
+      "fr"
+    ],
+    "mean_chars_per_page": 856.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "MARKETING"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "NOF LINEUP CATALOG INCI NAME.pdf",
+    "path": "sample_data/NOF LINEUP CATALOG INCI NAME.pdf",
+    "file_size": 5005179,
+    "pages": 80,
+    "text_native_pages": 77,
+    "scanned_pages": 3,
+    "images": 3,
+    "tables": 29,
+    "equations": 137,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 19,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 1559.3,
+    "scanned_page_ratio": 0.037,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRODUCT_SPECIFICATION"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "NSG ALL PRODUCT-PRESENTATION ICE 2023.pdf",
+    "path": "sample_data/NSG ALL PRODUCT-PRESENTATION ICE 2023.pdf",
+    "file_size": 5765396,
+    "pages": 99,
+    "text_native_pages": 99,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 9,
+    "equations": 112,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 6,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 308.9,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "OLIVE LEAF EXTRACT (B)-BG.pdf",
+    "path": "sample_data/OLIVE LEAF EXTRACT (B)-BG.pdf",
+    "file_size": 2634431,
+    "pages": 23,
+    "text_native_pages": 23,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 30,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 4,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 521.4,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "PENETRABLE HYALURONIC ACID-Brochure.pdf",
+    "path": "sample_data/PENETRABLE HYALURONIC ACID-Brochure.pdf",
+    "file_size": 1110263,
+    "pages": 2,
+    "text_native_pages": 2,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 1,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 2,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 3171.0,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "MARKETING"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "PROLICELL SERIES.pdf",
+    "path": "sample_data/PROLICELL SERIES.pdf",
+    "file_size": 6085473,
+    "pages": 62,
+    "text_native_pages": 50,
+    "scanned_pages": 12,
+    "images": 12,
+    "tables": 0,
+    "equations": 6,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 16,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 520.2,
+    "scanned_page_ratio": 0.194,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "MIXED",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "MIXED",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "Presentation MIZOAN SOLUBIL ORG 1300- V2.pdf",
+    "path": "sample_data/Presentation MIZOAN SOLUBIL ORG 1300- V2.pdf",
+    "file_size": 1244109,
+    "pages": 33,
+    "text_native_pages": 33,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 2,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 264.5,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "Presentation-SAKAMOTO RANGE-V4.pdf",
+    "path": "sample_data/Presentation-SAKAMOTO RANGE-V4.pdf",
+    "file_size": 5624187,
+    "pages": 115,
+    "text_native_pages": 115,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 13,
+    "equations": 53,
+    "headers_detected": false,
+    "footers_detected": true,
+    "multi_column_pages": 20,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 509.8,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "ST-400Serie-Presentation.pdf",
+    "path": "sample_data/ST-400Serie-Presentation.pdf",
+    "file_size": 5299356,
+    "pages": 29,
+    "text_native_pages": 29,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 7,
+    "equations": 29,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 3,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 377.9,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "SUNSPHERE-CATALOG.pdf",
+    "path": "sample_data/SUNSPHERE-CATALOG.pdf",
+    "file_size": 2373350,
+    "pages": 12,
+    "text_native_pages": 0,
+    "scanned_pages": 12,
+    "images": 12,
+    "tables": 0,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [],
+    "mean_chars_per_page": 0.0,
+    "scanned_page_ratio": 1.0,
+    "parser_recommendation": "paddleocr",
+    "parser_profile": "scanned",
+    "parser_confidence": 0.9,
+    "parser_reason": "high scanned-page ratio / low text density",
+    "classification": [
+      "SCANNED",
+      "IMAGE_HEAVY",
+      "PRODUCT_SPECIFICATION"
+    ],
+    "pdf_type": "SCANNED",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "paddleocr",
+      "mineru"
+    ]
+  },
+  {
+    "filename": "Soyamine N-Presentation V1.pdf",
+    "path": "sample_data/Soyamine N-Presentation V1.pdf",
+    "file_size": 2496270,
+    "pages": 41,
+    "text_native_pages": 41,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 2,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 245.6,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "[FUJIFILM+BI]+Biodegradable+Particles_20240611M-1.pdf",
+    "path": "sample_data/[FUJIFILM+BI]+Biodegradable+Particles_20240611M-1.pdf",
+    "file_size": 1386623,
+    "pages": 24,
+    "text_native_pages": 23,
+    "scanned_pages": 1,
+    "images": 1,
+    "tables": 2,
+    "equations": 43,
+    "headers_detected": true,
+    "footers_detected": false,
+    "multi_column_pages": 14,
+    "languages": [
+      "en",
+      "ja"
+    ],
+    "mean_chars_per_page": 831.5,
+    "scanned_page_ratio": 0.042,
+    "parser_recommendation": "mineru",
+    "parser_profile": "scientific",
+    "parser_confidence": 0.8,
+    "parser_reason": "scientific/complex PDF layout signals",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "mineru",
+      "docling",
+      "marker"
+    ]
+  },
+  {
+    "filename": "[K.S.PEARL] Make-up Powders.pdf",
+    "path": "sample_data/[K.S.PEARL] Make-up Powders.pdf",
+    "file_size": 3779132,
+    "pages": 30,
+    "text_native_pages": 28,
+    "scanned_pages": 2,
+    "images": 2,
+    "tables": 5,
+    "equations": 32,
+    "headers_detected": false,
+    "footers_detected": true,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 353.7,
+    "scanned_page_ratio": 0.067,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC",
+      "TABLE_HEAVY",
+      "TECHNICAL_DATASHEET",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "high",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "[K.S.PEARL] Softspread Color series.pdf",
+    "path": "sample_data/[K.S.PEARL] Softspread Color series.pdf",
+    "file_size": 1914234,
+    "pages": 13,
+    "text_native_pages": 11,
+    "scanned_pages": 2,
+    "images": 2,
+    "tables": 0,
+    "equations": 5,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en"
+    ],
+    "mean_chars_per_page": 278.8,
+    "scanned_page_ratio": 0.154,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "MIXED",
+      "FORMULA_HEAVY",
+      "SCIENTIFIC"
+    ],
+    "pdf_type": "MIXED",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  },
+  {
+    "filename": "【Presentation】 SY-KNP.pdf",
+    "path": "sample_data/【Presentation】 SY-KNP.pdf",
+    "file_size": 765495,
+    "pages": 13,
+    "text_native_pages": 13,
+    "scanned_pages": 0,
+    "images": 0,
+    "tables": 1,
+    "equations": 0,
+    "headers_detected": false,
+    "footers_detected": false,
+    "multi_column_pages": 0,
+    "languages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "mean_chars_per_page": 387.4,
+    "scanned_page_ratio": 0.0,
+    "parser_recommendation": "docling",
+    "parser_profile": "balanced",
+    "parser_confidence": 0.75,
+    "parser_reason": "general text-native PDF",
+    "classification": [
+      "TEXT_NATIVE",
+      "PRESENTATION_STYLE"
+    ],
+    "pdf_type": "TEXT_NATIVE",
+    "layout_complexity": "medium",
+    "parser_candidates": [
+      "docling",
+      "mineru",
+      "marker",
+      "paddleocr"
+    ]
+  }
+]

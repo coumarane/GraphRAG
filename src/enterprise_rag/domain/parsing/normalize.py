@@ -101,11 +101,30 @@ def normalize_parser_result(
         _normalize_element(raw_element, source, index)
         for index, raw_element in enumerate(raw.elements)
     ]
+    from enterprise_rag.domain.parsing.boilerplate import (
+        boilerplate_metadata_summary,
+        detect_boilerplate,
+        reclassify_boilerplate_elements,
+    )
+
+    page_lines: list[tuple[int, list[str]]] = []
+    by_page: dict[int, list[str]] = {}
+    for element in elements:
+        text = (element.normalized_content or element.raw_content or "").strip()
+        if text:
+            by_page.setdefault(element.page_start, []).append(text)
+    for page_number in sorted(by_page):
+        page_lines.append((page_number, by_page[page_number]))
+    boilerplate_matches = detect_boilerplate(page_lines)
+    elements = reclassify_boilerplate_elements(elements)
     _link_neighbors(elements)
     sections = _build_sections(elements, source)
 
     page_count = raw.page_count if raw.page_count else len(pages)
     assert_within_page_limit(page_count, max_pages=max_pages)
+    metadata = dict(raw.metadata)
+    if boilerplate_matches:
+        metadata["boilerplate"] = boilerplate_metadata_summary(boilerplate_matches)
     return NormalizedDocument(
         tenant_id=source.tenant_id,
         document_id=source.document_id,
@@ -115,7 +134,7 @@ def normalize_parser_result(
         mime_type=source.mime_type,
         language=raw.language,
         page_count=page_count,
-        metadata=dict(raw.metadata),
+        metadata=metadata,
         pages=pages,
         elements=elements,
         sections=sections,
@@ -194,11 +213,35 @@ def _normalize_element(
             ocr_text=_meta_str(raw, "ocr_text"),
         )
     if element_type is ElementType.CHART:
+        legend_raw = raw.metadata.get("legend")
+        legend = (
+            [str(item) for item in legend_raw if str(item).strip()]
+            if isinstance(legend_raw, list)
+            else []
+        )
+        trends_raw = raw.metadata.get("trends")
+        trends = (
+            [str(item) for item in trends_raw if str(item).strip()]
+            if isinstance(trends_raw, list)
+            else []
+        )
+        axes_raw = raw.metadata.get("axes")
+        axes: dict[str, object] = {}
+        if isinstance(axes_raw, dict):
+            for key, value in axes_raw.items():
+                if isinstance(value, (str, int, float, bool)) or value is None:
+                    axes[str(key)] = value
+                else:
+                    axes[str(key)] = str(value)
         return ChartElement(
             **common,
             chart_type=_meta_str(raw, "chart_type"),
             title=_meta_str(raw, "title"),
+            axes=axes,  # type: ignore[arg-type]
+            legend=legend,
+            trends=trends,
             visual_description=_meta_str(raw, "visual_description"),
+            ocr_text=_meta_str(raw, "ocr_text"),
         )
     if element_type is ElementType.DIAGRAM:
         return DiagramElement(

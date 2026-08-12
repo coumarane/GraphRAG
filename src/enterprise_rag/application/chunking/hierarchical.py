@@ -20,6 +20,11 @@ from enterprise_rag.domain.elements.models import (
 )
 from enterprise_rag.domain.ids import content_sha256_hex, deterministic_id
 from enterprise_rag.domain.modality import Modality
+from enterprise_rag.domain.retrieval.condition_facets import (
+    extract_condition_facets,
+    facets_from_elements,
+    merge_facets,
+)
 from enterprise_rag.domain.types import JsonValue
 
 _SKIP = {ElementType.PAGE_HEADER, ElementType.PAGE_FOOTER}
@@ -70,9 +75,16 @@ def _element_text(element: DocumentElement) -> str:
         ]
         return " | ".join(part for part in parts if part) or "[image]"
     if isinstance(element, ChartElement):
+        axes = ""
+        if element.axes:
+            axes = "; ".join(f"{key}={value}" for key, value in element.axes.items())
         parts = [
             element.title,
             element.visual_description,
+            element.ocr_text,
+            ("Legend: " + "; ".join(element.legend)) if element.legend else None,
+            f"Axes: {axes}" if axes else None,
+            ("Trends: " + "; ".join(element.trends)) if element.trends else None,
             element.normalized_content,
             element.raw_content,
         ]
@@ -196,6 +208,10 @@ class HierarchicalMultimodalChunker:
                 if not text:
                     index += 1
                     continue
+                # Keep text children page-local so chart/table neighbors do not bleed.
+                if buffer.elements and buffer.elements[0].page_start != element.page_start:
+                    children.append(self._flush_text_child(document, parent, buffer))
+                    buffer.clear()
                 tentative = _estimate_tokens("\n\n".join([*buffer.texts, text]))
                 if buffer.texts and tentative > self._settings.child_target_tokens:
                     overlap_text = buffer.texts[-1] if buffer.texts else ""
@@ -430,6 +446,12 @@ class HierarchicalMultimodalChunker:
         page_end = max((el.page_end for el in elements), default=parent.page_end)
         section_path = elements[0].section_path if elements else parent.section_path
         meta: dict[str, JsonValue] = {"role": "child", **(metadata or {})}
+        facets = merge_facets(
+            facets_from_elements(elements),
+            extract_condition_facets(text),
+        )
+        if not facets.is_empty:
+            meta["condition_facets"] = facets.to_metadata()
         return ChunkBase(
             chunk_id=chunk_id,
             tenant_id=document.tenant_id,

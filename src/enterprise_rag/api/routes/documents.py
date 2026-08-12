@@ -6,28 +6,57 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi.responses import Response
 
 from enterprise_rag.api.dependencies import ContainerDep, TenantDep
 from enterprise_rag.api.schemas import (
+    ChunkListResponse,
+    ChunkPreviewItem,
     DeletionAcceptedResponse,
+    DocumentListResponse,
     DocumentResponse,
     ElementItem,
     ElementListResponse,
     GraphViewResponse,
     IngestAcceptedResponse,
+    ReprocessAcceptedResponse,
 )
 from enterprise_rag.application.ingestion.register_source import RegisterSourceRequest
+from enterprise_rag.application.runtime.container import ServiceContainer
+from enterprise_rag.domain.deletion.stages import ReindexScope
+from enterprise_rag.domain.ingestion.records import DocumentRecord
+from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from enterprise_rag.domain.modality import Modality
+from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.shared.exceptions import NotFoundError, ValidationError
+from enterprise_rag.shared.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+async def _run_local_ingest(
+    container: ServiceContainer,
+    tenant: TenantContext,
+    ingestion_run_id: UUID,
+) -> None:
+    try:
+        await container.require_process_ingestion().execute(tenant, ingestion_run_id)
+    except Exception:
+        logger.exception(
+            "background_ingest_failed",
+            ingestion_run_id=str(ingestion_run_id),
+            tenant_id=str(tenant.tenant_id),
+        )
 
 
 @router.post("/ingest", status_code=202, response_model=IngestAcceptedResponse)
 async def ingest_document(
     tenant: TenantDep,
     container: ContainerDep,
+    background_tasks: BackgroundTasks,
     file: UploadFile | None = File(default=None),
     source_url: str | None = Form(default=None),
     title: str | None = Form(default=None),
@@ -59,6 +88,7 @@ async def ingest_document(
                 local_path=local_path,
                 source_url=source_url,
                 title=title or (file.filename if file else None),
+                source_filename=file.filename if file and file.filename else None,
                 document_type=document_type,
                 tags=tag_list,
                 security_labels=label_list,
@@ -70,11 +100,80 @@ async def ingest_document(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
 
+    if container.auto_process_ingest and not result.duplicate_version:
+        background_tasks.add_task(
+            _run_local_ingest,
+            container,
+            tenant,
+            result.ingestion_run_id,
+        )
+
+    await container.commit_db()
     return IngestAcceptedResponse(
         ingestion_run_id=result.ingestion_run_id,
         document_id=result.document_id,
         version_id=result.version_id,
         duplicate_version=result.duplicate_version,
+    )
+
+
+def _document_response(
+    document: DocumentRecord,
+    *,
+    page_count: int | None = None,
+) -> DocumentResponse:
+    return DocumentResponse(
+        document_id=document.document_id,
+        tenant_id=document.tenant_id,
+        title=document.title,
+        document_type=document.document_type,
+        status=document.status.value,
+        current_version_id=document.current_version_id,
+        tags=list(document.tags),
+        security_labels=list(document.security_labels),
+        metadata=dict(document.metadata),
+        page_count=page_count,
+    )
+
+
+async def _document_response_with_version(
+    container: ServiceContainer,
+    tenant: TenantContext,
+    document: DocumentRecord,
+) -> DocumentResponse:
+    page_count: int | None = None
+    meta_pages = document.metadata.get("page_count")
+    if isinstance(meta_pages, int) and meta_pages > 0:
+        page_count = meta_pages
+    elif document.current_version_id is not None:
+        version = await container.require_document_repo().get_version(
+            tenant,
+            document.current_version_id,
+        )
+        if version is not None and version.page_count:
+            page_count = int(version.page_count)
+    return _document_response(document, page_count=page_count)
+
+
+@router.get("", response_model=DocumentListResponse)
+async def list_documents(
+    tenant: TenantDep,
+    container: ContainerDep,
+    offset: int = 0,
+    limit: int = 50,
+) -> DocumentListResponse:
+    if offset < 0:
+        raise ValidationError("offset must be >= 0")
+    if limit < 1 or limit > 200:
+        raise ValidationError("limit must be between 1 and 200")
+    items, total = await container.require_document_repo().list_documents(
+        tenant, offset=offset, limit=limit
+    )
+    return DocumentListResponse(
+        items=[_document_response(item) for item in items],
+        total=total,
+        offset=offset,
+        limit=limit,
     )
 
 
@@ -87,16 +186,146 @@ async def get_document(
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is None:
         raise NotFoundError("Document not found", details={"document_id": str(document_id)})
-    return DocumentResponse(
-        document_id=document.document_id,
-        tenant_id=document.tenant_id,
-        title=document.title,
-        document_type=document.document_type,
-        status=document.status.value,
-        current_version_id=document.current_version_id,
-        tags=list(document.tags),
-        security_labels=list(document.security_labels),
-        metadata=dict(document.metadata),
+    return await _document_response_with_version(container, tenant, document)
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    status_code=202,
+    response_model=ReprocessAcceptedResponse,
+)
+async def reprocess_document(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+    background_tasks: BackgroundTasks,
+    scope: str = "full",
+) -> ReprocessAcceptedResponse:
+    """Re-index an already stored document without re-uploading the file."""
+    try:
+        reindex_scope = ReindexScope(scope.lower())
+    except ValueError as exc:
+        raise ValidationError(
+            "scope must be one of: full, vectors, graph",
+            details={"scope": scope},
+        ) from exc
+
+    result = await container.submit_reindex(
+        tenant,
+        document_id=document_id,
+        scope=reindex_scope,
+    )
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is not None:
+        document.status = DocumentLifecycleStatus.INGESTING
+        await container.require_document_repo().update_document(tenant, document)
+
+    if (
+        container.auto_process_ingest
+        and result.ingestion_run_id is not None
+        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+    ):
+        background_tasks.add_task(
+            _run_local_ingest,
+            container,
+            tenant,
+            result.ingestion_run_id,
+        )
+
+    await container.commit_db()
+    return ReprocessAcceptedResponse(
+        operation_id=result.operation_id,
+        document_id=result.document_id,
+        version_id=result.version_id,
+        ingestion_run_id=result.ingestion_run_id,
+        scope=result.scope.value,
+        status=result.status,
+        vectors_cleared=result.vectors_cleared,
+        graph_cleared=result.graph_cleared,
+        warnings=list(result.warnings),
+    )
+
+
+@router.get("/{document_id}/chunks", response_model=ChunkListResponse)
+async def list_document_chunks(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> ChunkListResponse:
+    if offset < 0:
+        raise ValidationError("offset must be >= 0")
+    if limit < 1 or limit > 500:
+        raise ValidationError("limit must be between 1 and 500")
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    chunks, total = await container.list_chunks(
+        tenant,
+        document_id,
+        version_id=version_id,
+        offset=offset,
+        limit=limit,
+    )
+    return ChunkListResponse(
+        items=[
+            ChunkPreviewItem(
+                chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                version_id=chunk.version_id,
+                chunk_type=chunk.chunk_type.value,
+                modality=chunk.modality,
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                section_path=list(chunk.section_path),
+                text=chunk.text,
+                token_count=chunk.token_count,
+            )
+            for chunk in chunks
+        ],
+        total=total,
+        offset=offset,
+        limit=limit,
+        document_id=document_id,
+        version_id=version_id or document.current_version_id,
+    )
+
+
+@router.get("/{document_id}/original")
+async def download_original(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> Response:
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        raise NotFoundError(
+            "Document has no version to download",
+            details={"document_id": str(document_id)},
+        )
+    version = await container.require_document_repo().get_version(tenant, resolved_version)
+    if version is None or not version.original_object_key:
+        raise NotFoundError(
+            "Original object not found",
+            details={"document_id": str(document_id), "version_id": str(resolved_version)},
+        )
+    data = await container.require_object_store().get_bytes(
+        tenant, object_key=version.original_object_key
+    )
+    filename = version.source_filename or "document.bin"
+    return Response(
+        content=data,
+        media_type=version.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=60",
+        },
     )
 
 

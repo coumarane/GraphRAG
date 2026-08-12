@@ -11,15 +11,17 @@ from uuid import UUID
 
 import typer
 
-from enterprise_rag.application.ingestion import (
-    IngestionOrchestrator,
-    RegisterSourceRequest,
-    default_noop_handlers,
+from enterprise_rag.application.ingestion import RegisterSourceRequest
+from enterprise_rag.application.runtime import (
+    ServiceContainer,
+    build_local_container,
+    build_runtime_container,
+    graph_store_backend,
+    metadata_store_backend,
+    object_store_backend,
+    vector_store_backend,
 )
-from enterprise_rag.application.runtime import ServiceContainer, build_local_container
 from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.ingestion.handlers import StageHandler
-from enterprise_rag.domain.ingestion.stages import IngestionStageName
 from enterprise_rag.domain.modality import Modality
 from enterprise_rag.domain.retrieval.enums import RetrievalMode
 from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
@@ -64,8 +66,32 @@ class ExitCode(IntEnum):
 def get_container() -> ServiceContainer:
     global _CONTAINER
     if _CONTAINER is None:
-        _CONTAINER = build_local_container()
+        _CONTAINER = _build_default_container()
     return _CONTAINER
+
+
+def _uses_external_backends() -> bool:
+    backends = {
+        object_store_backend(),
+        vector_store_backend(),
+        graph_store_backend(),
+        metadata_store_backend(),
+    }
+    memory_aliases = {"memory", "inmemory", "local"}
+    return any(backend not in memory_aliases for backend in backends)
+
+
+def _build_default_container() -> ServiceContainer:
+    """Prefer configured runtime backends (Postgres/MinIO/Qdrant/Neo4j) when set."""
+    if _uses_external_backends():
+        try:
+            return build_runtime_container()
+        except Exception as exc:
+            logger.warning(
+                "cli_runtime_container_fallback",
+                error=str(exc),
+            )
+    return build_local_container(auto_process_ingest=False)
 
 
 def set_container(container: ServiceContainer) -> None:
@@ -223,22 +249,29 @@ async def _ingest_async(
         "warnings": [],
     }
     if wait:
-        repo = container.require_ingestion_repo()
-        run = await repo.get_run(tenant, result.ingestion_run_id)
-        stages = await repo.list_stages(tenant, result.ingestion_run_id)
-        if run is None:
-            raise ValidationError("Ingestion run missing after registration")
-        handlers: dict[IngestionStageName, StageHandler] = {
-            key: value for key, value in default_noop_handlers().items()
-        }
-        orchestrator = IngestionOrchestrator(handlers)
-        orch = await orchestrator.run(tenant=tenant, run=run, stage_records=stages)
-        await repo.update_run(tenant, run)
-        for stage in stages:
-            await repo.update_stage(tenant, stage)
-        payload["status"] = orch.run_status.value
-        payload["duration_note"] = "local noop orchestration"
-        payload["partial"] = orch.run_status.value == "partial"
+        if result.duplicate_version:
+            payload["status"] = "duplicate_skipped"
+            payload["duration_note"] = "duplicate version; processing skipped"
+            payload["partial"] = False
+            return payload
+        process = container.require_process_ingestion()
+        await process.execute(tenant, result.ingestion_run_id)
+        await container.commit_db()
+        run = await container.require_ingestion_repo().get_run(
+            tenant, result.ingestion_run_id
+        )
+        payload["status"] = run.status.value if run is not None else "completed"
+        payload["parser_used"] = run.parser_used if run is not None else None
+        payload["pages_processed"] = run.pages_processed if run is not None else None
+        payload["elements_processed"] = (
+            run.elements_processed if run is not None else None
+        )
+        payload["duration_note"] = "ProcessRegisteredDocumentService"
+        payload["partial"] = bool(
+            run is not None and run.status.value == "partial"
+        )
+        if run is not None and run.latest_warning:
+            payload["warnings"] = [run.latest_warning]
     return payload
 
 
@@ -299,16 +332,28 @@ async def _query_async(
 def inspect_document(
     document_id: str = typer.Argument(...),
     tenant_id: str = typer.Option(..., "--tenant-id"),
+    show_chunks: bool = typer.Option(False, "--show-chunks"),
     output: str = typer.Option("json", "--output"),
 ) -> None:
     try:
-        payload = asyncio.run(_inspect_async(document_id=document_id, tenant_id=tenant_id))
+        payload = asyncio.run(
+            _inspect_async(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                show_chunks=show_chunks,
+            )
+        )
         _emit(payload, output=output)
     except EnterpriseRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
-async def _inspect_async(*, document_id: str, tenant_id: str) -> dict[str, Any]:
+async def _inspect_async(
+    *,
+    document_id: str,
+    tenant_id: str,
+    show_chunks: bool = False,
+) -> dict[str, Any]:
     tenant = await _resolve_tenant(tenant_id)
     document = await get_container().require_document_repo().get_document(
         tenant, UUID(document_id)
@@ -317,7 +362,31 @@ async def _inspect_async(*, document_id: str, tenant_id: str) -> dict[str, Any]:
         from enterprise_rag.shared.exceptions import NotFoundError
 
         raise NotFoundError("Document not found")
-    return document.model_dump(mode="json")
+    payload = document.model_dump(mode="json")
+    if show_chunks:
+        container = get_container()
+        chunks, total = await container.list_chunks(
+            tenant,
+            UUID(document_id),
+            offset=0,
+            limit=200,
+        )
+        payload["chunks"] = [
+            {
+                "chunk_id": str(chunk.chunk_id),
+                "parent_chunk_id": str(chunk.parent_chunk_id) if chunk.parent_chunk_id else None,
+                "page_start": chunk.page_start,
+                "page_end": chunk.page_end,
+                "section": list(chunk.section_path),
+                "modality": chunk.modality.value,
+                "chunk_type": chunk.chunk_type.value,
+                "token_count": chunk.token_count,
+                "content": chunk.text[:1200],
+            }
+            for chunk in chunks
+        ]
+        payload["chunk_total"] = total
+    return payload
 
 
 @app.command("show-run")

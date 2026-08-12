@@ -60,3 +60,21 @@ class InMemoryChunkLookupStore:
             and chunk.document_id == document_id
             and chunk.version_id == version_id
         ]
+
+    async def delete_version(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+        version_id: UUID,
+    ) -> int:
+        to_delete = [
+            chunk_id
+            for chunk_id, chunk in self._chunks.items()
+            if chunk.tenant_id == tenant.tenant_id
+            and chunk.document_id == document_id
+            and chunk.version_id == version_id
+        ]
+        for chunk_id in to_delete:
+            del self._chunks[chunk_id]
+        return len(to_delete)

@@ -103,6 +103,22 @@ class InMemoryChunkVectorStore:
             del self._records[point_id]
         return len(to_delete)
 
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        *,
+        document_id: UUID,
+    ) -> int:
+        to_delete = [
+            point_id
+            for point_id, record in self._records.items()
+            if record.payload.tenant_id == tenant.tenant_id
+            and record.payload.document_id == document_id
+        ]
+        for point_id in to_delete:
+            del self._records[point_id]
+        return len(to_delete)
+
     @staticmethod
     def _assert_tenant(tenant: TenantContext, payload_tenant_id: UUID) -> None:
         if tenant.tenant_id != payload_tenant_id:

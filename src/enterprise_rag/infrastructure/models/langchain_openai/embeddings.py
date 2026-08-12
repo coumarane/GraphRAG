@@ -38,7 +38,7 @@ class LangChainOpenAIEmbeddingModel:
     def __init__(
         self,
         *,
-        model_name: str = "text-embedding-3-large",
+        model_name: str = "text-embedding-3-small",
         api_key: str | None = None,
         embed_fn: EmbedBatchFn | None = None,
     ) -> None:

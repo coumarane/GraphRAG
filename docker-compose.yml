@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: enterprise_rag
       POSTGRES_PASSWORD: change-me
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -96,6 +96,10 @@ services:
     environment: &app_env
       APP_ENVIRONMENT: development
       APP_CONFIG_DIR: /app/config
+      OBJECT_STORE_BACKEND: minio
+      VECTOR_STORE_BACKEND: qdrant
+      GRAPH_STORE_BACKEND: neo4j
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       POSTGRES__HOST: postgres
       POSTGRES__PORT: "5432"
       POSTGRES__DB: enterprise_rag
@@ -179,6 +183,19 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      RAG_API_URL: http://api:8000
+      NEXT_PUBLIC_DEFAULT_TENANT_KEY: demo
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:

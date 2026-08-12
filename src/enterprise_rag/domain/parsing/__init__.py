@@ -1,5 +1,10 @@
 """Parsing domain: protocols, routing and normalization."""
 
+from enterprise_rag.domain.parsing.boilerplate import (
+    BoilerplateMatch,
+    detect_boilerplate,
+    reclassify_boilerplate_elements,
+)
 from enterprise_rag.domain.parsing.normalize import normalize_parser_result
 from enterprise_rag.domain.parsing.protocols import DocumentInspector, MultimodalDocumentParser
 from enterprise_rag.domain.parsing.routing import (
@@ -25,6 +30,7 @@ from enterprise_rag.domain.parsing.types import (
 __all__ = [
     "DEFAULT_ROUTE_PROFILES",
     "AutomaticParserRouter",
+    "BoilerplateMatch",
     "DocumentInspector",
     "MultimodalDocumentParser",
     "OcrMode",
@@ -39,6 +45,8 @@ __all__ = [
     "RawElement",
     "RawPage",
     "RawParserResult",
+    "detect_boilerplate",
     "normalize_parser_result",
+    "reclassify_boilerplate_elements",
     "recommend_from_inspection",
 ]

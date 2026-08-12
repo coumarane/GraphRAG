@@ -1,0 +1,1203 @@
+{
+  "summary": {
+    "total": 24,
+    "ok": 23,
+    "fail": [
+      "emu-follow-2"
+    ],
+    "by_type": {
+      "factual": {
+        "ok": 11,
+        "n": 11
+      },
+      "table": {
+        "ok": 4,
+        "n": 4
+      },
+      "negative": {
+        "ok": 2,
+        "n": 2
+      },
+      "chart": {
+        "ok": 3,
+        "n": 3
+      },
+      "cross": {
+        "ok": 2,
+        "n": 2
+      },
+      "conversation": {
+        "ok": 1,
+        "n": 2
+      }
+    }
+  },
+  "chunk_counts": {
+    "NSG": 260,
+    "EMULGEN": 2
+  },
+  "results": [
+    {
+      "id": "emu-inci",
+      "type": "factual",
+      "question": "What is the INCI name and percentage for EMULGEN 2020G?",
+      "answer": "For EMULGEN 2020G:\n\n- INCI Name: OCTYLDODECETH-20\n- Percentage: 100%\n\n[C1]",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "OCTYLDODECETH-20",
+        "100"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "octyldodeceth-20",
+        "100"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-cas",
+      "type": "factual",
+      "question": "What is the CAS number for EMULGEN 2020G?",
+      "answer": "The CAS number for EMULGEN 2020G (Polyoxyethylene octyldodecyl ether) is 32128-65-7 [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "32128-65-7"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "32128-65-7"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-ph",
+      "type": "table",
+      "question": "What is the pH specification range for EMULGEN 2020G?",
+      "answer": "The pH specification range for EMULGEN 2020G is 4.0 - 7.0 [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "4.0",
+        "7.0"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "4.0",
+        "7.0"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-hydroxyl",
+      "type": "table",
+      "question": "What is the hydroxyl value specification for EMULGEN 2020G?",
+      "answer": "For EMULGEN 2020G:\n\n- Hydroxyl Value specification: 45.0 - 55.0 mgKOH/g [C1]",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "45",
+        "55"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "45",
+        "55"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-water",
+      "type": "table",
+      "question": "What is the maximum water content allowed for EMULGEN 2020G?",
+      "answer": "For EMULGEN 2020G:\n\n- The maximum water content allowed is 0.50% [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "0.50"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "0.50"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-mp",
+      "type": "table",
+      "question": "What is the melting point clear point range for EMULGEN 2020G?",
+      "answer": "For EMULGEN 2020G:\n\n- Melting Point (Clear Point) range: 36.0 - 48.0\u00b0C [C1]",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "36",
+        "48"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "36",
+        "48"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-pack",
+      "type": "factual",
+      "question": "What are the standard export packing sizes for EMULGEN 2020G?",
+      "answer": "For EMULGEN 2020G:\n\n- Standard export packing sizes are 18kg Can and 200kg Drum [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "18",
+        "200"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "18",
+        "200"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-hs",
+      "type": "factual",
+      "question": "What is the H.S. Code for EMULGEN 2020G?",
+      "answer": "The H.S. Code for EMULGEN 2020G is 3402.13 [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "3402.13"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "3402.13"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-class",
+      "type": "factual",
+      "question": "What classification is EMULGEN 2020G?",
+      "answer": "EMULGEN 2020G is classified as a nonionic surfactant [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "Nonionic"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "nonionic"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-neg",
+      "type": "negative",
+      "question": "What is the flash point of EMULGEN 2020G according to the datasheet?",
+      "answer": "The datasheet for EMULGEN 2020G does not provide information about the flash point. The listed specifications include appearance, color (APHA), pH, water content, hydroxyl value, melting point (clear point), and polyethylene glycol content, but there is no mention of the flash point value.[C1]",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [],
+      "no_answer": true,
+      "no_answer_or_no": false,
+      "expect_hits": [],
+      "status": "refuse_ok",
+      "ok": true
+    },
+    {
+      "id": "nsg-tech",
+      "type": "factual",
+      "question": "According to the NSG presentation, what is the effect of small versus large glass flake particles?",
+      "answer": "According to the NSG presentation, small glass flake particles provide better coverage, while large glass flake particles offer a better glittering effect.",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C11",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            11,
+            11
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "chart",
+        "composite",
+        "image",
+        "text"
+      ],
+      "expect": [
+        "coverage",
+        "glitter"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "coverage",
+        "glitter"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-metashine",
+      "type": "factual",
+      "question": "What is METASHINE in the NSG product presentation?",
+      "answer": "METASHINE\u00ae is a series of effect pigments developed by NSG, introduced to the market in 2000, and used in cosmetics and industrial applications. It is based on proprietary TA glass technology, which features a special glass formulation with high chemical stability, low heavy metal impurities, and is environmentally conscious (no boron or zinc compounds above regulatory thresholds). The manufacturing process involves creating a TA glass substrate, controlling particle distribution, adding color, and applying surface treatments.\n\nMETASHINE\u00ae pigments are characterized by their flat and smooth glass flake morphology, which provides a pure and strong sparkle or glittering effect with excellent glossiness, superior to aluminum flake or pearl mica. The product range includes various series differentiated by coating type (metal oxide, metal, or metal oxide plus color agent), color, and particle size. For example, the HC and ZC series are based on titanium oxide and gold, with available colors such as pink, light blue, turquoise, red, blue, and green, and particle sizes ranging from 18 to 120 \u03bcm with a typical thickness of 1.3 \u03bcm.\n\nIn summary, METASHINE\u00ae is NSG's flagship pearl pigment line, offering flat, transparent glass flakes with various coatings and colors for strong visual effects in cosmetic formulations.[C1][C4][C6][C7][C10][C11][C12]",
+      "warnings": [],
+      "citation_count": 7,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            15,
+            15
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            12,
+            12
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            18,
+            18
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C7",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            18,
+            18
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C10",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            7,
+            7
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C11",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            30,
+            30
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C12",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            13,
+            13
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "image",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "METASHINE"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "metashine"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-aurora-l",
+      "type": "chart",
+      "question": "In the METASHINE Aurora series, which grade has the highest L* brilliance value and why?",
+      "answer": "For METASHINE Aurora series:\n\nThe grade with the highest L* brilliance value is MTH100RS. According to the drawdown brilliance (L*) chart, MTH100RS consistently shows the highest L* values across all pigment weight concentrations (PWC), outperforming both synthetic mica and MT1080RS. The reason for this high brilliance is that MTH100RS has a high number of particles, which leads to the highest value of L* (brilliance) and transparency among the compared grades. In contrast, MT1080RS has high brilliance per particle but does not reach the overall L* of MTH100RS due to fewer particles. Synthetic mica shows even lower L* values and can appear white cast due to some non-reflective particles.\n\n- Highest L* brilliance: MTH100RS\n- Reason: High number of particles, resulting in the highest L* and transparency in the Aurora series\n\n\"MTH100RS: The number of particles is high; the highest value L* and transparency.\"\n\"At all PWC levels, MTH100RS highest, then synthetic mica, then MT1080RS lowest.\"\n\"MTH100RS shows the highest brilliance across the range.\"\n\n[C5][C6][C7]",
+      "warnings": [],
+      "citation_count": 3,
+      "citations": [
+        {
+          "id": "C5",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C7",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "image",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "MTH100RS"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "mth100rs"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-aurora-trans",
+      "type": "chart",
+      "question": "Which METASHINE Aurora grade has the highest transparency among all according to the presentation?",
+      "answer": "For METASHINE\u00ae Aurora grades:\n\nAccording to the presentation, MT1080RS is described as having the \"highest transparency among all\" within the Aurora series. While MTH100RS is noted for having the highest L* (brilliance) and high transparency, the evidence explicitly states that MT1080RS has the highest transparency among all Aurora grades[C2][C3][C6].\n\n- MT1080RS: Highest transparency among all Aurora grades\n- MTH100RS: Highest L* (brilliance) and high transparency, but not the absolute highest transparency\n\nTherefore, MT1080RS is the Aurora grade with the highest transparency according to the presentation.",
+      "warnings": [],
+      "citation_count": 3,
+      "citations": [
+        {
+          "id": "C2",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C3",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "chart",
+        "composite",
+        "equation",
+        "text"
+      ],
+      "expect": [
+        "MT1080RS"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "mt1080rs"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-gold",
+      "type": "factual",
+      "question": "How does the Titanium oxide and Gold HC/ZC series achieve unique color development?",
+      "answer": "The Titanium oxide and Gold HC/ZC series achieve unique color development through the use of plasmon absorption of gold particles. This technology allows for diverse and vivid color effects by controlling the size, shape, and placement of gold particles on or between titanium dioxide particles. Specifically:\n\n- ZC-series (Red, Blue, Green): Produces vivid, clean colors with strong glitter effects. The vividness is attributed to the plasmon resonance of gold particles, which are carefully controlled in size and placement to yield red, blue, and green hues with high chroma and luminosity.\n- HC-series (Pink, Light blue/Lilac, Turquoise): Produces pastel, pale colors while maintaining the transparent pigment substrate effect. These pastel shades are also a result of plasmon absorption, but with a different arrangement or concentration of gold particles, leading to softer, more transparent color effects.\n\nThe plasmon technology used in these series results in very transparent pearls with bright color and high luminosity reflection, offering both vivid and pastel color options. This approach also ensures a glowy finish similar to micro pearls, high transparency (avoiding a greyish finish on dark skin), and a universal glow effect suitable for both make-up and skin care applications [C4][C5][C6][C8][C10][C11][C12].",
+      "warnings": [],
+      "citation_count": 7,
+      "citations": [
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            31,
+            31
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C5",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            31,
+            31
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            31,
+            31
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C8",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            35,
+            35
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C10",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            34,
+            34
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C11",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            36,
+            36
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C12",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            36,
+            36
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "plasmon",
+        "gold"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "plasmon",
+        "gold"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-contents",
+      "type": "factual",
+      "question": "What are the main content sections listed in the NSG ALL PRODUCT presentation?",
+      "answer": "The main content sections listed in the NSG ALL PRODUCT presentation include:\n\n- Company introduction (including NSG group overview and business history) [C7][C9][C12]\n- Range mapping of NSG cosmetic powder products, categorizing pigment and effect powder series by composition and function (e.g., METASHINE\u00ae, MAR\u2019VINA\u00ae, SILKYFLAKES\u00ae, NATUTECT, I-NAFLECS\u00ae) [C3][C4]\n- Product lineups and technical tables (e.g., series, product codes, color, particle size, thickness) [C1][C2][C10]\n- Oil absorption and performance summaries for specific products (e.g., SILKYFLAKE\u00ae, GLACIA DROPS\u00ae) [C8]\n- Summary of NSG's effect pigment offerings and new product features (e.g., glass + coating technology, unique colors, NIR shielding grades) [C5][C6][C11]",
+      "warnings": [],
+      "citation_count": 12,
+      "citations": [
+        {
+          "id": "C7",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            6,
+            6
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C9",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            7,
+            7
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C12",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            5,
+            5
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C3",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            18,
+            18
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            18,
+            18
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C1",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            30,
+            30
+          ],
+          "modality": "table"
+        },
+        {
+          "id": "C2",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            68,
+            68
+          ],
+          "modality": "table"
+        },
+        {
+          "id": "C10",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            68,
+            68
+          ],
+          "modality": "composite"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "METASHINE",
+        "MAR"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "metashine",
+        "mar"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-marvina",
+      "type": "factual",
+      "question": "What product family is associated with pressability and SILKYFLAKE in the NSG presentation?",
+      "answer": "The product family associated with pressability and SILKYFLAKE in the NSG presentation is MAR'VINA\u00ae.\n\n- SILKYFLAKE\u00ae is described as a thin membrane flake product under the MAR'VINA\u00ae brand, specifically highlighted for its pressability and use in cosmetic powders [C1][C5][C12].\n- Multiple slides compare the pressability of various SILKYFLAKE\u00ae products (e.g., FTD008FY, FTD010FY-F01, FTD025FY-F02 and their silicone-treated versions) and reference materials like talc and mica, all under the MAR'VINA\u00ae SILKYFLAKE\u00ae branding [C4][C5][C11].\n- The NSG product range mapping explicitly places SILKYFLAKE\u00ae under the MAR'VINA\u00ae family, with a focus on 'Feel & Softfocus' [C12].\n\nTherefore, the correct product family is MAR'VINA\u00ae SILKYFLAKE\u00ae.",
+      "warnings": [],
+      "citation_count": 5,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            43,
+            43
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C5",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            51,
+            51
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C12",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            18,
+            18
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            51,
+            51
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C11",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            47,
+            47
+          ],
+          "modality": "image"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "image",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "MAR"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "mar"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-neg",
+      "type": "negative",
+      "question": "What is the exact molecular weight of SILKYFLAKE FTD008 according to this presentation?",
+      "answer": "The presentation does not provide the exact molecular weight of SILKYFLAKE FTD008. None of the cited evidence includes molecular weight data for this product.",
+      "warnings": [
+        "No molecular weight information for SILKYFLAKE FTD008 is present in the provided evidence.",
+        "answer_missing_citations",
+        "followup_without_resolvable_entity"
+      ],
+      "citation_count": 0,
+      "citations": [],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "equation",
+        "image",
+        "table",
+        "text"
+      ],
+      "expect": [],
+      "no_answer": true,
+      "no_answer_or_no": false,
+      "expect_hits": [],
+      "status": "refuse_ok",
+      "ok": true
+    },
+    {
+      "id": "cross-compare",
+      "type": "cross",
+      "question": "Compare EMULGEN 2020G and METASHINE: what type of product is each and do not invent shared properties.",
+      "answer": "For EMULGEN 2020G:\n- There is no evidence in the provided documents describing EMULGEN 2020G, its product type, or properties. Therefore, I cannot provide information about EMULGEN 2020G.\n\nFor METASHINE:\n- METASHINE\u00ae is a series of pearl pigments used in cosmetics, specifically categorized as effect pigments. It is manufactured through a process involving glass melting, glass-flake making, coating on glass-flakes, classifying, crushing, and optional surface treatment. METASHINE\u00ae is known for its flat and smooth surface, which provides excellent glossy and sparkling effects due to its regular surface morphology. The series includes various types based on coatings such as metal oxide (Titania, Iron oxide), metal (Silver, Gold), and combinations with color agents (Titanium oxide + Gold), as well as an Aurora series for brilliance and sparkle effects [C2][C5][C9][C10][C12].\n\nSummary Table:\n| Product | Type/Category |\n|--------------|-------------------------------|\n| EMULGEN 2020G| No information available |\n| METASHINE | Pearl pigment/effect pigment |",
+      "warnings": [
+        "No evidence found for EMULGEN 2020G in the provided documents."
+      ],
+      "citation_count": 5,
+      "citations": [
+        {
+          "id": "C2",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            12,
+            12
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C5",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            18,
+            18
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C9",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            13,
+            13
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C10",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            13,
+            13
+          ],
+          "modality": "image"
+        },
+        {
+          "id": "C12",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            30,
+            30
+          ],
+          "modality": "composite"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "chart",
+        "composite",
+        "image",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "surfactant",
+        "glass"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "glass"
+      ],
+      "status": "soft_pass",
+      "ok": true
+    },
+    {
+      "id": "cross-conflict",
+      "type": "cross",
+      "question": "Does EMULGEN 2020G appear in the NSG glass flakes presentation as a METASHINE grade?",
+      "answer": "There is no evidence in the provided NSG glass flakes presentation that EMULGEN 2020G appears as a METASHINE grade. The presentation discusses METASHINE\u00ae as a product line of effect pigments based on glass flakes, but EMULGEN 2020G is not mentioned in any of the relevant product lineups, tables, or descriptive sections for METASHINE\u00ae grades [C4][C6][C7][C11].",
+      "warnings": [],
+      "citation_count": 4,
+      "citations": [
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            37,
+            37
+          ],
+          "modality": "table"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            12,
+            12
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C7",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            7,
+            7
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C11",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            29,
+            29
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "table",
+        "text"
+      ],
+      "expect": [],
+      "no_answer": false,
+      "no_answer_or_no": true,
+      "expect_hits": [],
+      "status": "refuse_ok",
+      "ok": true
+    },
+    {
+      "id": "emu-follow-1",
+      "type": "factual",
+      "question": "What is the INCI name for EMULGEN 2020G?",
+      "answer": "The INCI name for EMULGEN 2020G is OCTYLDODECETH-20 [C1].",
+      "warnings": [],
+      "citation_count": 1,
+      "citations": [
+        {
+          "id": "C1",
+          "doc": "019fddd2-96f6-7d9c-b6c6-25e21f006bba",
+          "pages": [
+            1,
+            1
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 1,
+      "evidence_modalities": [
+        "text"
+      ],
+      "expect": [
+        "OCTYLDODECETH"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "octyldodeceth"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "emu-follow-2",
+      "type": "conversation",
+      "question": "What is its CAS number?",
+      "answer": "Which entity are you referring to: INCI or EMULGEN 2020G?",
+      "warnings": [
+        "ambiguous_pronoun_reference",
+        "ambiguous_reference"
+      ],
+      "citation_count": 0,
+      "citations": [],
+      "evidence_count": 0,
+      "evidence_modalities": [],
+      "expect": [
+        "32128-65-7"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [],
+      "status": "fail",
+      "ok": false
+    },
+    {
+      "id": "nsg-follow-1",
+      "type": "chart",
+      "question": "Tell me about the METASHINE Aurora series brilliance comparison.",
+      "answer": "### METASHINE Aurora Series Brilliance Comparison\n\nThe brilliance of the METASHINE Aurora series was evaluated using a drawdown method, measuring L* (brilliance) versus pigment weight concentration (PWC %) and comparing MTH100RS (Aurora series), synthetic mica pearl, and MT1080RS.\n\n- **MTH100RS (Aurora series)** consistently shows the highest L* (brilliance) values at all PWC levels, indicating the highest brilliance and transparency among the compared samples.\n- **Synthetic mica pearl** has intermediate L* values, but some particles do not reflect well and can appear as a white cast.\n- **MT1080RS** has the lowest L* values overall, but the brilliance per particle is high and it offers the highest transparency among all.\n\nSummary of findings:\n- MTH100RS: Highest number of particles, highest L* (brilliance) and transparency.\n- MT1080RS: High brilliance per particle, highest transparency.\n- Synthetic mica: Some non-reflective particles, possible white cast.\n\nThe Aurora series is recommended for formulations where both high brilliance and some sparkle effect are desired, especially in pearl-rich applications.\n\nMeasurement conditions: PWC 3% [C4][C5][C6]\n\n| Product | Brilliance (L*) Ranking | Transparency | Notes |\n|--------------|------------------------|--------------|---------------------------------------|\n| MTH100RS | Highest | High | Most particles, highest L* and transparency |\n| Synthetic mica | Middle | Moderate | Some white cast, not all particles reflect |\n| MT1080RS | Lowest | Highest | High brilliance per particle |",
+      "warnings": [],
+      "citation_count": 3,
+      "citations": [
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C5",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "composite",
+        "equation",
+        "image",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "MTH100RS"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "mth100rs"
+      ],
+      "status": "pass",
+      "ok": true
+    },
+    {
+      "id": "nsg-follow-2",
+      "type": "conversation",
+      "question": "Which grade had the highest transparency?",
+      "answer": "For the METASHINE Aurora series brilliance comparison:\n\n- MTH100RS had the highest transparency and the highest L* (brilliance) value among the compared grades. The evidence states: \"MTH100RS: The number of particles is high; the highest value L* and transparency.\"\n- MT1080RS is noted for high brilliance per particle and is described as having the \"highest transparency among all\" in one callout, but the overall ranking and chart show MTH100RS as the top performer for both L* and transparency.\n\nTherefore, MTH100RS is the grade with the highest transparency in the METASHINE Aurora series brilliance comparison [C4][C5][C6].",
+      "warnings": [
+        "history_resolved"
+      ],
+      "citation_count": 3,
+      "citations": [
+        {
+          "id": "C4",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "composite"
+        },
+        {
+          "id": "C5",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        },
+        {
+          "id": "C6",
+          "doc": "019fdde7-25d9-7469-bff2-1bb70eaee2ab",
+          "pages": [
+            41,
+            41
+          ],
+          "modality": "text"
+        }
+      ],
+      "evidence_count": 12,
+      "evidence_modalities": [
+        "chart",
+        "composite",
+        "table",
+        "text"
+      ],
+      "expect": [
+        "MT1080RS"
+      ],
+      "no_answer": false,
+      "no_answer_or_no": false,
+      "expect_hits": [
+        "mt1080rs"
+      ],
+      "status": "pass",
+      "ok": true
+    }
+  ]
+}

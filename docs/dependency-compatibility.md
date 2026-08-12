@@ -44,7 +44,10 @@ Re-evaluate Python 3.14 only after MinerU, PaddleOCR, Docling and Marker publish
 | `optional-dependencies.qdrant` | Qdrant client |
 | `optional-dependencies.neo4j` | Neo4j driver |
 | `optional-dependencies.llm` | OpenAI SDK + LangChain OpenAI |
-| `optional-dependencies.parsers` | pypdfium2 + MIME helpers (heavy parsers added per adapter phase) |
+| `optional-dependencies.parsers` | pypdfium2 + MIME helpers (always-available fallback) |
+| `optional-dependencies.parsers-docling` | Docling PDF/office parser |
+| `optional-dependencies.parsers-ocr` | PaddleOCR for scanned pages |
+| `optional-dependencies.parsers-full` | Docling + PaddleOCR (MinerU/Marker still optional/manual) |
 | `optional-dependencies.observability` | OpenTelemetry + Prometheus |
 
 Phase 1 installs core + dev only (`uv sync`). Later phases enable extras with `uv sync --extra …` or `--all-extras`.
