@@ -1,0 +1,153 @@
+name: Build and Push API Image
+
+on:
+  push:
+    branches:
+      # - main
+      - dev
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/build-api-image.yml"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag (defaults to commit SHA)"
+        required: false
+        default: ""
+
+env:
+  REGISTRY_HOST: harbor.chatwithdocs.org
+  HARBOR_PROJECT: chatwithdocs
+  IMAGE_NAME: api
+  DOCKERFILE_PATH: apps/api/Dockerfile
+  BUILD_CONTEXT: apps/api
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-push:
+    name: Build and Push API Image
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Allow insecure Harbor registry
+        run: |
+          echo "{\"insecure-registries\": [\"${{ env.REGISTRY_HOST }}\"]}" | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker || sudo service docker restart
+
+      - name: Login to Harbor
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "$HARBOR_USERNAME" ] || [ -z "$HARBOR_PASSWORD" ]; then
+            echo "Harbor credentials are missing; set secrets HARBOR_REGISTRY_USERNAME and HARBOR_REGISTRY_PASSWORD."
+            exit 1
+          fi
+          echo "$HARBOR_PASSWORD" | docker login ${{ env.REGISTRY_HOST }} -u "$HARBOR_USERNAME" --password-stdin
+
+      # - name: Build image
+      #   env:
+      #     INPUT_TAG: ${{ inputs.image_tag }}
+      #   run: |
+      #     TAG=${INPUT_TAG:-${GITHUB_SHA}}
+      #     IMAGE_REF="${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}:${TAG}"
+      #     LATEST_REF="${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}:latest"
+
+      #     docker build -t "$IMAGE_REF" -f "${{ env.DOCKERFILE_PATH }}" "${{ env.BUILD_CONTEXT }}"
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (with digest)
+        id: build
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-${GITHUB_SHA}}"
+          IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}"
+          IID_FILE="$(mktemp)"
+
+          docker buildx build \
+            --push \
+            -f "${DOCKERFILE_PATH}" \
+            -t "${IMAGE_REF}:${TAG}" \
+            -t "${IMAGE_REF}:latest" \
+            --iidfile "${IID_FILE}" \
+            "${BUILD_CONTEXT}"
+
+          DIGEST="$(cat "${IID_FILE}")"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pushed: ${IMAGE_REF}:${TAG}"
+          echo "Digest:  ${DIGEST}"
+      
+      - name: Security scan image with Trivy
+        continue-on-error: true
+        env:
+          TRIVY_IGNORE_UNFIXED: true
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: table
+          exit-code: 0
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # - name: Tag and push image
+      #   env:
+      #     INPUT_TAG: ${{ inputs.image_tag }}
+      #   run: |
+      #     TAG=${INPUT_TAG:-${GITHUB_SHA}}
+      #     IMAGE_REF="${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}:${TAG}"
+      #     LATEST_REF="${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}:latest"
+
+      #     docker tag "$IMAGE_REF" "$LATEST_REF"
+      #     docker push "$IMAGE_REF"
+      #     docker push "$LATEST_REF"
+      
+      - name: Update kustomization image to digest (GitOps)
+        if: github.ref == 'refs/heads/dev'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          git fetch origin dev
+          git checkout dev
+          git reset --hard origin/dev
+          
+          # Normalize digest (remove leading @ if present)
+          DIGEST="${{ steps.build.outputs.digest }}"
+          DIGEST="${DIGEST#@}"
+
+          cd infra/k8s/api
+
+          # Ensure kustomize exists
+          if ! command -v kustomize >/dev/null 2>&1; then
+            curl -sSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+            sudo mv kustomize /usr/local/bin/
+          fi
+
+          # Update image via kustomize (ONLY source of truth)
+          kustomize edit set image \
+            harbor.chatwithdocs.org/chatwithdocs/api=${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}@${DIGEST}
+
+          echo "Updated kustomization.yaml:"
+          cat kustomization.yaml
+
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add kustomization.yaml
+          git commit -m "chore(dev): deploy api @${DIGEST}" || echo "No changes to commit"
+          git push origin dev
+
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}

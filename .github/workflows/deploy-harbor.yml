@@ -1,0 +1,53 @@
+name: Deploy Harbor to Contabo
+
+on:
+  workflow_dispatch:
+    inputs:
+      harbor_version:
+        description: "Harbor version to install (e.g. 2.14)"
+        required: false
+        default: "2.14"
+      harbor_hostname:
+        description: "Hostname that Harbor should advertise"
+        required: false
+        default: "harbor.chatwithdocs.org"
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+
+jobs:
+  deploy:
+    name: Run Ansible Harbor Playbook
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip sshpass
+          pip install ansible
+
+      - name: Run Harbor playbook
+        env:
+          CONTABO_ROOT_PASSWORD: ${{ secrets.CONTABO_ROOT_PASSWORD }}
+          HARBOR_ADMIN_PASSWORD: ${{ secrets.HARBOR_ADMIN_PASSWORD }}
+          HARBOR_DB_PASSWORD: ${{ secrets.HARBOR_DB_PASSWORD }}
+          HARBOR_VERSION: ${{ inputs.harbor_version }}
+          HARBOR_HOSTNAME: ${{ inputs.harbor_hostname }}
+          HARBOR_LE_EMAIL: "contact@chatwithdocs.org"
+        run: |
+          ansible-playbook infra/ansible/harbor/playbook.yml \
+            -i infra/ansible/harbor/inventory.ini \
+            --extra-vars "\
+              ansible_password=${CONTABO_ROOT_PASSWORD} \
+              harbor_admin_password=${HARBOR_ADMIN_PASSWORD} \
+              harbor_db_password=${HARBOR_DB_PASSWORD} \
+              harbor_version=${HARBOR_VERSION:-2.14} \
+              harbor_hostname=${HARBOR_HOSTNAME:-harbor.chatwithdocs.org} \
+              harbor_protocol=https \
+              harbor_enable_letsencrypt=true \
+              harbor_letsencrypt_email=${HARBOR_LE_EMAIL} \
+            "

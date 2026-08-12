@@ -1,0 +1,177 @@
+name: Deploy API to Kubernetes
+
+on:
+  # workflow_run:
+  #   workflows: [ "Build and Push API Image" ]   # must match build workflow "name:"
+  #   types: [ completed ]
+
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Harbor image tag to deploy (defaults to latest)"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: harbor.chatwithdocs.org
+  HARBOR_PROJECT: chatwithdocs
+  IMAGE_NAME: api
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  deploy:
+    name: Deploy API
+    runs-on: ubuntu-latest
+    environment: dev
+    # if: >
+    #   github.event_name == 'workflow_dispatch' ||
+    #   (github.event_name == 'workflow_run' &&
+    #    github.event.workflow_run.conclusion == 'success')
+
+    steps:
+      # - name: Checkout repository
+      #   uses: actions/checkout@v4
+      #   with:
+      #     ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      # - name: Resolve target image tag
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+      #       TAG="${{ inputs.image_tag }}"
+      #       TAG="${TAG:-latest}"
+      #     else
+      #       TAG="${{ github.event.workflow_run.head_sha }}"
+      #     fi
+      #     echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+      #     echo "Using image tag: $TAG"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Resolve target image tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.image_tag }}"
+            TAG="${TAG:-latest}"
+          fi
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Using image tag: $TAG"
+      - name: Patch kustomization with image tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${IMAGE_TAG:?IMAGE_TAG is not set}"
+          perl -0pi -e "s|(^\s*newTag:\s*).*$|\$1${IMAGE_TAG}|m" infra/k8s/api/kustomization.yaml
+          grep -n "newTag:" infra/k8s/api/kustomization.yaml
+
+      - name: Configure SSH for master
+        env:
+          SSH_MASTER_PRIVATE_KEY: ${{ secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SSH_MASTER_PRIVATE_KEY:-}" ]; then
+            echo "Missing secret K8S_MASTER_SSH_PRIVATE_KEY."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          MASTER_KEY_PATH="$HOME/.ssh/k8s_master"
+
+          if printf '%s' "$SSH_MASTER_PRIVATE_KEY" | grep -qE "BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY"; then
+            printf '%s' "$SSH_MASTER_PRIVATE_KEY" | tr -d '\r' | sed 's/\\n/\n/g' > "$MASTER_KEY_PATH"
+          else
+            printf '%s' "$SSH_MASTER_PRIVATE_KEY" | tr -d '\r\n ' | base64 -d > "$MASTER_KEY_PATH" 2>/dev/null || {
+              echo "Cannot parse master SSH key (neither plain text nor base64)."
+              exit 1
+            }
+          fi
+          chmod 600 "$MASTER_KEY_PATH"
+          ssh-keygen -y -f "$MASTER_KEY_PATH" >/dev/null
+
+          MASTER_HOST=$(awk '
+            /^\[master\]/{flag=1; next}
+            /^\[/{flag=0}
+            flag && /^[0-9]/{print $1; exit}
+          ' "${K8S_INVENTORY}")
+
+          if [ -z "$MASTER_HOST" ]; then
+            echo "No master host found in inventory."
+            exit 1
+          fi
+
+          cat > ~/.ssh/config <<EOF
+          Host ${MASTER_HOST}
+            HostName ${MASTER_HOST}
+            User ubuntu
+            IdentityFile ${MASTER_KEY_PATH}
+            IdentitiesOnly yes
+            StrictHostKeyChecking no
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -T 10 -H "$MASTER_HOST" >> ~/.ssh/known_hosts || true
+
+          echo "MASTER_HOST=${MASTER_HOST}" >> "$GITHUB_ENV"
+
+      - name: Copy manifests to master
+        run: |
+          set -euo pipefail
+          ssh "$MASTER_HOST" "mkdir -p /tmp/chatwithdocs-api"
+          scp -r infra/k8s/api/* "${MASTER_HOST}:/tmp/chatwithdocs-api/"
+
+      - name: Apply manifests on cluster
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HARBOR_USERNAME:-}" ] || [ -z "${HARBOR_PASSWORD:-}" ]; then
+            echo "Harbor credentials missing; set HARBOR_REGISTRY_USERNAME and HARBOR_REGISTRY_PASSWORD."
+            exit 1
+          fi
+
+          ssh "$MASTER_HOST" bash -s <<EOSSH
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          REGISTRY_HOST="${REGISTRY_HOST}"
+          HARBOR_USERNAME="${HARBOR_USERNAME}"
+          HARBOR_PASSWORD="${HARBOR_PASSWORD}"
+
+          kubectl apply -f /tmp/chatwithdocs-api/namespace.yaml
+
+          kubectl -n chatwithdocs-api create secret docker-registry harbor-regcred \\
+            --docker-server="\${REGISTRY_HOST}" \\
+            --docker-username="\${HARBOR_USERNAME}" \\
+            --docker-password="\${HARBOR_PASSWORD}" \\
+            --docker-email=admin@chatwithdocs.org \\
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl apply -k /tmp/chatwithdocs-api
+
+          # Force pods to refresh env/config on ConfigMap changes
+          kubectl -n chatwithdocs-api rollout restart deploy/api
+
+          if ! kubectl -n chatwithdocs-api rollout status deploy/api --timeout=300s; then
+            echo "Rollout failed; collecting diagnostics..."
+            kubectl -n chatwithdocs-api get pods -o wide
+            kubectl -n chatwithdocs-api describe deploy/api
+            kubectl -n chatwithdocs-api get events --sort-by=.metadata.creationTimestamp | tail -n 30
+            exit 1
+          fi
+
+          kubectl -n chatwithdocs-api get ingress api
+          EOSSH

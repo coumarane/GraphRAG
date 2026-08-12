@@ -1,0 +1,192 @@
+name: Run Alembic Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: "Database host (default from secrets)"
+        required: false
+        default: "database.chatwithdocs.org"
+      postgres_port:
+        description: "PostgreSQL port"
+        required: false
+        default: "5432"
+      migration_direction:
+        description: "Migration direction"
+        required: true
+        type: choice
+        options:
+          - upgrade
+          - downgrade
+        default: upgrade
+      revision:
+        description: "Target revision (default: head for upgrade, -1 for downgrade)"
+        required: false
+        default: "head"
+      seed_sample_data:
+        description: "Seed demo data after migrations"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  migrate:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DB_HOST: ${{ inputs.target_host || 'database.chatwithdocs.org' }}
+      DB_PORT: ${{ inputs.postgres_port }}
+      DB_NAME: ${{ secrets.POSTGRES_APP_DB }}
+      DB_USER: ${{ secrets.POSTGRES_APP_USER }}
+      DB_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
+      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.chatwithdocs.org' }}:${{ inputs.postgres_port }}/${{ secrets.POSTGRES_APP_DB }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: |
+          python -m pip install --upgrade pip
+          pip install alembic asyncpg sqlalchemy python-dotenv
+
+      - name: Create production alembic.ini
+        working-directory: apps/api
+        run: |
+          cat > alembic.prod.ini << 'EOF'
+          # Production Alembic configuration - DO NOT COMMIT WITH REAL CREDENTIALS
+
+          [alembic]
+          script_location = alembic
+          prepend_sys_path = .
+          version_path_separator = os
+
+          # Database URL will be set via environment variable
+          sqlalchemy.url = postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+
+          [loggers]
+          keys = root,sqlalchemy,alembic
+
+          [handlers]
+          keys = console
+
+          [formatters]
+          keys = generic
+
+          [logger_root]
+          level = INFO
+          handlers = console
+          qualname =
+
+          [logger_sqlalchemy]
+          level = WARN
+          handlers =
+          qualname = sqlalchemy.engine
+
+          [logger_alembic]
+          level = INFO
+          handlers =
+          qualname = alembic
+
+          [handler_console]
+          class = StreamHandler
+          args = (sys.stderr,)
+          level = NOTSET
+          formatter = generic
+
+          [formatter_generic]
+          format = %(levelname)-5.5s [%(name)s] %(message)s
+          datefmt = %H:%M:%S
+          EOF
+
+          # Substitute environment variables in the config file
+          envsubst < alembic.prod.ini > alembic.prod.final.ini
+
+          echo "Generated alembic.prod.final.ini (credentials masked):"
+          sed 's/postgresql+asyncpg:\/\/[^:]*:[^@]*@/postgresql+asyncpg:\/\/***:***@/' alembic.prod.final.ini
+
+      - name: Check current database revision
+        working-directory: apps/api
+        run: |
+          echo "Checking current database revision..."
+          alembic -c alembic.prod.final.ini current || echo "No revision found (empty database)"
+
+      - name: Show pending migrations
+        if: inputs.migration_direction == 'upgrade'
+        working-directory: apps/api
+        run: |
+          echo "Pending migrations:"
+          alembic -c alembic.prod.final.ini history --verbose
+
+      - name: Run migrations (${{ inputs.migration_direction }} to ${{ inputs.revision }})
+        working-directory: apps/api
+        run: |
+          TARGET_REV="${{ inputs.revision }}"
+          if [ "${{ inputs.migration_direction }}" = "downgrade" ] && [ "$TARGET_REV" = "head" ]; then
+            TARGET_REV="-1"
+          fi
+
+          echo "Running: alembic ${{ inputs.migration_direction }} $TARGET_REV"
+          alembic -c alembic.prod.final.ini ${{ inputs.migration_direction }} $TARGET_REV
+
+      - name: Verify final database revision
+        working-directory: apps/api
+        run: |
+          echo "Final database revision:"
+          alembic -c alembic.prod.final.ini current
+
+      - name: Seed sample data (optional)
+        if: inputs.seed_sample_data == true
+        working-directory: apps/api
+        env:
+          # Bypass RLS during seeding
+          PGOPTIONS: "-c app.seed_mode=true"
+        run: |
+          echo "Seeding demo data..."
+          python seed_all_data.py
+
+      - name: Verify seeded counts (optional)
+        if: inputs.seed_sample_data == true
+        working-directory: apps/api
+        env:
+          PGOPTIONS: "-c app.seed_mode=true"
+        run: |
+          echo "Verifying seeded data (bypassing RLS)..."
+          python - <<'PY'
+          import asyncio
+          import os
+          import asyncpg
+
+          async def main():
+              dsn = os.environ["DATABASE_URL"].replace("+asyncpg", "")
+              conn = await asyncpg.connect(dsn)
+              # Explicitly bypass RLS and set tenant context for scoped tables
+              await conn.execute("SET app.seed_mode = 'true'")
+              tenant_id = await conn.fetchval("SELECT id FROM tenants LIMIT 1")
+              if tenant_id:
+                  await conn.execute("SELECT set_config('app.current_tenant', $1, false)", str(tenant_id))
+              tables = ["tenants", "restaurants", "users", "customers", "reservations"]
+              for table in tables:
+                  count = await conn.fetchval(f"SELECT count(*) FROM {table}")
+                  print(f"{table}: {count}")
+              await conn.close()
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          PY
+
+      - name: Cleanup sensitive files
+        if: always()
+        working-directory: apps/api
+        run: |
+          rm -f alembic.prod.ini alembic.prod.final.ini
