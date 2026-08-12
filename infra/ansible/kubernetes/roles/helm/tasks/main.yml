@@ -21,7 +21,7 @@
 
 - name: Download Helm installation script
   ansible.builtin.get_url:
-    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    url: "{{ helm_install_script_url }}"
     dest: /tmp/get_helm.sh
     mode: "0755" # Make the script executable
   tags: [helm_install]
@@ -30,6 +30,8 @@
   ansible.builtin.command: /tmp/get_helm.sh
   args:
     creates: /usr/local/bin/helm
+  environment:
+    DESIRED_VERSION: "{{ helm_version }}"
   tags: [helm_install]
 
 - name: Verify Helm installation

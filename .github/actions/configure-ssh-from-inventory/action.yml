@@ -1,0 +1,110 @@
+name: Configure SSH From Inventory
+description: Configure SSH keys and aliases for hosts read from an Ansible inventory group
+
+inputs:
+  inventory-path:
+    description: Path to the Ansible inventory file
+    required: true
+  inventory-group:
+    description: Inventory group to read hosts from
+    required: true
+  ssh-private-key:
+    description: SSH private key content, with plain text or base64 accepted
+    required: true
+  ssh-user:
+    description: SSH username
+    required: false
+    default: ubuntu
+  known-hosts-file:
+    description: known_hosts file path
+    required: false
+    default: ~/.ssh/known_hosts
+
+outputs:
+  hosts:
+    description: Space-separated list of hosts from the selected inventory group
+    value: ${{ steps.configure.outputs.hosts }}
+  first-host:
+    description: First host from the selected inventory group
+    value: ${{ steps.configure.outputs.first-host }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure SSH
+      id: configure
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        INVENTORY_PATH="${{ inputs.inventory-path }}"
+        INVENTORY_GROUP="${{ inputs.inventory-group }}"
+        SSH_USER="${{ inputs.ssh-user }}"
+        SSH_PRIVATE_KEY="${{ inputs.ssh-private-key }}"
+        KNOWN_HOSTS_FILE="${{ inputs.known-hosts-file }}"
+
+        if [ ! -f "${INVENTORY_PATH}" ]; then
+          echo "Inventory file not found: ${INVENTORY_PATH}"
+          exit 1
+        fi
+
+        if [ -z "${SSH_PRIVATE_KEY}" ]; then
+          echo "Missing SSH private key input."
+          exit 1
+        fi
+
+        mkdir -p ~/.ssh
+        KEY_PATH="$HOME/.ssh/${INVENTORY_GROUP}_key"
+
+        if printf '%s' "${SSH_PRIVATE_KEY}" | grep -qE "BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY"; then
+          printf '%s' "${SSH_PRIVATE_KEY}" | tr -d '\r' | sed 's/\\n/\n/g' > "${KEY_PATH}"
+        else
+          printf '%s' "${SSH_PRIVATE_KEY}" | tr -d '\r\n ' | base64 -d > "${KEY_PATH}" 2>/dev/null || {
+            echo "Cannot parse SSH private key input."
+            exit 1
+          }
+        fi
+
+        chmod 600 "${KEY_PATH}"
+        ssh-keygen -y -f "${KEY_PATH}" >/dev/null
+
+        HOSTS="$(awk -v target_group="${INVENTORY_GROUP}" '
+          $0 == "[" target_group "]" { flag=1; next }
+          /^\[/ { flag=0 }
+          flag && $0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*$/ { print $1 }
+        ' "${INVENTORY_PATH}" | tr '\n' ' ' | xargs)"
+
+        if [ -z "${HOSTS}" ]; then
+          echo "No hosts found for inventory group ${INVENTORY_GROUP} in ${INVENTORY_PATH}."
+          exit 1
+        fi
+
+        if [ ! -f ~/.ssh/config ]; then
+          {
+            echo "Host *"
+            echo "  User ${SSH_USER}"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking no"
+            echo "  UserKnownHostsFile ${KNOWN_HOSTS_FILE}"
+          } > ~/.ssh/config
+        fi
+
+        {
+          for host in ${HOSTS}; do
+            echo "Host ${host}"
+            echo "  HostName ${host}"
+            echo "  User ${SSH_USER}"
+            echo "  IdentityFile ${KEY_PATH}"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking no"
+            echo "  UserKnownHostsFile ${KNOWN_HOSTS_FILE}"
+          done
+        } >> ~/.ssh/config
+        chmod 600 ~/.ssh/config
+
+        mkdir -p "$(dirname "${KNOWN_HOSTS_FILE}")"
+        ssh-keyscan -T 10 -H ${HOSTS} >> "${KNOWN_HOSTS_FILE}" 2>/dev/null || true
+
+        FIRST_HOST="$(printf '%s\n' ${HOSTS} | head -n1)"
+        echo "hosts=${HOSTS}" >> "${GITHUB_OUTPUT}"
+        echo "first-host=${FIRST_HOST}" >> "${GITHUB_OUTPUT}"

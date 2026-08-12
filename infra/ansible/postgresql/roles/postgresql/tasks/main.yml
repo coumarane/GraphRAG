@@ -18,12 +18,12 @@
 - name: Select pgAdmin install method
   ansible.builtin.set_fact:
     pgadmin_install_method_selected: >-
-      {{ 'container' if (pgadmin_install_method == 'auto' and ansible_facts['distribution_release'] == 'noble') else pgadmin_install_method }}
+      {{ 'repo' if pgadmin_install_method == 'auto' else pgadmin_install_method }}
   when: pgadmin_setup | bool
 
 - name: Normalize pgAdmin distribution codename
   ansible.builtin.set_fact:
-    pgadmin_distribution: "{{ 'jammy' if ansible_facts['distribution_release'] == 'noble' else ansible_facts['distribution_release'] }}"
+    pgadmin_distribution: "{{ ansible_facts['distribution_release'] }}"
   when: pgadmin_setup | bool
 
 - name: Set pgAdmin URLs for health checks

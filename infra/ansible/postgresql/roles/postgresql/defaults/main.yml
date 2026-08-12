@@ -21,11 +21,11 @@ postgres_app_password: "{{ lookup('env', 'POSTGRES_APP_PASSWORD') | default('', 
 pgadmin_setup: true
 pgadmin_email: "{{ lookup('env', 'PGADMIN_EMAIL') | default('', true) }}"
 pgadmin_password: "{{ lookup('env', 'PGADMIN_PASSWORD') | default('', true) }}"
-# pgAdmin repo codename (override for unsupported releases)
-pgadmin_distribution: "{{ 'jammy' if ansible_facts['distribution_release'] == 'noble' else ansible_facts['distribution_release'] }}"
+# pgAdmin repo codename (validated against the pgAdmin APT repo on 2026-08-12)
+pgadmin_distribution: "{{ ansible_facts['distribution_release'] }}"
 pgadmin_external_check: false
 pgadmin_install_method: auto  # auto|repo|container
-pgadmin_container_image: "dpage/pgadmin4:9.11"
+pgadmin_container_image: "dpage/pgadmin4:9.17"
 pgadmin_container_name: pgadmin4
 pgadmin_container_port: 8080
 pgadmin_container_data_dir: /var/lib/pgadmin

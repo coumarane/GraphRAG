@@ -1,79 +1,202 @@
-# SSH Public Key
+# SSH Key Setup for Ansible
 
-Public SSH key (passphrase example: Password123)
+This guide shows how to configure SSH key access for the hosts used by the Ansible playbooks in `infra/ansible/`.
+
+The current Kubernetes inventory expects:
+
+- master: `193.70.35.121`
+- worker: `193.70.35.122`
+- SSH user: `ubuntu`
+
+## Recommended approach
+
+Use one SSH key for all infrastructure hosts unless you have a reason to isolate keys per server. It is simpler to manage and works well with Ansible.
+
+Generate a key:
+
 ```bash
-ssh-keygen -t rsa -b 4096 -C "k8s-master" -f ~/.ssh/id_rsa_k8smaster
-ssh-keygen -t rsa -b 4096 -C "k8s-worker" -f ~/.ssh/id_rsa_k8sworker
+ssh-keygen -t ed25519 -C "infra-ansible" -f ~/.ssh/id_ed25519_infra
 ```
 
-Add Entries to ~/.ssh/config
-Use the SSH config file to map keys to hosts:
+Copy the public key to each server:
+
 ```bash
-# Master node
+ssh-copy-id -i ~/.ssh/id_ed25519_infra.pub ubuntu@193.70.35.121
+ssh-copy-id -i ~/.ssh/id_ed25519_infra.pub ubuntu@193.70.35.122
+```
+
+## Optional approach: one key per host
+
+If you want separate keys:
+
+```bash
+ssh-keygen -t ed25519 -C "k8s-master" -f ~/.ssh/id_ed25519_k8s_master
+ssh-keygen -t ed25519 -C "k8s-worker" -f ~/.ssh/id_ed25519_k8s_worker
+```
+
+Then install them on the matching hosts:
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519_k8s_master.pub ubuntu@193.70.35.121
+ssh-copy-id -i ~/.ssh/id_ed25519_k8s_worker.pub ubuntu@193.70.35.122
+```
+
+## SSH config
+
+Add entries to `~/.ssh/config`.
+
+Using one shared key:
+
+```sshconfig
 Host k8s-master
   HostName 193.70.35.121
   User ubuntu
-  IdentityFile ~/.ssh/id_rsa_k8smaster
+  IdentityFile ~/.ssh/id_ed25519_infra
   IdentitiesOnly yes
 
-# Worker node
 Host k8s-worker
   HostName 193.70.35.122
   User ubuntu
-  IdentityFile ~/.ssh/id_rsa_k8sworker
+  IdentityFile ~/.ssh/id_ed25519_infra
+  IdentitiesOnly yes
+```
+
+Using one key per host:
+
+```sshconfig
+Host k8s-master
+  HostName 193.70.35.121
+  User ubuntu
+  IdentityFile ~/.ssh/id_ed25519_k8s_master
+  IdentitiesOnly yes
+
+Host k8s-worker
+  HostName 193.70.35.122
+  User ubuntu
+  IdentityFile ~/.ssh/id_ed25519_k8s_worker
   IdentitiesOnly yes
 ```
 
 ## Use ssh-agent
-1. Start ssh-agent (if not already running):
+
+Start the agent if needed:
+
 ```bash
 eval "$(ssh-agent -s)"
 ```
 
-2. Add your SSH private key to the agent:
+Add your key:
+
 ```bash
-ssh-add ~/.ssh/id_rsa_k8smaster
-ssh-add ~/.ssh/id_rsa_k8sworker
+ssh-add ~/.ssh/id_ed25519_infra
 ```
 
-3. Verify your key is added:
+Or, if using separate keys:
+
+```bash
+ssh-add ~/.ssh/id_ed25519_k8s_master
+ssh-add ~/.ssh/id_ed25519_k8s_worker
+```
+
+Check loaded keys:
+
 ```bash
 ssh-add -l
 ```
 
-## Connect to Server distant
+## Test connectivity
+
+Test direct SSH:
+
 ```bash
 ssh k8s-master
 ssh k8s-worker
 ```
 
-### If error
-```
-ssh k8s-master
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
-Someone could be eavesdropping on you right now (man-in-the-middle attack)!
-It is also possible that a host key has just been changed.
-The fingerprint for the ED25519 key sent by the remote host is
-SHA256:/zhysT5zwjBcfCFRNJ5aj6LKmc0Lp5MkuqhdozCpTyE.
-Please contact your system administrator.
-Add correct host key in /Users/coumaranecouppane/.ssh/known_hosts to get rid of this message.
-Offending ECDSA key in /Users/coumaranecouppane/.ssh/known_hosts:34
-Host key for 193.70.35.121 has changed and you have requested strict checking.
-Host key verification failed.
+Test with Ansible:
+
+```bash
+ansible all -i infra/ansible/kubernetes/inventory.ini -m ping
 ```
 
-### Solution
+If you want Ansible to use your SSH config aliases, you can also point the inventory at hostnames instead of raw IPs.
+
+Example:
+
+```ini
+[master]
+k8s-master
+
+[worker]
+k8s-worker
+
+[all:vars]
+ansible_user=ubuntu
+ansible_become=yes
+```
+
+## Troubleshooting
+
+### Permission denied (publickey)
+
+Check that:
+
+- the correct private key is loaded in `ssh-agent`
+- the matching public key exists in `~/.ssh/authorized_keys` on the server
+- the server user in inventory matches the SSH user
+
+Useful debug command:
+
+```bash
+ssh -vvv k8s-master
+```
+
+### Remote host identification has changed
+
+If the server was rebuilt or its host key changed, remove the old entry from `known_hosts`:
+
 ```bash
 ssh-keygen -R k8s-master
-# OR, if k8s-master resolves to 193.70.35.121 and that's the specific IP you're connecting to
 ssh-keygen -R 193.70.35.121
 
-
-# Worker
 ssh-keygen -R k8s-worker
-# or
 ssh-keygen -R 193.70.35.122
 ```
+
+Then reconnect:
+
+```bash
+ssh k8s-master
+ssh k8s-worker
+```
+
+### Ansible works over SSH but sudo fails
+
+The current inventory uses:
+
+```ini
+[all:vars]
+ansible_user=ubuntu
+ansible_become=yes
+```
+
+Make sure:
+
+- the `ubuntu` user exists on the host
+- that user can run `sudo`
+- you provide `--ask-become-pass` if the host requires a sudo password
+
+Example:
+
+```bash
+ansible-playbook infra/ansible/kubernetes/playbook.yml \
+  -i infra/ansible/kubernetes/inventory.ini \
+  --ask-become-pass
+```
+
+## Security notes
+
+- Prefer `ed25519` over older RSA keys unless you need RSA for compatibility.
+- Use a passphrase on private keys.
+- Do not commit private keys into the repository.
+- Rotate keys if a laptop or workstation is lost.

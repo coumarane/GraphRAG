@@ -1,8 +1,8 @@
 # kubernetes-ansible/roles/common/vars/main.yml
 
-# Kubernetes version (use a stable, supported version)
-common_kubernetes_version: "1.35.0"
-common_kubernetes_apt_repo_version: "v1.35"
+# Kubernetes version (validated against kubernetes.io on 2026-08-12)
+common_kubernetes_version: "1.36.2"
+common_kubernetes_apt_repo_version: "v1.36"
 
 # Containerd Cgroup Driver
 common_containerd_cgroup_driver: "systemd"

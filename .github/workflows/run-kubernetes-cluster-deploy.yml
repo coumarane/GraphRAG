@@ -1,0 +1,86 @@
+name: Run Kubernetes Cluster Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_install_tools:
+        description: "Run install_packages_playbook.yml to install cluster tools (Helm, etc.)"
+        required: true
+        default: true
+        type: boolean
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  check-cluster:
+    uses: ./.github/workflows/reusable-ansible-check.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/kubernetes/inventory.ini
+      playbook_paths: infra/ansible/kubernetes/playbook.yml
+      playbook_args: -u ubuntu
+      artifact_name: kubernetes-cluster-check
+      syntax_check_paths: |
+        infra/ansible/kubernetes/playbook.yml
+        infra/ansible/kubernetes/install_packages_playbook.yml
+      ansible_collections: kubernetes.core
+      ssh_user: ubuntu
+      ssh_master_group: master
+      ssh_worker_group: worker
+    secrets:
+      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+      ssh_worker_private_key: ${{ secrets.K8S_WORKER_SSH_PRIVATE_KEY }}
+
+  deploy-cluster:
+    needs: check-cluster
+    uses: ./.github/workflows/reusable-ansible-deploy.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/kubernetes/inventory.ini
+      playbook_paths: infra/ansible/kubernetes/playbook.yml
+      playbook_args: -u ubuntu
+      syntax_check_paths: |
+        infra/ansible/kubernetes/playbook.yml
+        infra/ansible/kubernetes/install_packages_playbook.yml
+      ansible_collections: kubernetes.core
+      ssh_user: ubuntu
+      ssh_master_group: master
+      ssh_worker_group: worker
+    secrets:
+      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+      ssh_worker_private_key: ${{ secrets.K8S_WORKER_SSH_PRIVATE_KEY }}
+
+  check-tools:
+    if: ${{ inputs.run_install_tools == true }}
+    needs: deploy-cluster
+    uses: ./.github/workflows/reusable-ansible-check.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/kubernetes/inventory.ini
+      playbook_paths: infra/ansible/kubernetes/install_packages_playbook.yml
+      playbook_args: -u ubuntu
+      artifact_name: kubernetes-tools-check
+      syntax_check_paths: infra/ansible/kubernetes/install_packages_playbook.yml
+      ansible_collections: kubernetes.core
+      ssh_user: ubuntu
+      ssh_master_group: master
+    secrets:
+      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+
+  install-tools:
+    if: ${{ inputs.run_install_tools == true }}
+    needs: check-tools
+    uses: ./.github/workflows/reusable-ansible-deploy.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/kubernetes/inventory.ini
+      playbook_paths: infra/ansible/kubernetes/install_packages_playbook.yml
+      playbook_args: -u ubuntu
+      syntax_check_paths: infra/ansible/kubernetes/install_packages_playbook.yml
+      ansible_collections: kubernetes.core
+      ssh_user: ubuntu
+      ssh_master_group: master
+    secrets:
+      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}

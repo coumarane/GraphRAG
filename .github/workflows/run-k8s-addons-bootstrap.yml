@@ -1,4 +1,4 @@
-name: Bootstrap K8s Cluster with Add-ons
+name: Run Kubernetes Add-ons Bootstrap
 
 on:
   workflow_dispatch:
@@ -46,57 +46,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Ansible
+        uses: ./.github/actions/setup-ansible
+        with:
+          collections: kubernetes.core
+
       - name: Configure SSH for master
-        env:
-          SSH_MASTER_PRIVATE_KEY: ${{ secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
+        id: master_ssh
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ env.K8S_INVENTORY }}
+          inventory-group: master
+          ssh-private-key: ${{ secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+          ssh-user: ubuntu
 
-          if [ -z "${SSH_MASTER_PRIVATE_KEY:-}" ]; then
-            echo "Missing secret K8S_MASTER_SSH_PRIVATE_KEY."
-            exit 1
-          fi
-
-          mkdir -p ~/.ssh
-          MASTER_KEY_PATH="$HOME/.ssh/k8s_master"
-
-          # Write key (support plain text, \n, or base64)
-          if printf '%s' "$SSH_MASTER_PRIVATE_KEY" | grep -qE "BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY"; then
-            printf '%s' "$SSH_MASTER_PRIVATE_KEY" | tr -d '\r' | sed 's/\\n/\n/g' > "$MASTER_KEY_PATH"
-          else
-            # Be tolerant to whitespace/newlines in base64 secrets
-            printf '%s' "$SSH_MASTER_PRIVATE_KEY" | tr -d '\r\n ' | base64 -d > "$MASTER_KEY_PATH" 2>/dev/null || {
-              echo "Cannot parse master SSH key (neither plain text nor base64)."
-              exit 1
-            }
-          fi
-          chmod 600 "$MASTER_KEY_PATH"
-          ssh-keygen -y -f "$MASTER_KEY_PATH" >/dev/null
-
-          MASTER_HOST=$(awk '
-            /^\[master\]/{flag=1; next}
-            /^\[/{flag=0}
-            flag && /^[0-9]/{print $1; exit}
-          ' "${K8S_INVENTORY}")
-
-          if [ -z "$MASTER_HOST" ]; then
-            echo "No master host found in inventory."
-            exit 1
-          fi
-
-          cat > ~/.ssh/config <<EOF
-          Host ${MASTER_HOST}
-            HostName ${MASTER_HOST}
-            User ubuntu
-            IdentityFile ${MASTER_KEY_PATH}
-            IdentitiesOnly yes
-            StrictHostKeyChecking no
-            UserKnownHostsFile ~/.ssh/known_hosts
-          EOF
-          chmod 600 ~/.ssh/config
-          ssh-keyscan -T 10 -H "$MASTER_HOST" >> ~/.ssh/known_hosts || true
-
-          echo "MASTER_HOST=${MASTER_HOST}" >> "$GITHUB_ENV"
+      - name: Export master host
+        run: echo "MASTER_HOST=${{ steps.master_ssh.outputs.first-host }}" >> "$GITHUB_ENV"
 
       - name: Copy Helm values and k8s manifests to master
         run: |
@@ -139,6 +104,7 @@ jobs:
           command -v curl >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y curl)
 
           command -v helm >/dev/null 2>&1 || {
+            export DESIRED_VERSION=v4.2.3
             curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
           }
 
@@ -435,7 +401,6 @@ jobs:
           kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=600s
           kubectl -n argocd logs deployment/argocd-repo-server --since=5m | tail -200
           EOSSH
-
 
       - name: Post-check
         run: |

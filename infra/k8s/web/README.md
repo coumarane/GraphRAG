@@ -1,6 +1,6 @@
 # Chatwithdocs web deployment (Kubernetes)
 
-Minimal Kubernetes manifests to run the web container that is built and pushed to Harbor by `.github/workflows/build-web-image.yml`.
+Minimal Kubernetes manifests to run the web container that is built and pushed to Harbor by `.github/workflows/build-and-push-web-image.yml`.
 
 ## Prerequisites
 - cert-manager + `letsencrypt-prod` ClusterIssuer installed (see `infra/helm/cert-manager`).

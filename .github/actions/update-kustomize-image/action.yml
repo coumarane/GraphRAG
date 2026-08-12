@@ -1,0 +1,61 @@
+name: Update Kustomize Image
+description: Update a kustomization image to a pushed digest and commit the change
+
+inputs:
+  git-ref:
+    description: Git ref to update
+    required: false
+    default: dev
+  github-token:
+    description: Token used to push the GitOps commit
+    required: true
+  image-name:
+    description: Full image name in the kustomization file
+    required: true
+  image-ref:
+    description: Full image ref to set, including digest
+    required: true
+  digest:
+    description: Image digest, with or without @ prefix
+    required: true
+  kustomization-dir:
+    description: Directory containing the kustomization file
+    required: true
+  commit-message:
+    description: Commit message to use
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Update kustomization and push
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        GIT_REF="${{ inputs.git-ref }}"
+        GITHUB_TOKEN="${{ inputs.github-token }}"
+        KUSTOMIZATION_DIR="${{ inputs.kustomization-dir }}"
+        IMAGE_NAME="${{ inputs.image-name }}"
+        IMAGE_REF="${{ inputs.image-ref }}"
+        DIGEST="${{ inputs.digest }}"
+        DIGEST="${DIGEST#@}"
+
+        git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+        git fetch origin "${GIT_REF}"
+        git checkout "${GIT_REF}"
+        git reset --hard "origin/${GIT_REF}"
+
+        if ! command -v kustomize >/dev/null 2>&1; then
+          curl -sSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+        fi
+
+        cd "${KUSTOMIZATION_DIR}"
+        kustomize edit set image "${IMAGE_NAME}=${IMAGE_REF%@*}@${DIGEST}"
+
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add kustomization.yaml
+        git commit -m "${{ inputs.commit-message }}" || echo "No changes to commit"
+        git push origin "${GIT_REF}"

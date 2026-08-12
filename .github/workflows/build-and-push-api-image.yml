@@ -1,13 +1,17 @@
-name: Build and Push API Image
+name: Build And Push API Image
 
 on:
   push:
     branches:
-      # - main
       - dev
     paths:
-      - "apps/api/**"
-      - ".github/workflows/build-api-image.yml"
+      - "src/**"
+      - "alembic/**"
+      - "config/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Dockerfile"
+      - ".github/workflows/build-and-push-api-image.yml"
   workflow_dispatch:
     inputs:
       image_tag:
@@ -19,8 +23,9 @@ env:
   REGISTRY_HOST: harbor.chatwithdocs.org
   HARBOR_PROJECT: chatwithdocs
   IMAGE_NAME: api
-  DOCKERFILE_PATH: apps/api/Dockerfile
-  BUILD_CONTEXT: apps/api
+  DOCKERFILE_PATH: Dockerfile
+  BUILD_CONTEXT: .
+  DOCKER_TARGET: api
 
 permissions:
   contents: write
@@ -34,21 +39,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Allow insecure Harbor registry
-        run: |
-          echo "{\"insecure-registries\": [\"${{ env.REGISTRY_HOST }}\"]}" | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker || sudo service docker restart
-
       - name: Login to Harbor
-        env:
-          HARBOR_USERNAME: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
-        run: |
-          if [ -z "$HARBOR_USERNAME" ] || [ -z "$HARBOR_PASSWORD" ]; then
-            echo "Harbor credentials are missing; set secrets HARBOR_REGISTRY_USERNAME and HARBOR_REGISTRY_PASSWORD."
-            exit 1
-          fi
-          echo "$HARBOR_PASSWORD" | docker login ${{ env.REGISTRY_HOST }} -u "$HARBOR_USERNAME" --password-stdin
+        uses: ./.github/actions/login-harbor
+        with:
+          registry-host: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          password: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
 
       # - name: Build image
       #   env:
@@ -74,6 +70,7 @@ jobs:
 
           docker buildx build \
             --push \
+            --target "${DOCKER_TARGET}" \
             -f "${DOCKERFILE_PATH}" \
             -t "${IMAGE_REF}:${TAG}" \
             -t "${IMAGE_REF}:latest" \
@@ -113,40 +110,14 @@ jobs:
       
       - name: Update kustomization image to digest (GitOps)
         if: github.ref == 'refs/heads/dev'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
-          git fetch origin dev
-          git checkout dev
-          git reset --hard origin/dev
-          
-          # Normalize digest (remove leading @ if present)
-          DIGEST="${{ steps.build.outputs.digest }}"
-          DIGEST="${DIGEST#@}"
-
-          cd infra/k8s/api
-
-          # Ensure kustomize exists
-          if ! command -v kustomize >/dev/null 2>&1; then
-            curl -sSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
-            sudo mv kustomize /usr/local/bin/
-          fi
-
-          # Update image via kustomize (ONLY source of truth)
-          kustomize edit set image \
-            harbor.chatwithdocs.org/chatwithdocs/api=${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}@${DIGEST}
-
-          echo "Updated kustomization.yaml:"
-          cat kustomization.yaml
-
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add kustomization.yaml
-          git commit -m "chore(dev): deploy api @${DIGEST}" || echo "No changes to commit"
-          git push origin dev
+        uses: ./.github/actions/update-kustomize-image
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          image-name: harbor.chatwithdocs.org/chatwithdocs/api
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          digest: ${{ steps.build.outputs.digest }}
+          kustomization-dir: infra/k8s/api
+          commit-message: "chore(dev): deploy api @${{ steps.build.outputs.digest }}"
 
       - name: Logout from Harbor
         if: always()

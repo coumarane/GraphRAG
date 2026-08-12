@@ -125,9 +125,7 @@
 
 - name: Set fact with kubeadm join command for worker nodes
   ansible.builtin.set_fact:
-    master_kubeadm_join_command: "{{ master_join_command_output.stdout_lines | last }}"
-  delegate_to: localhost # Make this fact available on the control node for subsequent plays
-  run_once: true
+    kubeadm_join_command: "{{ master_join_command_output.stdout_lines | last }}"
 
 - name: Debug - Print join command (for master node)
   ansible.builtin.debug:

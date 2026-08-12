@@ -48,7 +48,7 @@ Enable pgAdmin in container mode (default on Noble) on port 8080:
 
 ## GitHub Actions workflow
 
-`.github/workflows/deploy-postgresql.yml` installs Ansible, required collections, and runs the playbook. Set these secrets:
+`.github/workflows/run-postgresql-deploy.yml` installs Ansible, required collections, and runs the playbook. Set these secrets:
 - `CONTABO_VM2_ROOT_PASSWORD`
 - `POSTGRES_ADMIN_PASSWORD`
 - `POSTGRES_APP_DB`
