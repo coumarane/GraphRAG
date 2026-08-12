@@ -1,0 +1,33 @@
+# Elasticsearch Helm values (single-node dev-friendly setup)
+clusterName: chatwithdocs-es
+
+nodeSets:
+  - name: default
+    count: 1
+    config:
+      node.store.allow_mmap: false
+      xpack.security.enabled: false
+    podTemplate:
+      spec:
+        containers:
+          - name: elasticsearch
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "1"
+                memory: "2Gi"
+    volumeClaimTemplates:
+      - metadata:
+          name: elasticsearch-data
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+esJavaOpts: "-Xms1g -Xmx1g"
+
+service:
+  type: ClusterIP

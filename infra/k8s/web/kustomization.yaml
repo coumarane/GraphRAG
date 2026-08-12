@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: chatwithdocs-web
+
+commonLabels:
+  app.kubernetes.io/name: chatwithdocs-web
+  app.kubernetes.io/part-of: chatwithdocs
+
+resources:
+- namespace.yaml
+- configmap.yaml
+- deployment.yaml
+- service.yaml
+- ingress.yaml
+
+images:
+- digest: sha256:6044eb091d7dbd417292058c70b890684faf411a521031fc642a109f2a41999b
+  name: harbor.chatwithdocs.org/chatwithdocs/web
+  newName: harbor.chatwithdocs.org/chatwithdocs/web

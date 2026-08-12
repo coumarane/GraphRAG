@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data:
+  scopes: "[groups]"
+  policy.csv: |
+    g, argo-admins, role:admin
+    g, argo-readers, role:readonly

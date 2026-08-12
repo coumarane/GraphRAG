@@ -1,0 +1,223 @@
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - harbor_admin_password is defined
+      - harbor_admin_password | length >= 8
+      - harbor_db_password is defined
+      - harbor_db_password | length >= 8
+    fail_msg: "harbor_admin_password and harbor_db_password must be provided (>=8 characters). Pass them via extra vars or env HARBOR_ADMIN_PASSWORD/HARBOR_DB_PASSWORD."
+
+- name: Validate hostname for Let's Encrypt (must be DNS name, not IP)
+  ansible.builtin.assert:
+    that:
+      - harbor_enable_letsencrypt | default(false) | bool == false or (harbor_hostname is defined and harbor_hostname is match('^[A-Za-z0-9.-]+$') and not (harbor_hostname is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')))
+    fail_msg: "harbor_hostname must be a DNS name (not an IP) when harbor_enable_letsencrypt=true. Current value: {{ harbor_hostname | default('undefined') }}"
+
+- name: Install prerequisite apt packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - apt-transport-https
+      - software-properties-common
+      - python3-pip
+      - certbot
+    state: present
+    update_cache: true
+
+- name: Ensure Docker apt key directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add Docker apt gpg key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Add Docker apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Install Docker engine and compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Ensure Docker is started and enabled
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Create Harbor install parent directory
+  ansible.builtin.file:
+    path: "{{ harbor_install_dir | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Download Harbor installer {{ harbor_version }}
+  ansible.builtin.get_url:
+    url: "{{ harbor_download_base_url }}/v{{ harbor_release_tag }}/{{ harbor_installer_filename }}"
+    dest: "{{ harbor_installer_path }}"
+    mode: "0644"
+    force: true
+
+- name: Unarchive Harbor installer
+  ansible.builtin.unarchive:
+    src: "{{ harbor_installer_path }}"
+    dest: "{{ harbor_install_dir | dirname }}"
+    remote_src: true
+
+- name: Copy Harbor configuration template
+  ansible.builtin.copy:
+    src: "{{ harbor_install_dir }}/harbor.yml.tmpl"
+    dest: "{{ harbor_install_dir }}/harbor.yml"
+    remote_src: true
+    mode: "0644"
+
+- name: Set effective Harbor protocol (force https when using letsencrypt)
+  ansible.builtin.set_fact:
+    harbor_protocol_effective: "{{ 'https' if (harbor_enable_letsencrypt | bool) else harbor_protocol }}"
+
+- name: Configure hostname
+  ansible.builtin.lineinfile:
+    path: "{{ harbor_install_dir }}/harbor.yml"
+    regexp: "^hostname:"
+    line: "hostname: {{ harbor_hostname }}"
+
+- name: Configure Harbor admin password
+  ansible.builtin.lineinfile:
+    path: "{{ harbor_install_dir }}/harbor.yml"
+    regexp: "^harbor_admin_password:"
+    line: "harbor_admin_password: {{ harbor_admin_password }}"
+
+- name: Configure data volume
+  ansible.builtin.lineinfile:
+    path: "{{ harbor_install_dir }}/harbor.yml"
+    regexp: "^data_volume:"
+    line: "data_volume: {{ harbor_data_volume }}"
+
+- name: Configure database password
+  ansible.builtin.lineinfile:
+    path: "{{ harbor_install_dir }}/harbor.yml"
+    regexp: "^  password:"
+    insertafter: "^database:"
+    line: "  password: {{ harbor_db_password }}"
+
+- name: Disable HTTPS block for HTTP deployment
+  ansible.builtin.replace:
+    path: "{{ harbor_install_dir }}/harbor.yml"
+    regexp: "^https:\\n(  .+\\n){3}"
+    replace: |
+      # https disabled; using http only
+      #https:
+      #  port: 443
+      #  certificate: ""
+      #  private_key: ""
+  when: harbor_protocol_effective == 'http'
+
+- name: Stop existing Harbor containers to free port 80 for certbot
+  ansible.builtin.command: docker compose -f {{ harbor_install_dir }}/docker-compose.yml down
+  when:
+    - harbor_protocol_effective == 'https'
+    - (harbor_enable_letsencrypt | bool)
+    - harbor_core_env is defined
+    - harbor_core_env.stat is defined
+    - harbor_core_env.stat.exists
+
+- name: Stop Harbor systemd service to free port 80 for certbot
+  ansible.builtin.systemd:
+    name: "{{ harbor_systemd_service_name }}"
+    state: stopped
+  when:
+    - harbor_protocol_effective == 'https'
+    - (harbor_enable_letsencrypt | bool)
+  failed_when: false
+  ignore_errors: true
+
+- name: Obtain/Renew Let's Encrypt certificate (standalone)
+  ansible.builtin.command: >
+    certbot certonly --standalone
+    --non-interactive --agree-tos
+    --preferred-challenges http
+    -m {{ harbor_letsencrypt_email }}
+    -d {{ harbor_hostname }}
+    --keep-until-expiring
+  when: harbor_protocol_effective == 'https' and (harbor_enable_letsencrypt | bool)
+  register: harbor_certbot_result
+  changed_when: "'Congratulations' in harbor_certbot_result.stdout or 'Congratulations' in harbor_certbot_result.stderr"
+
+- name: Configure HTTPS block for Harbor
+  ansible.builtin.blockinfile:
+    path: "{{ harbor_install_dir }}/harbor.yml"
+    marker: "# {mark} ANSIBLE MANAGED HTTPS CONFIG"
+    block: |
+      https:
+        port: {{ harbor_https_port }}
+        certificate: "{{ harbor_certificate_path }}"
+        private_key: "{{ harbor_private_key_path }}"
+  when: harbor_protocol_effective == 'https'
+
+- name: Check if Harbor already installed
+  ansible.builtin.stat:
+    path: "{{ harbor_install_dir }}/common/config/core/env"
+  register: harbor_core_env
+
+- name: Install Harbor (first run)
+  ansible.builtin.command: "./install.sh --with-trivy"
+  args:
+    chdir: "{{ harbor_install_dir }}"
+  environment:
+    TERM: dumb
+    COMPOSE_HTTP_TIMEOUT: "600"
+    DOCKER_CLIENT_TIMEOUT: "600"
+  register: harbor_install_result
+  retries: 3
+  delay: 20
+  until: harbor_install_result is succeeded
+  when: not harbor_core_env.stat.exists
+
+- name: Reconfigure Harbor (subsequent runs)
+  block:
+    - name: Prepare Harbor with updated configuration
+      ansible.builtin.command: ./prepare
+      args:
+        chdir: "{{ harbor_install_dir }}"
+      environment:
+        TERM: dumb
+        COMPOSE_HTTP_TIMEOUT: "600"
+        DOCKER_CLIENT_TIMEOUT: "600"
+    - name: Restart Harbor stack
+      ansible.builtin.command: docker compose -f {{ harbor_install_dir }}/docker-compose.yml up -d
+      args:
+        chdir: "{{ harbor_install_dir }}"
+      environment:
+        TERM: dumb
+        COMPOSE_HTTP_TIMEOUT: "600"
+        DOCKER_CLIENT_TIMEOUT: "600"
+  when: harbor_core_env.stat.exists
+
+- name: Install systemd service for Harbor
+  ansible.builtin.template:
+    src: harbor.service.j2
+    dest: "/etc/systemd/system/{{ harbor_systemd_service_name }}.service"
+    mode: "0644"
+
+- name: Reload systemd and enable Harbor service
+  ansible.builtin.systemd:
+    name: "{{ harbor_systemd_service_name }}"
+    enabled: true
+    daemon_reload: true
+    state: started

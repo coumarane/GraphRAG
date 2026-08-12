@@ -1,0 +1,5 @@
+- name: Install PostgreSQL 18
+  hosts: postgresql
+  become: true
+  roles:
+    - postgresql
