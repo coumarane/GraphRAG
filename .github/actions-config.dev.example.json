@@ -1,0 +1,165 @@
+{
+  "entries": [
+    {
+      "name": "HARBOR_REGISTRY_USERNAME",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor registry username for API/Web image build and deploy workflows."
+    },
+    {
+      "name": "HARBOR_REGISTRY_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor registry password for API/Web image build and deploy workflows."
+    },
+    {
+      "name": "K8S_MASTER_SSH_PRIVATE_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "SSH private key for Kubernetes master access."
+    },
+    {
+      "name": "K8S_SSH_PRIVATE_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Preferred shared SSH private key for Kubernetes cluster deploy workflows."
+    },
+    {
+      "name": "K8S_WORKER_SSH_PRIVATE_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "SSH private key for Kubernetes worker access."
+    },
+    {
+      "name": "CLOUDFLARE_API_TOKEN",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Cloudflare API token used by cert-manager bootstrap."
+    },
+    {
+      "name": "GRAFANA_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Grafana admin password for Prometheus stack bootstrap."
+    },
+    {
+      "name": "GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Grafana OIDC client secret for Prometheus stack bootstrap."
+    },
+    {
+      "name": "ARGOCD_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD admin password."
+    },
+    {
+      "name": "ARGOCD_GITHUB_APP_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD GitHub App ID."
+    },
+    {
+      "name": "ARGOCD_GITHUB_APP_INSTALLATION_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD GitHub App installation ID."
+    },
+    {
+      "name": "ARGOCD_GITHUB_APP_PRIVATE_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD GitHub App private key."
+    },
+    {
+      "name": "ARGOCD_OIDC_CLIENT_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD OIDC client secret."
+    },
+    {
+      "name": "CONTABO_ROOT_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor target root password for Ansible password-based SSH."
+    },
+    {
+      "name": "HARBOR_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor admin password for the Harbor Ansible playbook."
+    },
+    {
+      "name": "HARBOR_DB_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor database password for the Harbor Ansible playbook."
+    },
+    {
+      "name": "CONTABO_VM2_ROOT_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL target root password for Ansible password-based SSH."
+    },
+    {
+      "name": "POSTGRES_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL admin password used by deploy and migration workflows."
+    },
+    {
+      "name": "POSTGRES_APP_DB",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL application database name."
+    },
+    {
+      "name": "POSTGRES_APP_USER",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL application user."
+    },
+    {
+      "name": "POSTGRES_APP_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL application user password."
+    },
+    {
+      "name": "PGADMIN_EMAIL",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "pgAdmin bootstrap email."
+    },
+    {
+      "name": "PGADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "pgAdmin bootstrap password."
+    }
+  ]
+}
