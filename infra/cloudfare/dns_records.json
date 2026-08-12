@@ -1,0 +1,54 @@
+{
+  "zone_name": "chatwithdocs.org",
+  "records": [
+    {
+      "type": "A",
+      "name": "api.chatwithdocs.org",
+      "content": "51.38.19.54",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "type": "A",
+      "name": "argocd.chatwithdocs.org",
+      "content": "51.38.19.54",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "type": "A",
+      "name": "database.chatwithdocs.org",
+      "content": "167.86.88.114",
+      "proxied": false,
+      "ttl": 1
+    },
+    {
+      "type": "A",
+      "name": "harbor.chatwithdocs.org",
+      "content": "62.84.180.181",
+      "proxied": false,
+      "ttl": 1
+    },
+    {
+      "type": "A",
+      "name": "prometheus.chatwithdocs.org",
+      "content": "51.38.19.54",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "type": "A",
+      "name": "chatwithdocs.org",
+      "content": "51.38.19.54",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "type": "A",
+      "name": "www.chatwithdocs.org",
+      "content": "51.38.19.54",
+      "proxied": true,
+      "ttl": 1
+    }
+  ]
+}
