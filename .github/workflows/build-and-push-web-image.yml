@@ -84,7 +84,7 @@ jobs:
         continue-on-error: true
         env:
           TRIVY_IGNORE_UNFIXED: true
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           format: table
