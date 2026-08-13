@@ -99,6 +99,7 @@ Default behavior:
 - stores the private key in Key Vault secret `ovh-rag-reinstall-ssh-private-key`
 - stores the public key in Key Vault secret `ovh-rag-reinstall-ssh-public-key`
 - uses that public key for the OVH reinstall
+- for `ubuntu2604-server_64`, only sends customizations supported by the OVH template such as `hostname`, `sshKey`, and optional post-install settings
 
 Override this only if needed:
 
