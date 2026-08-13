@@ -1,0 +1,8 @@
+resource_group_name  = "rg-safranysAI-Dev"
+storage_account_name = "terraformstate240775"
+container_name       = "tfstate-ovh-dedicated-reinstall"
+key                  = "ovh-dedicated-reinstall.tfstate"
+tenant_id            = "f387bed5-f1ed-4801-9df7-837a8905a354"
+subscription_id      = "a555786b-b00c-4cea-946c-5c435d5e7100"
+use_azuread_auth     = true
+use_cli              = true

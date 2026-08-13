@@ -15,6 +15,7 @@ on:
 permissions:
   contents: read
   deployments: write
+  id-token: write
 
 concurrency:
   group: deploy-dev
@@ -57,13 +58,28 @@ jobs:
           perl -0pi -e "s|(^\s*newTag:\s*).*$|\$1${IMAGE_TAG}|m" infra/k8s/api/kustomization.yaml
           grep -n "newTag:" infra/k8s/api/kustomization.yaml
 
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore shared SSH key from Key Vault
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secret-name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          key-path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+
       - name: Configure SSH for master
         id: master_ssh
         uses: ./.github/actions/configure-ssh-from-inventory
         with:
           inventory-path: ${{ env.K8S_INVENTORY }}
           inventory-group: master
-          ssh-private-key: ${{ secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
           ssh-user: ubuntu
 
       - name: Export master host

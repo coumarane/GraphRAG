@@ -13,6 +13,10 @@ env:
   ANSIBLE_HOST_KEY_CHECKING: "False"
   K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   check-cluster:
     uses: ./.github/workflows/reusable-ansible-check.yml
@@ -29,9 +33,13 @@ jobs:
       ssh_user: ubuntu
       ssh_master_group: master
       ssh_worker_group: worker
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      ssh_private_key_secret_name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+      ssh_private_key_path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
     secrets:
-      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
-      ssh_worker_private_key: ${{ secrets.K8S_WORKER_SSH_PRIVATE_KEY }}
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
 
   deploy-cluster:
     needs: check-cluster
@@ -48,9 +56,13 @@ jobs:
       ssh_user: ubuntu
       ssh_master_group: master
       ssh_worker_group: worker
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      ssh_private_key_secret_name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+      ssh_private_key_path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
     secrets:
-      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
-      ssh_worker_private_key: ${{ secrets.K8S_WORKER_SSH_PRIVATE_KEY }}
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
 
   check-tools:
     if: ${{ inputs.run_install_tools == true }}
@@ -66,8 +78,13 @@ jobs:
       ansible_collections: kubernetes.core
       ssh_user: ubuntu
       ssh_master_group: master
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      ssh_private_key_secret_name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+      ssh_private_key_path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
     secrets:
-      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
 
   install-tools:
     if: ${{ inputs.run_install_tools == true }}
@@ -82,5 +99,10 @@ jobs:
       ansible_collections: kubernetes.core
       ssh_user: ubuntu
       ssh_master_group: master
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      ssh_private_key_secret_name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+      ssh_private_key_path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
     secrets:
-      ssh_master_private_key: ${{ secrets.K8S_SSH_PRIVATE_KEY || secrets.K8S_MASTER_SSH_PRIVATE_KEY }}
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}

@@ -2,9 +2,14 @@
 
 This folder contains automation for managing the GitHub Actions configuration used by the infrastructure and deployment workflows.
 
+Related docs:
+
+- [README_OVH.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/README_OVH.md): OVH Terraform GitHub workflow setup and required secrets/variables.
+- [oidc/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/oidc/README.md): Azure App Registration and GitHub OIDC setup.
+
 ## Script
 
-- [manage_github_actions_config.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/manage_github_actions_config.py): create, update, delete, list, or batch-apply GitHub Actions secrets and variables.
+- [manage_github_actions_config.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/manage_github_actions_config.py): create, update, delete, list, or batch-apply GitHub Actions secrets and variables.
 
 The script manages:
 
@@ -35,7 +40,7 @@ By default, the script reads the repository from `GITHUB_REPOSITORY`.
 You can also pass it explicitly:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo catalog
+python3 infra/github/manage_github_actions_config.py --repo owner/repo catalog
 ```
 
 ## Show the built-in catalog
@@ -45,13 +50,13 @@ The catalog reflects the entries currently used by the Ansible and deployment wo
 Table output:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo catalog
+python3 infra/github/manage_github_actions_config.py --repo owner/repo catalog
 ```
 
 JSON output:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo catalog --format json
+python3 infra/github/manage_github_actions_config.py --repo owner/repo catalog --format json
 ```
 
 ## Generate a JSON template
@@ -59,37 +64,37 @@ python3 .github/manage_github_actions_config.py --repo owner/repo catalog --form
 Generate a batch-apply template for an environment such as `dev`:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo template --environment dev > .github/actions-config.dev.json
+python3 infra/github/manage_github_actions_config.py --repo owner/repo template --environment dev > infra/github/actions-config.dev.json
 ```
 
 A committed example template for `dev` is also available:
 
-- [actions-config.dev.example.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/actions-config.dev.example.json)
+- [actions-config.dev.example.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/actions-config.dev.example.json)
 
 ## List existing entries
 
 List environment secrets:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo list --scope env-secret --environment dev
+python3 infra/github/manage_github_actions_config.py --repo owner/repo list --scope env-secret --environment dev
 ```
 
 List environment variables:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo list --scope env-var --environment dev
+python3 infra/github/manage_github_actions_config.py --repo owner/repo list --scope env-var --environment dev
 ```
 
 List repository secrets:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo list --scope repo-secret
+python3 infra/github/manage_github_actions_config.py --repo owner/repo list --scope repo-secret
 ```
 
 List repository variables:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo list --scope repo-var
+python3 infra/github/manage_github_actions_config.py --repo owner/repo list --scope repo-var
 ```
 
 ## Create or update one entry
@@ -97,7 +102,7 @@ python3 .github/manage_github_actions_config.py --repo owner/repo list --scope r
 Set an environment secret from a literal value:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   set \
   --scope env-secret \
@@ -109,19 +114,19 @@ python3 .github/manage_github_actions_config.py \
 Set an environment secret from a file:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   set \
   --scope env-secret \
   --environment dev \
-  --name K8S_MASTER_SSH_PRIVATE_KEY \
-  --value-file ~/.ssh/id_ed25519
+  --name ARGOCD_GITHUB_APP_PRIVATE_KEY \
+  --value-file ./argocd-github-app.pem
 ```
 
 Set an environment variable:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   set \
   --scope env-var \
@@ -133,7 +138,7 @@ python3 .github/manage_github_actions_config.py \
 Set a repository variable:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   set \
   --scope repo-var \
@@ -146,18 +151,18 @@ python3 .github/manage_github_actions_config.py \
 Delete an environment secret:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   delete \
   --scope env-secret \
   --environment dev \
-  --name K8S_WORKER_SSH_PRIVATE_KEY
+  --name ARGOCD_GITHUB_APP_PRIVATE_KEY
 ```
 
 Delete a repository variable:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   delete \
   --scope repo-var \
@@ -169,16 +174,16 @@ python3 .github/manage_github_actions_config.py \
 Create a template:
 
 ```bash
-python3 .github/manage_github_actions_config.py --repo owner/repo template --environment dev > .github/actions-config.dev.json
+python3 infra/github/manage_github_actions_config.py --repo owner/repo template --environment dev > infra/github/actions-config.dev.json
 ```
 
 Fill the `value` fields, then apply:
 
 ```bash
-python3 .github/manage_github_actions_config.py \
+python3 infra/github/manage_github_actions_config.py \
   --repo owner/repo \
   apply \
-  --file .github/actions-config.dev.json
+  --file infra/github/actions-config.dev.json
 ```
 
 To delete an entry during batch apply, set:

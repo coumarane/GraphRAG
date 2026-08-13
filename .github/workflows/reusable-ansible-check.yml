@@ -56,16 +56,43 @@ on:
         required: false
         default: ""
         type: string
+      azure_subscription_id:
+        description: Azure subscription used to retrieve the shared SSH key from Key Vault
+        required: false
+        default: ""
+        type: string
+      azure_tenant_id:
+        description: Azure tenant used to retrieve the shared SSH key from Key Vault
+        required: false
+        default: ""
+        type: string
+      azure_key_vault_name:
+        description: Azure Key Vault name that stores the shared SSH key
+        required: false
+        default: ""
+        type: string
+      ssh_private_key_secret_name:
+        description: Azure Key Vault secret name that stores the shared SSH key
+        required: false
+        default: ""
+        type: string
+      ssh_private_key_path:
+        description: Local path where the shared SSH key should be restored
+        required: false
+        default: "~/.ssh/shared-k8s-ed25519"
+        type: string
       artifact_name:
         description: Name used for the uploaded check artifact
         required: false
         default: ansible-check-output
         type: string
     secrets:
-      ssh_master_private_key:
+      azure_client_id:
         required: false
-      ssh_worker_private_key:
-        required: false
+
+permissions:
+  contents: read
+  id-token: write
 
 env:
   ANSIBLE_HOST_KEY_CHECKING: "False"
@@ -86,13 +113,30 @@ jobs:
           collections: ${{ inputs.ansible_collections }}
           install-ansible-lint: "true"
 
+      - name: Azure login
+        if: ${{ inputs.azure_key_vault_name != '' && inputs.ssh_private_key_secret_name != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.azure_client_id }}
+          tenant-id: ${{ inputs.azure_tenant_id }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      - name: Restore shared SSH key from Key Vault
+        if: ${{ inputs.azure_key_vault_name != '' && inputs.ssh_private_key_secret_name != '' }}
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ inputs.azure_key_vault_name }}
+          secret-name: ${{ inputs.ssh_private_key_secret_name }}
+          key-path: ${{ inputs.ssh_private_key_path }}
+
       - name: Configure SSH for master hosts
         if: ${{ inputs.ssh_master_group != '' }}
         uses: ./.github/actions/configure-ssh-from-inventory
         with:
           inventory-path: ${{ inputs.inventory_path }}
           inventory-group: ${{ inputs.ssh_master_group }}
-          ssh-private-key: ${{ secrets.ssh_master_private_key }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
           ssh-user: ${{ inputs.ssh_user }}
 
       - name: Configure SSH for worker hosts
@@ -101,7 +145,7 @@ jobs:
         with:
           inventory-path: ${{ inputs.inventory_path }}
           inventory-group: ${{ inputs.ssh_worker_group }}
-          ssh-private-key: ${{ secrets.ssh_worker_private_key }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
           ssh-user: ${{ inputs.ssh_user }}
 
       - name: Syntax check playbooks

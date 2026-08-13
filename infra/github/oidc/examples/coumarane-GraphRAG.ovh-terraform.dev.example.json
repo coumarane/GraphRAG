@@ -1,0 +1,19 @@
+{
+  "display_name": "github-actions-graphrag-dev",
+  "repo": "coumarane/GraphRAG",
+  "tenant_id": "f387bed5-f1ed-4801-9df7-837a8905a354",
+  "subscription_id": "a555786b-b00c-4cea-946c-5c435d5e7100",
+  "sign_in_audience": "AzureADMyOrg",
+  "create_service_principal": true,
+  "federated_credentials": [
+    {
+      "name": "github-environment-dev",
+      "subject": "repo:coumarane/GraphRAG:environment:dev",
+      "description": "Allows GitHub Actions jobs in the dev environment to exchange the GitHub OIDC token for Azure access.",
+      "issuer": "https://token.actions.githubusercontent.com",
+      "audiences": [
+        "api://AzureADTokenExchange"
+      ]
+    }
+  ]
+}

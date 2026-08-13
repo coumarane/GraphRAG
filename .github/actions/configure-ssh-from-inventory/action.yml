@@ -10,7 +10,10 @@ inputs:
     required: true
   ssh-private-key:
     description: SSH private key content, with plain text or base64 accepted
-    required: true
+    required: false
+  ssh-private-key-file:
+    description: Path to a local SSH private key file
+    required: false
   ssh-user:
     description: SSH username
     required: false
@@ -41,6 +44,7 @@ runs:
         INVENTORY_GROUP="${{ inputs.inventory-group }}"
         SSH_USER="${{ inputs.ssh-user }}"
         SSH_PRIVATE_KEY="${{ inputs.ssh-private-key }}"
+        SSH_PRIVATE_KEY_FILE="${{ inputs.ssh-private-key-file }}"
         KNOWN_HOSTS_FILE="${{ inputs.known-hosts-file }}"
 
         if [ ! -f "${INVENTORY_PATH}" ]; then
@@ -48,15 +52,21 @@ runs:
           exit 1
         fi
 
-        if [ -z "${SSH_PRIVATE_KEY}" ]; then
-          echo "Missing SSH private key input."
+        if [ -z "${SSH_PRIVATE_KEY}" ] && [ -z "${SSH_PRIVATE_KEY_FILE}" ]; then
+          echo "Missing SSH private key input. Provide ssh-private-key or ssh-private-key-file."
           exit 1
         fi
 
         mkdir -p ~/.ssh
         KEY_PATH="$HOME/.ssh/${INVENTORY_GROUP}_key"
 
-        if printf '%s' "${SSH_PRIVATE_KEY}" | grep -qE "BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY"; then
+        if [ -n "${SSH_PRIVATE_KEY_FILE}" ]; then
+          if [ ! -f "${SSH_PRIVATE_KEY_FILE}" ]; then
+            echo "SSH private key file not found: ${SSH_PRIVATE_KEY_FILE}"
+            exit 1
+          fi
+          cp "${SSH_PRIVATE_KEY_FILE}" "${KEY_PATH}"
+        elif printf '%s' "${SSH_PRIVATE_KEY}" | grep -qE "BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY"; then
           printf '%s' "${SSH_PRIVATE_KEY}" | tr -d '\r' | sed 's/\\n/\n/g' > "${KEY_PATH}"
         else
           printf '%s' "${SSH_PRIVATE_KEY}" | tr -d '\r\n ' | base64 -d > "${KEY_PATH}" 2>/dev/null || {
