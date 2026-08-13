@@ -43,7 +43,6 @@ The Azure Blob container is created by the bootstrap stack in [bootstrap-azure-s
 - [outputs.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/outputs.tf): task and secret outputs
 - [terraform.dev.tfvars](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars): tracked GitHub Actions inputs for the dev environment
 - `infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars`: ignored local-only overrides
-- [terraform.tfvars.example](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/terraform.tfvars.example): example inputs
 - [backend.hcl.example](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/backend.hcl.example): backend init settings
 
 ## Prerequisites
@@ -88,12 +87,10 @@ This creates the container `tfstate-ovh-dedicated-reinstall` in the existing sto
 
 ## Step 2: Configure the main stack
 
-Create the main variable file:
+Use the tracked dev variable file:
 
 ```bash
-cd /Users/coumaranecouppane/Dev/ProjetRag/GraphRAG
-cp infra/terraform/ovh-dedicated-reinstall/terraform.tfvars.example \
-  infra/terraform/ovh-dedicated-reinstall/terraform.tfvars
+cat infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars
 ```
 
 Default behavior:
@@ -105,6 +102,7 @@ Default behavior:
 
 Override this only if needed:
 
+- use `infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars` for local-only changes you do not want to commit
 - set `ssh_public_key` if you want to supply your own public key
 - set `auto_generate_ssh_key = false` if the key is managed outside Terraform
 - increment `ssh_private_key_secret_version` if you intentionally rotate the private key and want Terraform to publish a new Key Vault secret version
