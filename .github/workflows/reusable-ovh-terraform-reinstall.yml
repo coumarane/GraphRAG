@@ -160,6 +160,29 @@ jobs:
             echo "ssh_private_key_path=${EFFECTIVE_SSH_PRIVATE_KEY_PATH}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve Terraform tfvars file
+        id: tfvars
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested_path="${GITHUB_WORKSPACE}/${{ inputs.tfvars_file }}"
+          default_path="${GITHUB_WORKSPACE}/infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars"
+
+          if [ -n "${{ inputs.tfvars_file }}" ] && [ -f "${requested_path}" ]; then
+            echo "Using requested tfvars file: ${{ inputs.tfvars_file }}"
+            echo "plan_args=-var-file=${requested_path}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -f "${default_path}" ]; then
+            echo "Requested tfvars file not found. Falling back to tracked dev tfvars file."
+            echo "plan_args=-var-file=${default_path}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "No tfvars file found. Terraform will rely on variable defaults only."
+          echo "plan_args=" >> "$GITHUB_OUTPUT"
+
       - name: Azure login
         uses: azure/login@v2
         with:
@@ -229,7 +252,7 @@ jobs:
           OVH_APPLICATION_KEY: ${{ steps.resolve.outputs.ovh_application_key }}
           OVH_APPLICATION_SECRET: ${{ steps.resolve.outputs.ovh_application_secret }}
           OVH_CONSUMER_KEY: ${{ steps.resolve.outputs.ovh_consumer_key }}
-        run: terraform plan -input=false -var-file="${GITHUB_WORKSPACE}/${{ inputs.tfvars_file }}" -out=tfplan
+        run: terraform plan -input=false ${{ steps.tfvars.outputs.plan_args }} -out=tfplan
 
       - name: Upload Terraform plan
         if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}

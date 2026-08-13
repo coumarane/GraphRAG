@@ -246,6 +246,9 @@ Inputs:
 - `operation=plan` for a safe first run
 - `operation=apply` for the actual reinstall
 - `environment_name=dev`
+- `tfvars_file=infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars` by default
+
+If you provide a custom `tfvars_file` input and that file is not present in the repository checkout, the workflow falls back to the tracked `terraform.dev.tfvars` file.
 
 ## Notes
 

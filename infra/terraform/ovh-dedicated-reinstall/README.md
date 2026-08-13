@@ -41,6 +41,8 @@ The Azure Blob container is created by the bootstrap stack in [bootstrap-azure-s
 - [variables.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/variables.tf): user inputs
 - [main.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/main.tf): OVH reinstall task, Key Vault secret publishing, SSH key generation
 - [outputs.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/outputs.tf): task and secret outputs
+- [terraform.dev.tfvars](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars): tracked GitHub Actions inputs for the dev environment
+- `infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars`: ignored local-only overrides
 - [terraform.tfvars.example](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/terraform.tfvars.example): example inputs
 - [backend.hcl.example](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/backend.hcl.example): backend init settings
 
@@ -181,6 +183,8 @@ Workflow behavior:
 - logs into Azure using OIDC through `AZURE_CLIENT_ID`
 - restores the SSH private key from Key Vault when the secret already exists
 - generates `backend.hcl` on the runner
+- uses `infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars` by default in GitHub Actions
+- falls back to that tracked dev file when a custom `tfvars_file` input does not exist in the repository checkout
 - runs `terraform init`, `terraform validate`, then `terraform plan`
 - runs `terraform apply` only when you dispatch the workflow with `operation=apply`
 
