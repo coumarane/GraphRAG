@@ -102,12 +102,70 @@ jobs:
         with:
           terraform_version: ${{ inputs.terraform_version }}
 
+      - name: Resolve workflow configuration
+        id: resolve
+        shell: bash
+        env:
+          EFFECTIVE_AZURE_CLIENT_ID: ${{ secrets.azure_client_id || secrets.AZURE_CLIENT_ID }}
+          EFFECTIVE_OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key || secrets.OVH_APPLICATION_KEY }}
+          EFFECTIVE_OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret || secrets.OVH_APPLICATION_SECRET }}
+          EFFECTIVE_OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key || secrets.OVH_CONSUMER_KEY }}
+          EFFECTIVE_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id || vars.AZURE_SUBSCRIPTION_ID }}
+          EFFECTIVE_AZURE_TENANT_ID: ${{ inputs.azure_tenant_id || vars.AZURE_TENANT_ID }}
+          EFFECTIVE_AZURE_RESOURCE_GROUP_NAME: ${{ inputs.azure_resource_group_name || vars.AZURE_RESOURCE_GROUP_NAME }}
+          EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME: ${{ inputs.azure_storage_account_name || vars.AZURE_STORAGE_ACCOUNT_NAME }}
+          EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME: ${{ inputs.azure_storage_container_name || vars.AZURE_TERRAFORM_STATE_CONTAINER_NAME }}
+          EFFECTIVE_AZURE_STORAGE_STATE_KEY: ${{ inputs.azure_storage_state_key || vars.OVH_TERRAFORM_STATE_KEY || 'ovh-dedicated-reinstall.tfstate' }}
+          EFFECTIVE_AZURE_KEY_VAULT_NAME: ${{ inputs.azure_key_vault_name || vars.AZURE_KEY_VAULT_NAME }}
+          EFFECTIVE_SSH_PRIVATE_KEY_SECRET_NAME: ${{ inputs.ssh_private_key_secret_name || vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          EFFECTIVE_SSH_PRIVATE_KEY_PATH: ${{ inputs.ssh_private_key_path || vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for var_name in \
+            EFFECTIVE_AZURE_CLIENT_ID \
+            EFFECTIVE_OVH_APPLICATION_KEY \
+            EFFECTIVE_OVH_APPLICATION_SECRET \
+            EFFECTIVE_OVH_CONSUMER_KEY \
+            EFFECTIVE_AZURE_SUBSCRIPTION_ID \
+            EFFECTIVE_AZURE_TENANT_ID \
+            EFFECTIVE_AZURE_RESOURCE_GROUP_NAME \
+            EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME \
+            EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME \
+            EFFECTIVE_AZURE_KEY_VAULT_NAME; do
+            if [ -z "${!var_name:-}" ]; then
+              missing+=("${var_name#EFFECTIVE_}")
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required workflow settings: ${missing[*]}"
+            echo "Expected GitHub settings in the '${{ inputs.environment_name }}' environment or repository scope."
+            exit 1
+          fi
+
+          {
+            echo "azure_client_id=${EFFECTIVE_AZURE_CLIENT_ID}"
+            echo "ovh_application_key=${EFFECTIVE_OVH_APPLICATION_KEY}"
+            echo "ovh_application_secret=${EFFECTIVE_OVH_APPLICATION_SECRET}"
+            echo "ovh_consumer_key=${EFFECTIVE_OVH_CONSUMER_KEY}"
+            echo "azure_subscription_id=${EFFECTIVE_AZURE_SUBSCRIPTION_ID}"
+            echo "azure_tenant_id=${EFFECTIVE_AZURE_TENANT_ID}"
+            echo "azure_resource_group_name=${EFFECTIVE_AZURE_RESOURCE_GROUP_NAME}"
+            echo "azure_storage_account_name=${EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME}"
+            echo "azure_storage_container_name=${EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME}"
+            echo "azure_storage_state_key=${EFFECTIVE_AZURE_STORAGE_STATE_KEY}"
+            echo "azure_key_vault_name=${EFFECTIVE_AZURE_KEY_VAULT_NAME}"
+            echo "ssh_private_key_secret_name=${EFFECTIVE_SSH_PRIVATE_KEY_SECRET_NAME}"
+            echo "ssh_private_key_path=${EFFECTIVE_SSH_PRIVATE_KEY_PATH}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Azure login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.azure_client_id }}
-          tenant-id: ${{ inputs.azure_tenant_id }}
-          subscription-id: ${{ inputs.azure_subscription_id }}
+          client-id: ${{ steps.resolve.outputs.azure_client_id }}
+          tenant-id: ${{ steps.resolve.outputs.azure_tenant_id }}
+          subscription-id: ${{ steps.resolve.outputs.azure_subscription_id }}
 
       - name: Restore SSH key from Key Vault when available
         shell: bash
@@ -131,21 +189,21 @@ jobs:
             echo "No existing SSH key found in Key Vault. Terraform will generate one if configured to do so."
           fi
         env:
-          INPUT_AZURE_KEY_VAULT_NAME: ${{ inputs.azure_key_vault_name }}
-          INPUT_SSH_PRIVATE_KEY_SECRET_NAME: ${{ inputs.ssh_private_key_secret_name }}
-          INPUT_SSH_PRIVATE_KEY_PATH: ${{ inputs.ssh_private_key_path }}
+          INPUT_AZURE_KEY_VAULT_NAME: ${{ steps.resolve.outputs.azure_key_vault_name }}
+          INPUT_SSH_PRIVATE_KEY_SECRET_NAME: ${{ steps.resolve.outputs.ssh_private_key_secret_name }}
+          INPUT_SSH_PRIVATE_KEY_PATH: ${{ steps.resolve.outputs.ssh_private_key_path }}
 
       - name: Write backend config
         shell: bash
         run: |
           set -euo pipefail
           cat > "${{ inputs.terraform_working_directory }}/backend.hcl" <<EOF
-          resource_group_name  = "${{ inputs.azure_resource_group_name }}"
-          storage_account_name = "${{ inputs.azure_storage_account_name }}"
-          container_name       = "${{ inputs.azure_storage_container_name }}"
-          key                  = "${{ inputs.azure_storage_state_key }}"
-          tenant_id            = "${{ inputs.azure_tenant_id }}"
-          subscription_id      = "${{ inputs.azure_subscription_id }}"
+          resource_group_name  = "${{ steps.resolve.outputs.azure_resource_group_name }}"
+          storage_account_name = "${{ steps.resolve.outputs.azure_storage_account_name }}"
+          container_name       = "${{ steps.resolve.outputs.azure_storage_container_name }}"
+          key                  = "${{ steps.resolve.outputs.azure_storage_state_key }}"
+          tenant_id            = "${{ steps.resolve.outputs.azure_tenant_id }}"
+          subscription_id      = "${{ steps.resolve.outputs.azure_subscription_id }}"
           use_azuread_auth     = true
           use_cli              = true
           EOF
@@ -154,9 +212,9 @@ jobs:
         working-directory: ${{ inputs.terraform_working_directory }}
         env:
           OVH_ENDPOINT: ${{ inputs.ovh_endpoint }}
-          OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key }}
-          OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret }}
-          OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key }}
+          OVH_APPLICATION_KEY: ${{ steps.resolve.outputs.ovh_application_key }}
+          OVH_APPLICATION_SECRET: ${{ steps.resolve.outputs.ovh_application_secret }}
+          OVH_CONSUMER_KEY: ${{ steps.resolve.outputs.ovh_consumer_key }}
         run: terraform init -reconfigure -backend-config=backend.hcl
 
       - name: Terraform validate
@@ -168,9 +226,9 @@ jobs:
         working-directory: ${{ inputs.terraform_working_directory }}
         env:
           OVH_ENDPOINT: ${{ inputs.ovh_endpoint }}
-          OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key }}
-          OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret }}
-          OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key }}
+          OVH_APPLICATION_KEY: ${{ steps.resolve.outputs.ovh_application_key }}
+          OVH_APPLICATION_SECRET: ${{ steps.resolve.outputs.ovh_application_secret }}
+          OVH_CONSUMER_KEY: ${{ steps.resolve.outputs.ovh_consumer_key }}
         run: terraform plan -input=false -var-file="${GITHUB_WORKSPACE}/${{ inputs.tfvars_file }}" -out=tfplan
 
       - name: Upload Terraform plan
@@ -186,7 +244,7 @@ jobs:
         working-directory: ${{ inputs.terraform_working_directory }}
         env:
           OVH_ENDPOINT: ${{ inputs.ovh_endpoint }}
-          OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key }}
-          OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret }}
-          OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key }}
+          OVH_APPLICATION_KEY: ${{ steps.resolve.outputs.ovh_application_key }}
+          OVH_APPLICATION_SECRET: ${{ steps.resolve.outputs.ovh_application_secret }}
+          OVH_CONSUMER_KEY: ${{ steps.resolve.outputs.ovh_consumer_key }}
         run: terraform apply -input=false -auto-approve tfplan
