@@ -84,7 +84,7 @@ Minimum rights for the current Terraform workflow:
 Why these rights are needed:
 
 - `/dedicated/server/*`: read dedicated server details and trigger the reinstall task
-- `/dedicated/installationTemplate/*`: read the installation template such as `ubuntu2604-server`
+- `/dedicated/installationTemplate/*`: read the installation template such as `ubuntu2604-server_64`
 
 Restricted IPs:
 

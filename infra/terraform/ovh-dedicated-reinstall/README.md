@@ -3,7 +3,7 @@
 Terraform stack to reinstall the existing OVH dedicated servers for the cluster from the OVHcloud OS template:
 
 - template type: `os basic`
-- template name: `ubuntu2604-server`
+- template name: `ubuntu2604-server_64`
 - OS label: `Ubuntu Server 26.04 "Resolute Raccoon" LTS`
 
 The server inventory and disk layout come from [infra/ovh/CLUSTER_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ovh/CLUSTER_README.md).

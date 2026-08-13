@@ -1,7 +1,7 @@
 variable "installation_template_name" {
   description = "OVH installation template to use for the reinstall task."
   type        = string
-  default     = "ubuntu2604-server"
+  default     = "ubuntu2604-server_64"
 }
 
 variable "azure_subscription_id" {
