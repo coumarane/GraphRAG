@@ -1,0 +1,5 @@
+# Minimal Cilium values; adjust as needed for your environment.
+# kubeProxyReplacement must be explicitly true/false with recent charts.
+kubeProxyReplacement: false
+hubble:
+  enabled: false

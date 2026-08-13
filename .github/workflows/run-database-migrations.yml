@@ -1,0 +1,157 @@
+name: Run Database Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: "Database host (default from secrets)"
+        required: false
+        default: "database.chatwithdocs.org"
+      postgres_port:
+        description: "PostgreSQL port"
+        required: false
+        default: "5432"
+      migration_direction:
+        description: "Migration direction"
+        required: true
+        type: choice
+        options:
+          - upgrade
+          - downgrade
+        default: upgrade
+      revision:
+        description: "Target revision (default: head for upgrade, -1 for downgrade)"
+        required: false
+        default: "head"
+      seed_sample_data:
+        description: "Seed demo data after migrations"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  migrate:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DB_HOST: ${{ inputs.target_host || 'database.chatwithdocs.org' }}
+      DB_PORT: ${{ inputs.postgres_port }}
+      DB_NAME: ${{ secrets.POSTGRES_APP_DB }}
+      DB_USER: ${{ secrets.POSTGRES_APP_USER }}
+      DB_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
+      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.chatwithdocs.org' }}:${{ inputs.postgres_port }}/${{ secrets.POSTGRES_APP_DB }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[postgres]"
+
+      - name: Create production alembic.ini
+        run: |
+          cat > alembic.prod.ini << 'EOF'
+          # Production Alembic configuration - DO NOT COMMIT WITH REAL CREDENTIALS
+
+          [alembic]
+          script_location = alembic
+          prepend_sys_path = .
+          version_path_separator = os
+
+          # Database URL will be set via environment variable
+          sqlalchemy.url = postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+
+          [loggers]
+          keys = root,sqlalchemy,alembic
+
+          [handlers]
+          keys = console
+
+          [formatters]
+          keys = generic
+
+          [logger_root]
+          level = INFO
+          handlers = console
+          qualname =
+
+          [logger_sqlalchemy]
+          level = WARN
+          handlers =
+          qualname = sqlalchemy.engine
+
+          [logger_alembic]
+          level = INFO
+          handlers =
+          qualname = alembic
+
+          [handler_console]
+          class = StreamHandler
+          args = (sys.stderr,)
+          level = NOTSET
+          formatter = generic
+
+          [formatter_generic]
+          format = %(levelname)-5.5s [%(name)s] %(message)s
+          datefmt = %H:%M:%S
+          EOF
+
+          # Substitute environment variables in the config file
+          envsubst < alembic.prod.ini > alembic.prod.final.ini
+
+          echo "Generated alembic.prod.final.ini (credentials masked):"
+          sed 's/postgresql+asyncpg:\/\/[^:]*:[^@]*@/postgresql+asyncpg:\/\/***:***@/' alembic.prod.final.ini
+
+      - name: Check current database revision
+        run: |
+          echo "Checking current database revision..."
+          alembic -c alembic.prod.final.ini current || echo "No revision found (empty database)"
+
+      - name: Show pending migrations
+        if: inputs.migration_direction == 'upgrade'
+        run: |
+          echo "Pending migrations:"
+          alembic -c alembic.prod.final.ini history --verbose
+
+      - name: Run migrations (${{ inputs.migration_direction }} to ${{ inputs.revision }})
+        run: |
+          TARGET_REV="${{ inputs.revision }}"
+          if [ "${{ inputs.migration_direction }}" = "downgrade" ] && [ "$TARGET_REV" = "head" ]; then
+            TARGET_REV="-1"
+          fi
+
+          echo "Running: alembic ${{ inputs.migration_direction }} $TARGET_REV"
+          alembic -c alembic.prod.final.ini ${{ inputs.migration_direction }} $TARGET_REV
+
+      - name: Verify final database revision
+        run: |
+          echo "Final database revision:"
+          alembic -c alembic.prod.final.ini current
+
+      - name: Seed sample data (optional)
+        if: inputs.seed_sample_data == true
+        run: |
+          echo "Sample-data seeding is not implemented in this repository."
+          exit 1
+
+      - name: Verify seeded counts (optional)
+        if: inputs.seed_sample_data == true
+        run: |
+          echo "No sample-data verification step is available because seeding is not implemented."
+          exit 1
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f alembic.prod.ini alembic.prod.final.ini

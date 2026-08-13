@@ -1,0 +1,15 @@
+# kubernetes-ansible/roles/common/vars/main.yml
+
+# Kubernetes version (validated against kubernetes.io on 2026-08-12)
+common_kubernetes_version: "1.36.2"
+common_kubernetes_apt_repo_version: "v1.36"
+
+# Containerd Cgroup Driver
+common_containerd_cgroup_driver: "systemd"
+
+# Pod Network CIDR (Cilium default or as configured)
+common_pod_network_cidr: "10.244.0.0/16"
+#
+# # Insecure Harbor registry support (set to true to write containerd hosts.toml on workers)
+# # common_enable_insecure_harbor_registry: true
+# # common_harbor_registry_host: "62.84.180.181:80"

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: chatwithdocs-web
+    app.kubernetes.io/part-of: chatwithdocs
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chatwithdocs-web
+      app.kubernetes.io/part-of: chatwithdocs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chatwithdocs-web
+        app.kubernetes.io/part-of: chatwithdocs
+    spec:
+      imagePullSecrets:
+        - name: harbor-regcred
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: web
+          image: harbor.chatwithdocs.org/chatwithdocs/web:digest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: web-app-config
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: "production"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

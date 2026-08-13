@@ -1,0 +1,55 @@
+name: Run Harbor Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      harbor_version:
+        description: "Harbor version to install (for example 2.15.2)"
+        required: false
+        default: "2.15.2"
+      harbor_hostname:
+        description: "Hostname that Harbor should advertise"
+        required: false
+        default: "harbor.chatwithdocs.org"
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+
+jobs:
+  check:
+    uses: ./.github/workflows/reusable-ansible-check.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/harbor/inventory.ini
+      playbook_paths: infra/ansible/harbor/playbook.yml
+      artifact_name: harbor-check
+      syntax_check_paths: infra/ansible/harbor/playbook.yml
+      install_sshpass: true
+      extra_vars: >-
+        ansible_password=${{ secrets.CONTABO_ROOT_PASSWORD }}
+        harbor_admin_password=${{ secrets.HARBOR_ADMIN_PASSWORD }}
+        harbor_db_password=${{ secrets.HARBOR_DB_PASSWORD }}
+        harbor_version=${{ inputs.harbor_version }}
+        harbor_hostname=${{ inputs.harbor_hostname }}
+        harbor_protocol=https
+        harbor_enable_letsencrypt=true
+        harbor_letsencrypt_email=contact@chatwithdocs.org
+
+  deploy:
+    needs: check
+    uses: ./.github/workflows/reusable-ansible-deploy.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/harbor/inventory.ini
+      playbook_paths: infra/ansible/harbor/playbook.yml
+      syntax_check_paths: infra/ansible/harbor/playbook.yml
+      install_sshpass: true
+      extra_vars: >-
+        ansible_password=${{ secrets.CONTABO_ROOT_PASSWORD }}
+        harbor_admin_password=${{ secrets.HARBOR_ADMIN_PASSWORD }}
+        harbor_db_password=${{ secrets.HARBOR_DB_PASSWORD }}
+        harbor_version=${{ inputs.harbor_version }}
+        harbor_hostname=${{ inputs.harbor_hostname }}
+        harbor_protocol=https
+        harbor_enable_letsencrypt=true
+        harbor_letsencrypt_email=contact@chatwithdocs.org

@@ -1,0 +1,38 @@
+name: Login Harbor
+description: Configure Docker for Harbor and log in with workflow secrets
+
+inputs:
+  registry-host:
+    description: Harbor registry host
+    required: true
+  username:
+    description: Harbor registry username
+    required: true
+  password:
+    description: Harbor registry password
+    required: true
+  allow-insecure-registry:
+    description: Configure Docker daemon with this registry as insecure
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Allow insecure Harbor registry
+      if: ${{ inputs.allow-insecure-registry == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "{\"insecure-registries\": [\"${{ inputs.registry-host }}\"]}" | sudo tee /etc/docker/daemon.json
+        sudo systemctl restart docker || sudo service docker restart
+
+    - name: Login to Harbor
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.username }}" ] || [ -z "${{ inputs.password }}" ]; then
+          echo "Harbor credentials are missing."
+          exit 1
+        fi
+        echo "${{ inputs.password }}" | docker login "${{ inputs.registry-host }}" -u "${{ inputs.username }}" --password-stdin

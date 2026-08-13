@@ -1,0 +1,137 @@
+name: Run API Kubernetes Deploy
+
+on:
+  # workflow_run:
+  #   workflows: [ "Build And Push API Image" ]   # must match build workflow "name:"
+  #   types: [ completed ]
+
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Harbor image tag to deploy (defaults to latest)"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: harbor.chatwithdocs.org
+  HARBOR_PROJECT: chatwithdocs
+  IMAGE_NAME: api
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  deploy:
+    name: Deploy API
+    runs-on: ubuntu-latest
+    environment: dev
+    # if: >
+    #   github.event_name == 'workflow_dispatch' ||
+    #   (github.event_name == 'workflow_run' &&
+    #    github.event.workflow_run.conclusion == 'success')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve target image tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.image_tag }}"
+          TAG="${TAG:-latest}"
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Using image tag: $TAG"
+
+      - name: Patch kustomization with image tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${IMAGE_TAG:?IMAGE_TAG is not set}"
+          perl -0pi -e "s|(^\s*newTag:\s*).*$|\$1${IMAGE_TAG}|m" infra/k8s/api/kustomization.yaml
+          grep -n "newTag:" infra/k8s/api/kustomization.yaml
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore shared SSH key from Key Vault
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secret-name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          key-path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+
+      - name: Configure SSH for master
+        id: master_ssh
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ env.K8S_INVENTORY }}
+          inventory-group: master
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ubuntu
+
+      - name: Export master host
+        run: echo "MASTER_HOST=${{ steps.master_ssh.outputs.first-host }}" >> "$GITHUB_ENV"
+
+      - name: Copy manifests to master
+        run: |
+          set -euo pipefail
+          ssh "$MASTER_HOST" "mkdir -p /tmp/chatwithdocs-api"
+          scp -r infra/k8s/api/* "${MASTER_HOST}:/tmp/chatwithdocs-api/"
+
+      - name: Apply manifests on cluster
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HARBOR_USERNAME:-}" ] || [ -z "${HARBOR_PASSWORD:-}" ]; then
+            echo "Harbor credentials missing; set HARBOR_REGISTRY_USERNAME and HARBOR_REGISTRY_PASSWORD."
+            exit 1
+          fi
+
+          ssh "$MASTER_HOST" bash -s <<EOSSH
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          REGISTRY_HOST="${REGISTRY_HOST}"
+          HARBOR_USERNAME="${HARBOR_USERNAME}"
+          HARBOR_PASSWORD="${HARBOR_PASSWORD}"
+
+          kubectl apply -f /tmp/chatwithdocs-api/namespace.yaml
+
+          kubectl -n chatwithdocs-api create secret docker-registry harbor-regcred \\
+            --docker-server="\${REGISTRY_HOST}" \\
+            --docker-username="\${HARBOR_USERNAME}" \\
+            --docker-password="\${HARBOR_PASSWORD}" \\
+            --docker-email=admin@chatwithdocs.org \\
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl apply -k /tmp/chatwithdocs-api
+
+          # Force pods to refresh env/config on ConfigMap changes
+          kubectl -n chatwithdocs-api rollout restart deploy/api
+
+          if ! kubectl -n chatwithdocs-api rollout status deploy/api --timeout=300s; then
+            echo "Rollout failed; collecting diagnostics..."
+            kubectl -n chatwithdocs-api get pods -o wide
+            kubectl -n chatwithdocs-api describe deploy/api
+            kubectl -n chatwithdocs-api get events --sort-by=.metadata.creationTimestamp | tail -n 30
+            exit 1
+          fi
+
+          kubectl -n chatwithdocs-api get ingress api
+          EOSSH

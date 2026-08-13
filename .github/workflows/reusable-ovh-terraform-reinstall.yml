@@ -1,0 +1,192 @@
+name: Reusable OVH Terraform Reinstall
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        description: GitHub environment name
+        required: false
+        default: dev
+        type: string
+      terraform_working_directory:
+        description: Terraform working directory
+        required: false
+        default: infra/terraform/ovh-dedicated-reinstall
+        type: string
+      tfvars_file:
+        description: Terraform tfvars file path relative to the repository root
+        required: false
+        default: infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars
+        type: string
+      terraform_version:
+        description: Terraform CLI version
+        required: false
+        default: 1.12.2
+        type: string
+      operation:
+        description: Terraform operation to run
+        required: true
+        type: string
+      ovh_endpoint:
+        description: OVH API endpoint
+        required: false
+        default: ovh-eu
+        type: string
+      azure_subscription_id:
+        description: Azure subscription used by the backend and Key Vault
+        required: true
+        type: string
+      azure_tenant_id:
+        description: Azure tenant used by the backend and Key Vault
+        required: true
+        type: string
+      azure_resource_group_name:
+        description: Resource group containing the Terraform state storage account
+        required: true
+        type: string
+      azure_storage_account_name:
+        description: Storage account containing the Terraform state container
+        required: true
+        type: string
+      azure_storage_container_name:
+        description: Blob container that stores the Terraform state
+        required: true
+        type: string
+      azure_storage_state_key:
+        description: Blob name used for the Terraform state file
+        required: false
+        default: ovh-dedicated-reinstall.tfstate
+        type: string
+      azure_key_vault_name:
+        description: Key Vault used for SSH key persistence
+        required: true
+        type: string
+      ssh_private_key_secret_name:
+        description: Key Vault secret name for the SSH private key
+        required: false
+        default: ovh-rag-reinstall-ssh-private-key
+        type: string
+      ssh_private_key_path:
+        description: Local path used by Terraform for the SSH private key
+        required: false
+        default: ~/.ssh/ovh-rag-reinstall-ed25519
+        type: string
+    secrets:
+      azure_client_id:
+        required: true
+      ovh_application_key:
+        required: true
+      ovh_application_secret:
+        required: true
+      ovh_consumer_key:
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.operation }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.azure_client_id }}
+          tenant-id: ${{ inputs.azure_tenant_id }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      - name: Restore SSH key from Key Vault when available
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_PRIVATE_KEY_PATH="${INPUT_SSH_PRIVATE_KEY_PATH/#\~/$HOME}"
+          mkdir -p "$(dirname "${SSH_PRIVATE_KEY_PATH}")"
+
+          if az keyvault secret show \
+            --vault-name "${INPUT_AZURE_KEY_VAULT_NAME}" \
+            --name "${INPUT_SSH_PRIVATE_KEY_SECRET_NAME}" \
+            --query value \
+            -o tsv > "${SSH_PRIVATE_KEY_PATH}" 2>/dev/null; then
+            chmod 600 "${SSH_PRIVATE_KEY_PATH}"
+            ssh-keygen -y -f "${SSH_PRIVATE_KEY_PATH}" > "${SSH_PRIVATE_KEY_PATH}.pub"
+            chmod 644 "${SSH_PRIVATE_KEY_PATH}.pub"
+            echo "Restored SSH key from Key Vault."
+          else
+            rm -f "${SSH_PRIVATE_KEY_PATH}"
+            rm -f "${SSH_PRIVATE_KEY_PATH}.pub"
+            echo "No existing SSH key found in Key Vault. Terraform will generate one if configured to do so."
+          fi
+        env:
+          INPUT_AZURE_KEY_VAULT_NAME: ${{ inputs.azure_key_vault_name }}
+          INPUT_SSH_PRIVATE_KEY_SECRET_NAME: ${{ inputs.ssh_private_key_secret_name }}
+          INPUT_SSH_PRIVATE_KEY_PATH: ${{ inputs.ssh_private_key_path }}
+
+      - name: Write backend config
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "${{ inputs.terraform_working_directory }}/backend.hcl" <<EOF
+          resource_group_name  = "${{ inputs.azure_resource_group_name }}"
+          storage_account_name = "${{ inputs.azure_storage_account_name }}"
+          container_name       = "${{ inputs.azure_storage_container_name }}"
+          key                  = "${{ inputs.azure_storage_state_key }}"
+          tenant_id            = "${{ inputs.azure_tenant_id }}"
+          subscription_id      = "${{ inputs.azure_subscription_id }}"
+          use_azuread_auth     = true
+          use_cli              = true
+          EOF
+
+      - name: Terraform init
+        working-directory: ${{ inputs.terraform_working_directory }}
+        env:
+          OVH_ENDPOINT: ${{ inputs.ovh_endpoint }}
+          OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key }}
+          OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret }}
+          OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key }}
+        run: terraform init -reconfigure -backend-config=backend.hcl
+
+      - name: Terraform validate
+        working-directory: ${{ inputs.terraform_working_directory }}
+        run: terraform validate
+
+      - name: Terraform plan
+        if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}
+        working-directory: ${{ inputs.terraform_working_directory }}
+        env:
+          OVH_ENDPOINT: ${{ inputs.ovh_endpoint }}
+          OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key }}
+          OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret }}
+          OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key }}
+        run: terraform plan -input=false -var-file="${GITHUB_WORKSPACE}/${{ inputs.tfvars_file }}" -out=tfplan
+
+      - name: Upload Terraform plan
+        if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovh-dedicated-reinstall-${{ inputs.environment_name }}-tfplan
+          path: ${{ inputs.terraform_working_directory }}/tfplan
+          retention-days: 7
+
+      - name: Terraform apply
+        if: ${{ inputs.operation == 'apply' }}
+        working-directory: ${{ inputs.terraform_working_directory }}
+        env:
+          OVH_ENDPOINT: ${{ inputs.ovh_endpoint }}
+          OVH_APPLICATION_KEY: ${{ secrets.ovh_application_key }}
+          OVH_APPLICATION_SECRET: ${{ secrets.ovh_application_secret }}
+          OVH_CONSUMER_KEY: ${{ secrets.ovh_consumer_key }}
+        run: terraform apply -input=false -auto-approve tfplan

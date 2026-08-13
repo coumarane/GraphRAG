@@ -59,3 +59,10 @@ uv.lock.bak
 evaluation/outputs/
 
 sample_data/
+infra/keycloak_sample
+**Notes.md**
+.github/actions-config.dev.json
+infra/github/actions-config.dev.json
+infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars
+
+.terraform/

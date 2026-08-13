@@ -1,0 +1,18 @@
+harbor_version: "2.15.2"
+# Normalize to full semver; Harbor release tags include patch digit (e.g. 2.14 -> 2.14.0)
+harbor_release_tag: "{{ harbor_version if harbor_version | regex_search('^\\d+\\.\\d+\\.\\d+$') else harbor_version ~ '.0' }}"
+harbor_install_dir: /opt/harbor
+harbor_data_volume: /data
+harbor_admin_password: "{{ lookup('env', 'HARBOR_ADMIN_PASSWORD') | default(omit, true) }}"
+harbor_db_password: "{{ lookup('env', 'HARBOR_DB_PASSWORD') | default(omit, true) }}"
+harbor_hostname: "{{ ansible_host }}"
+harbor_protocol: http
+harbor_enable_letsencrypt: true
+harbor_letsencrypt_email: "admin@chatwithdocs.org"
+harbor_https_port: 443
+harbor_certificate_path: "/etc/letsencrypt/live/{{ harbor_hostname }}/fullchain.pem"
+harbor_private_key_path: "/etc/letsencrypt/live/{{ harbor_hostname }}/privkey.pem"
+harbor_download_base_url: https://github.com/goharbor/harbor/releases/download
+harbor_installer_filename: "harbor-online-installer-v{{ harbor_release_tag }}.tgz"
+harbor_installer_path: "/tmp/{{ harbor_installer_filename }}"
+harbor_systemd_service_name: harbor

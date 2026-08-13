@@ -1,0 +1,59 @@
+name: Run PostgreSQL Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      postgres_version:
+        description: "PostgreSQL version to install (default 18)"
+        required: false
+        default: "18"
+      target_host:
+        description: "Hostname or IP where PostgreSQL should be installed"
+        required: false
+        default: database.chatwithdocs.org
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+
+jobs:
+  check:
+    uses: ./.github/workflows/reusable-ansible-check.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/postgresql/inventory.ini
+      playbook_paths: infra/ansible/postgresql/playbook.yml
+      artifact_name: postgresql-check
+      syntax_check_paths: infra/ansible/postgresql/playbook.yml
+      install_sshpass: true
+      ansible_collections: community.postgresql
+      extra_vars: >-
+        ansible_password=${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
+        postgres_version=${{ inputs.postgres_version }}
+        ansible_host=${{ inputs.target_host }}
+        postgres_admin_password=${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        postgres_app_db=${{ secrets.POSTGRES_APP_DB }}
+        postgres_app_user=${{ secrets.POSTGRES_APP_USER }}
+        postgres_app_password=${{ secrets.POSTGRES_APP_PASSWORD }}
+        pgadmin_email=${{ secrets.PGADMIN_EMAIL }}
+        pgadmin_password=${{ secrets.PGADMIN_PASSWORD }}
+
+  deploy:
+    needs: check
+    uses: ./.github/workflows/reusable-ansible-deploy.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/postgresql/inventory.ini
+      playbook_paths: infra/ansible/postgresql/playbook.yml
+      syntax_check_paths: infra/ansible/postgresql/playbook.yml
+      install_sshpass: true
+      ansible_collections: community.postgresql
+      extra_vars: >-
+        ansible_password=${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
+        postgres_version=${{ inputs.postgres_version }}
+        ansible_host=${{ inputs.target_host }}
+        postgres_admin_password=${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        postgres_app_db=${{ secrets.POSTGRES_APP_DB }}
+        postgres_app_user=${{ secrets.POSTGRES_APP_USER }}
+        postgres_app_password=${{ secrets.POSTGRES_APP_PASSWORD }}
+        pgadmin_email=${{ secrets.PGADMIN_EMAIL }}
+        pgadmin_password=${{ secrets.PGADMIN_PASSWORD }}

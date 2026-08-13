@@ -1,0 +1,116 @@
+name: Build And Push Web Image
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "frontend/**"
+      - ".github/workflows/build-and-push-web-image.yml"
+
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag (defaults to commit SHA)"
+        required: false
+        default: ""
+
+env:
+  REGISTRY_HOST: harbor.chatwithdocs.org
+  HARBOR_PROJECT: chatwithdocs
+  IMAGE_NAME: web
+  DOCKERFILE_PATH: frontend/Dockerfile
+  BUILD_CONTEXT: frontend
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-push:
+    name: Build and Push Web Image
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Harbor
+        uses: ./.github/actions/login-harbor
+        with:
+          registry-host: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          password: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+
+      # - name: Compute image tag
+      #   shell: bash
+      #   run: |
+      #     TAG="${{ inputs.image_tag }}"
+      #     TAG="${TAG:-$GITHUB_SHA}"
+      #     echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      # - name: Build image
+      #   run: |
+      #     IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:${TAG}"
+      #     docker build -t "$IMAGE_REF" -f "$DOCKERFILE_PATH" "$BUILD_CONTEXT"
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (with digest)
+        id: build
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-${GITHUB_SHA}}"
+          IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}"
+          IID_FILE="$(mktemp)"
+
+          docker buildx build \
+            --push \
+            -f "${DOCKERFILE_PATH}" \
+            -t "${IMAGE_REF}:${TAG}" \
+            -t "${IMAGE_REF}:latest" \
+            --iidfile "${IID_FILE}" \
+            "${BUILD_CONTEXT}"
+
+          DIGEST="$(cat "${IID_FILE}")"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pushed: ${IMAGE_REF}:${TAG}"
+          echo "Digest:  ${DIGEST}"
+          
+      - name: Security scan image with Trivy
+        continue-on-error: true
+        env:
+          TRIVY_IGNORE_UNFIXED: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: table
+          exit-code: 0
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # - name: Tag and push image
+      #   run: |
+      #     IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:${TAG}"
+      #     LATEST_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}:latest"
+      #     docker tag "$IMAGE_REF" "$LATEST_REF"
+      #     docker push "$IMAGE_REF"
+      #     docker push "$LATEST_REF"
+
+      - name: Update kustomization image to digest (GitOps)
+        if: github.ref == 'refs/heads/dev'
+        uses: ./.github/actions/update-kustomize-image
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          image-name: harbor.chatwithdocs.org/chatwithdocs/web
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          digest: ${{ steps.build.outputs.digest }}
+          kustomization-dir: infra/k8s/web
+          commit-message: "chore(dev): deploy web @${{ steps.build.outputs.digest }}"
+
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}

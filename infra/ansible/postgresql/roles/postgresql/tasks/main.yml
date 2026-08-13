@@ -1,0 +1,445 @@
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - postgres_admin_password | length >= 8
+      - postgres_app_db | length > 0
+      - postgres_app_user | length > 0
+      - postgres_app_password | length >= 8
+    fail_msg: "postgres_admin_password (>=8 chars) and app DB credentials (postgres_app_db, postgres_app_user, postgres_app_password>=8 chars) must be provided. Pass via extra vars or env POSTGRES_ADMIN_PASSWORD/POSTGRES_APP_*."
+
+- name: Validate pgAdmin credentials
+  ansible.builtin.assert:
+    that:
+      - pgadmin_email | length > 3
+      - pgadmin_password | length >= 8
+    fail_msg: "pgAdmin email and password (>=8 chars) must be provided when pgadmin_setup=true."
+  when: pgadmin_setup | bool
+
+- name: Select pgAdmin install method
+  ansible.builtin.set_fact:
+    pgadmin_install_method_selected: >-
+      {{ 'repo' if pgadmin_install_method == 'auto' else pgadmin_install_method }}
+  when: pgadmin_setup | bool
+
+- name: Normalize pgAdmin distribution codename
+  ansible.builtin.set_fact:
+    pgadmin_distribution: "{{ ansible_facts['distribution_release'] }}"
+  when: pgadmin_setup | bool
+
+- name: Set pgAdmin URLs for health checks
+  ansible.builtin.set_fact:
+    pgadmin_local_url: "{{ 'http://127.0.0.1/pgadmin4/' if pgadmin_install_method_selected == 'repo' else 'http://127.0.0.1:' ~ pgadmin_container_port ~ '/' }}"
+    pgadmin_external_url: >-
+      {{
+        ('https://' ~ pgadmin_domain ~ '/') if (pgadmin_enable_letsencrypt | bool)
+        else (
+          'http://' ~ (hostvars[inventory_hostname].ansible_host | default(inventory_hostname)) ~ '/pgadmin4/'
+          if pgadmin_install_method_selected == 'repo'
+          else 'http://' ~ (hostvars[inventory_hostname].ansible_host | default(inventory_hostname)) ~ ':' ~ pgadmin_container_port ~ '/'
+        )
+      }}
+  when: pgadmin_setup | bool
+
+- name: Install prerequisite packages for PostgreSQL
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - apt-transport-https
+      - python3-psycopg2
+    state: present
+    update_cache: true
+
+- name: Remove existing PostgreSQL keyring (prevent corruption)
+  ansible.builtin.file:
+    path: /usr/share/keyrings/postgresql-archive-keyring.gpg
+    state: absent
+
+- name: Download PostgreSQL apt signing key (ASCII)
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /tmp/pgdg.asc
+    mode: "0644"
+
+- name: Install PostgreSQL keyring
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg /tmp/pgdg.asc
+  args:
+    creates: /usr/share/keyrings/postgresql-archive-keyring.gpg
+
+- name: Ensure PostgreSQL keyring permissions
+  ansible.builtin.file:
+    path: /usr/share/keyrings/postgresql-archive-keyring.gpg
+    mode: "0644"
+
+- name: Add PostgreSQL apt repository
+  ansible.builtin.apt_repository:
+    repo: "{{ postgresql_repo }}"
+    state: present
+    filename: postgresql-pgdg
+  register: pgdg_repo
+
+- name: Install PostgreSQL {{ postgres_version }}
+  ansible.builtin.apt:
+    name: "{{ postgresql_packages }}"
+    state: present
+    update_cache: true
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.service:
+    name: "{{ postgresql_service_name }}"
+    state: started
+    enabled: true
+
+- name: Configure superuser password
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgres_admin_user }}"
+    password: "{{ postgres_admin_password }}"
+    role_attr_flags: "SUPERUSER"
+    state: present
+
+- name: Configure listen_addresses for external access
+  ansible.builtin.lineinfile:
+    path: "{{ postgresql_conf_path }}"
+    regexp: "^#?listen_addresses\\s*="
+    line: "listen_addresses = '{{ postgres_listen_addresses | join(',') }}'"
+  notify: Restart PostgreSQL
+
+- name: Configure pg_hba access rules
+  ansible.builtin.blockinfile:
+    path: "{{ postgresql_pg_hba_path }}"
+    marker: "# {mark} ANSIBLE MANAGED ACCESS RULES"
+    block: |
+      {% for cidr in postgres_allowed_cidrs %}
+      host    all             all             {{ cidr }}            {{ postgres_auth_method }}
+      {% endfor %}
+    create: false
+  notify: Restart PostgreSQL
+
+- name: Create application database
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ postgres_app_db }}"
+    state: present
+
+- name: Create application role
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgres_app_user }}"
+    password: "{{ postgres_app_password }}"
+    state: present
+
+- name: Grant privileges to application role
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    database: "{{ postgres_app_db }}"
+    type: database
+    roles: "{{ postgres_app_user }}"
+    objs: "{{ postgres_app_db }}"
+    privs: "ALL"
+
+- name: Grant usage/create on public schema to application role
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    database: "{{ postgres_app_db }}"
+    type: schema
+    objs: public
+    roles: "{{ postgres_app_user }}"
+    privs: "USAGE,CREATE"
+
+- name: Download pgAdmin apt signing key (ASCII)
+  ansible.builtin.get_url:
+    url: https://www.pgadmin.org/static/packages_pgadmin_org.pub
+    dest: /tmp/pgadmin.asc
+    mode: "0644"
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'repo'
+
+- name: Convert pgAdmin apt signing key to keyring
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /usr/share/keyrings/pgadmin-keyring.gpg /tmp/pgadmin.asc
+  args:
+    creates: /usr/share/keyrings/pgadmin-keyring.gpg
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'repo'
+
+- name: Add pgAdmin apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/pgadmin-keyring.gpg] https://ftp.postgresql.org/pub/pgadmin/pgadmin4/apt/{{ pgadmin_distribution }} pgadmin4 main"
+    state: present
+    filename: pgadmin4
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'repo'
+
+- name: Install pgAdmin4 web
+  ansible.builtin.apt:
+    name: pgadmin4-web
+    state: present
+    update_cache: true
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'repo'
+
+- name: Install Docker engine (for pgAdmin container)
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - python3-docker
+      - nginx
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: true
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Ensure Docker service is running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Ensure pgAdmin data directory exists
+  ansible.builtin.file:
+    path: "{{ pgadmin_container_data_dir }}"
+    state: directory
+    mode: "0755"
+    owner: "5050"
+    group: "5050"
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Check if pgAdmin container exists
+  ansible.builtin.command: docker inspect -f '{{"{{"}}.State.Running{{"}}"}}' {{ pgadmin_container_name }}
+  register: pgadmin_container_inspect
+  failed_when: false
+  changed_when: false
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Remove existing pgAdmin container
+  ansible.builtin.command: docker rm -f {{ pgadmin_container_name }}
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+    - pgadmin_container_inspect.rc == 0
+
+- name: Run pgAdmin container
+  ansible.builtin.command: >
+    docker run -d --name {{ pgadmin_container_name }}
+    --restart unless-stopped
+    -e PGADMIN_DEFAULT_EMAIL={{ pgadmin_email }}
+    -e PGADMIN_DEFAULT_PASSWORD={{ pgadmin_password }}
+    -p {{ pgadmin_container_port }}:80
+    -v {{ pgadmin_container_data_dir }}:/var/lib/pgadmin
+    {{ pgadmin_container_image }}
+  register: pgadmin_container_run
+  changed_when: "'Error response from daemon' not in pgadmin_container_run.stderr"
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Ensure pgAdmin container is running
+  ansible.builtin.command: docker start {{ pgadmin_container_name }}
+  register: pgadmin_container_start
+  changed_when: "'Error response from daemon' not in pgadmin_container_start.stderr and pgadmin_container_start.stdout is search('^'+pgadmin_container_name)"
+  failed_when: false
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Obtain/Renew Let's Encrypt certificate for pgAdmin
+  ansible.builtin.command: >
+    certbot certonly --nginx
+    --non-interactive --agree-tos
+    -m {{ pgadmin_letsencrypt_email }}
+    -d {{ pgadmin_domain }}
+    --keep-until-expiring
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_enable_letsencrypt | bool)
+  notify: Restart nginx
+
+- name: Configure nginx reverse proxy for pgAdmin (TLS)
+  ansible.builtin.template:
+    src: pgadmin-nginx.conf.j2
+    dest: /etc/nginx/sites-available/pgadmin.conf
+    mode: "0644"
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_enable_letsencrypt | bool)
+  notify: Restart nginx
+
+- name: Enable nginx site for pgAdmin
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/pgadmin.conf
+    dest: /etc/nginx/sites-enabled/pgadmin.conf
+    state: link
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_enable_letsencrypt | bool)
+  notify: Restart nginx
+
+- name: Disable default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_enable_letsencrypt | bool)
+  notify: Restart nginx
+
+- name: Apply nginx changes immediately
+  ansible.builtin.meta: flush_handlers
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_enable_letsencrypt | bool)
+
+- name: Ensure nginx service is running
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+    enabled: true
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_enable_letsencrypt | bool)
+
+- name: Detect ufw availability
+  ansible.builtin.command: which ufw
+  register: pgadmin_ufw_cmd
+  failed_when: false
+  changed_when: false
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_open_firewall | bool)
+
+- name: Allow HTTP in ufw (if present)
+  ansible.builtin.command: ufw allow 80/tcp
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_open_firewall | bool)
+    - pgadmin_ufw_cmd is defined
+    - pgadmin_ufw_cmd.rc == 0
+  failed_when: false
+  changed_when: "'added' in (pgadmin_ufw_allow_80.stdout | default(''))"
+  register: pgadmin_ufw_allow_80
+
+- name: Allow HTTPS in ufw (if present)
+  ansible.builtin.command: ufw allow 443/tcp
+  when:
+    - pgadmin_setup | bool
+    - (pgadmin_open_firewall | bool)
+    - pgadmin_ufw_cmd is defined
+    - pgadmin_ufw_cmd.rc == 0
+  failed_when: false
+  changed_when: "'added' in (pgadmin_ufw_allow_443.stdout | default(''))"
+  register: pgadmin_ufw_allow_443
+
+- name: Wait for pgAdmin container to expose port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ pgadmin_container_port }}"
+    delay: 2
+    timeout: 60
+    state: started
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Wait for pgAdmin web application to initialize (container mode)
+  ansible.builtin.pause:
+    seconds: 5
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Check pgAdmin setup database
+  ansible.builtin.stat:
+    path: /var/lib/pgadmin/pgadmin4.db
+  register: pgadmin_db
+  when: pgadmin_setup | bool
+
+- name: Run pgAdmin setup (non-interactive)
+  ansible.builtin.command: >
+    /usr/pgadmin4/bin/setup-web.sh --yes
+    --email "{{ pgadmin_email }}"
+    --password "{{ pgadmin_password }}"
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'repo'
+    - not pgadmin_db.stat.exists
+
+- name: Check pgAdmin container status (debug)
+  ansible.builtin.command: docker ps -a --filter name={{ pgadmin_container_name }} --format "{{"{{"}}json .{{"}}"}}"
+  register: pgadmin_container_status
+  changed_when: false
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Display pgAdmin container status (debug)
+  ansible.builtin.debug:
+    msg: "pgAdmin container status: {{ pgadmin_container_status.stdout }}"
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Get pgAdmin container logs (debug)
+  ansible.builtin.command: docker logs {{ pgadmin_container_name }} --tail 50
+  register: pgadmin_container_logs
+  changed_when: false
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Display pgAdmin container logs (debug)
+  ansible.builtin.debug:
+    msg: "{{ pgadmin_container_logs.stdout_lines }}"
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_install_method_selected == 'container'
+
+- name: Verify pgAdmin web UI is responding locally (on remote host)
+  ansible.builtin.shell: |
+    curl -f -s -o /dev/null -w "%{http_code}" "{{ pgadmin_local_url }}" || echo "000"
+  register: pgadmin_http_local
+  failed_when: false
+  changed_when: false
+  retries: 6
+  delay: 5
+  until: pgadmin_http_local.stdout in ['200', '301', '302']
+  when: pgadmin_setup | bool
+
+- name: Display local verification result
+  ansible.builtin.debug:
+    msg: "pgAdmin local HTTP status: {{ pgadmin_http_local.stdout }}"
+  when: pgadmin_setup | bool
+
+- name: Verify pgAdmin web UI is reachable externally (controller -> host)
+  ansible.builtin.uri:
+    url: "{{ pgadmin_external_url }}"
+    method: GET
+    status_code: [200, 301, 302]
+    validate_certs: false
+    follow_redirects: all
+  timeout: 10
+  register: pgadmin_http_external
+  failed_when: pgadmin_http_external is failed
+  retries: 6
+  delay: 5
+  delegate_to: localhost
+  when:
+    - pgadmin_setup | bool
+    - pgadmin_external_check | bool

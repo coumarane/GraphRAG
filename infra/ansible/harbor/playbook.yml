@@ -1,0 +1,9 @@
+# harbor-ansible/playbook.yml
+
+- name: Install Harbor Community Edition
+  hosts: harbor
+  become: true
+  vars:
+    harbor_hostname: "{{ hostvars[inventory_hostname].harbor_hostname | default(ansible_host) }}"
+  roles:
+    - harbor

@@ -1,0 +1,48 @@
+name: Setup Ansible
+description: Install Ansible and optional collections needed by infrastructure workflows
+
+inputs:
+  install-sshpass:
+    description: Install sshpass for password-based SSH auth
+    required: false
+    default: "false"
+  collections:
+    description: Space-separated Ansible collections to install
+    required: false
+    default: ""
+  install-ansible-lint:
+    description: Install ansible-lint alongside Ansible
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install system packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        PACKAGES=(python3-pip)
+        if [ "${{ inputs.install-sshpass }}" = "true" ]; then
+          PACKAGES+=(sshpass)
+        fi
+        sudo apt-get install -y "${PACKAGES[@]}"
+
+    - name: Install Ansible
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -m pip install --upgrade pip
+        PACKAGES=("ansible>=10,<11")
+        if [ "${{ inputs.install-ansible-lint }}" = "true" ]; then
+          PACKAGES+=("ansible-lint>=24,<25")
+        fi
+        python3 -m pip install "${PACKAGES[@]}"
+
+    - name: Install Ansible collections
+      if: ${{ inputs.collections != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        ansible-galaxy collection install ${{ inputs.collections }}

@@ -1,0 +1,204 @@
+name: Reusable Ansible Check Workflow
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        description: GitHub environment name
+        required: false
+        default: dev
+        type: string
+      inventory_path:
+        description: Ansible inventory file path
+        required: true
+        type: string
+      playbook_paths:
+        description: Newline-separated list of playbook paths to run in check mode
+        required: true
+        type: string
+      playbook_args:
+        description: Extra arguments passed to each ansible-playbook invocation
+        required: false
+        default: ""
+        type: string
+      syntax_check_paths:
+        description: Newline-separated list of playbooks to syntax-check before check mode
+        required: false
+        default: ""
+        type: string
+      ansible_collections:
+        description: Space-separated Ansible collections to install
+        required: false
+        default: ""
+        type: string
+      install_sshpass:
+        description: Install sshpass for password-based SSH auth
+        required: false
+        default: false
+        type: boolean
+      ssh_user:
+        description: SSH username used when configuring key-based access
+        required: false
+        default: ubuntu
+        type: string
+      ssh_master_group:
+        description: Inventory group name for master hosts
+        required: false
+        default: ""
+        type: string
+      ssh_worker_group:
+        description: Inventory group name for worker hosts
+        required: false
+        default: ""
+        type: string
+      extra_vars:
+        description: Extra vars string passed to ansible-playbook
+        required: false
+        default: ""
+        type: string
+      azure_subscription_id:
+        description: Azure subscription used to retrieve the shared SSH key from Key Vault
+        required: false
+        default: ""
+        type: string
+      azure_tenant_id:
+        description: Azure tenant used to retrieve the shared SSH key from Key Vault
+        required: false
+        default: ""
+        type: string
+      azure_key_vault_name:
+        description: Azure Key Vault name that stores the shared SSH key
+        required: false
+        default: ""
+        type: string
+      ssh_private_key_secret_name:
+        description: Azure Key Vault secret name that stores the shared SSH key
+        required: false
+        default: ""
+        type: string
+      ssh_private_key_path:
+        description: Local path where the shared SSH key should be restored
+        required: false
+        default: "~/.ssh/shared-k8s-ed25519"
+        type: string
+      artifact_name:
+        description: Name used for the uploaded check artifact
+        required: false
+        default: ansible-check-output
+        type: string
+    secrets:
+      azure_client_id:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+
+jobs:
+  check:
+    name: Run Ansible Check Mode
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Ansible
+        uses: ./.github/actions/setup-ansible
+        with:
+          install-sshpass: ${{ inputs.install_sshpass }}
+          collections: ${{ inputs.ansible_collections }}
+          install-ansible-lint: "true"
+
+      - name: Azure login
+        if: ${{ inputs.azure_key_vault_name != '' && inputs.ssh_private_key_secret_name != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.azure_client_id }}
+          tenant-id: ${{ inputs.azure_tenant_id }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      - name: Restore shared SSH key from Key Vault
+        if: ${{ inputs.azure_key_vault_name != '' && inputs.ssh_private_key_secret_name != '' }}
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ inputs.azure_key_vault_name }}
+          secret-name: ${{ inputs.ssh_private_key_secret_name }}
+          key-path: ${{ inputs.ssh_private_key_path }}
+
+      - name: Configure SSH for master hosts
+        if: ${{ inputs.ssh_master_group != '' }}
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ inputs.inventory_path }}
+          inventory-group: ${{ inputs.ssh_master_group }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ${{ inputs.ssh_user }}
+
+      - name: Configure SSH for worker hosts
+        if: ${{ inputs.ssh_worker_group != '' }}
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ inputs.inventory_path }}
+          inventory-group: ${{ inputs.ssh_worker_group }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ${{ inputs.ssh_user }}
+
+      - name: Syntax check playbooks
+        if: ${{ inputs.syntax_check_paths != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r playbook; do
+            [ -n "${playbook}" ] || continue
+            ansible-playbook --syntax-check "${playbook}" -i "${{ inputs.inventory_path }}" ${{ inputs.playbook_args }}
+          done <<'EOF'
+          ${{ inputs.syntax_check_paths }}
+          EOF
+
+      - name: Run ansible-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts
+          ansible-lint \
+            -p \
+            "${{ inputs.inventory_path }}" \
+            $(while IFS= read -r playbook; do [ -n "${playbook}" ] && printf '%s ' "${playbook}"; done <<'EOF'
+          ${{ inputs.playbook_paths }}
+          EOF
+          ) | tee .artifacts/ansible-lint.txt
+
+      - name: Run playbooks in check mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts
+          : > .artifacts/ansible-check.txt
+          EXTRA_VARS='${{ inputs.extra_vars }}'
+          EXTRA_ARGS='${{ inputs.playbook_args }}'
+          while IFS= read -r playbook; do
+            [ -n "${playbook}" ] || continue
+            {
+              echo "===== ${playbook} ====="
+              if [ -n "${EXTRA_VARS}" ]; then
+                ansible-playbook "${playbook}" -i "${{ inputs.inventory_path }}" ${EXTRA_ARGS} --check --diff --extra-vars "${EXTRA_VARS}"
+              else
+                ansible-playbook "${playbook}" -i "${{ inputs.inventory_path }}" ${EXTRA_ARGS} --check --diff
+              fi
+              echo
+            } | tee -a .artifacts/ansible-check.txt
+          done <<'EOF'
+          ${{ inputs.playbook_paths }}
+          EOF
+
+      - name: Upload check artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: .artifacts/

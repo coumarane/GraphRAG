@@ -1,0 +1,46 @@
+name: Restore SSH Key From Key Vault
+description: Restore an SSH private key from Azure Key Vault to a local file path
+
+inputs:
+  key-vault-name:
+    description: Azure Key Vault name
+    required: true
+  secret-name:
+    description: Key Vault secret name that stores the private SSH key
+    required: true
+  key-path:
+    description: Local file path where the private key should be written
+    required: true
+
+outputs:
+  key-path:
+    description: Expanded local file path of the restored private key
+    value: ${{ steps.restore.outputs.key-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Restore SSH private key
+      id: restore
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        KEY_VAULT_NAME="${{ inputs.key-vault-name }}"
+        SECRET_NAME="${{ inputs.secret-name }}"
+        KEY_PATH_INPUT="${{ inputs.key-path }}"
+        KEY_PATH="${KEY_PATH_INPUT/#\~/$HOME}"
+
+        mkdir -p "$(dirname "${KEY_PATH}")"
+
+        az keyvault secret show \
+          --vault-name "${KEY_VAULT_NAME}" \
+          --name "${SECRET_NAME}" \
+          --query value \
+          -o tsv > "${KEY_PATH}"
+
+        chmod 600 "${KEY_PATH}"
+        ssh-keygen -y -f "${KEY_PATH}" > "${KEY_PATH}.pub"
+        chmod 644 "${KEY_PATH}.pub"
+
+        echo "key-path=${KEY_PATH}" >> "${GITHUB_OUTPUT}"

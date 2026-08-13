@@ -1,0 +1,9 @@
+# Harbor deployment settings
+harbor_hostname: "harbor.chatwithdocs.org"
+harbor_protocol: "https"
+harbor_enable_letsencrypt: true
+harbor_letsencrypt_email: "admin@chatwithdocs.org"
+
+# Optional: override if you want non-default data volume/path/port
+# harbor_data_volume: /data
+# harbor_https_port: 443

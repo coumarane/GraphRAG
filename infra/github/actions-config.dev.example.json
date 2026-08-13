@@ -1,0 +1,235 @@
+{
+  "entries": [
+    {
+      "name": "AZURE_CLIENT_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure workload identity application client ID used by the OVH Terraform workflow."
+    },
+    {
+      "name": "AZURE_SUBSCRIPTION_ID",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure subscription ID used by the OVH Terraform workflow backend and provider."
+    },
+    {
+      "name": "AZURE_TENANT_ID",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure tenant ID used by the OVH Terraform workflow backend and provider."
+    },
+    {
+      "name": "OVH_APPLICATION_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "OVH application key used by the OVH Terraform workflow."
+    },
+    {
+      "name": "OVH_APPLICATION_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "OVH application secret used by the OVH Terraform workflow."
+    },
+    {
+      "name": "OVH_CONSUMER_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "OVH consumer key used by the OVH Terraform workflow."
+    },
+    {
+      "name": "AZURE_RESOURCE_GROUP_NAME",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure resource group that contains the OVH Terraform state storage account."
+    },
+    {
+      "name": "AZURE_STORAGE_ACCOUNT_NAME",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure storage account that contains the OVH Terraform state container."
+    },
+    {
+      "name": "AZURE_TERRAFORM_STATE_CONTAINER_NAME",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure blob container used by the OVH Terraform remote state backend."
+    },
+    {
+      "name": "AZURE_KEY_VAULT_NAME",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure Key Vault name used by the OVH Terraform workflow for SSH key persistence."
+    },
+    {
+      "name": "OVH_TERRAFORM_STATE_KEY",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "ovh-dedicated-reinstall.tfstate",
+      "description": "Optional Azure blob name for the OVH Terraform remote state file."
+    },
+    {
+      "name": "OVH_SSH_PRIVATE_KEY_SECRET_NAME",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "ovh-rag-reinstall-ssh-private-key",
+      "description": "Optional Key Vault secret name that stores the OVH Terraform SSH private key."
+    },
+    {
+      "name": "OVH_SSH_PRIVATE_KEY_PATH",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "~/.ssh/ovh-rag-reinstall-ed25519",
+      "description": "Optional local runner path used by the OVH Terraform workflow for the SSH private key."
+    },
+    {
+      "name": "CLOUDFLARE_API_TOKEN",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Cloudflare API token used by cert-manager bootstrap."
+    },
+    {
+      "name": "GRAFANA_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Grafana admin password for Prometheus stack bootstrap."
+    },
+    {
+      "name": "GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Grafana OIDC client secret for Prometheus stack bootstrap."
+    },
+    {
+      "name": "ARGOCD_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD admin password."
+    },
+    {
+      "name": "ARGOCD_GITHUB_APP_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD GitHub App ID."
+    },
+    {
+      "name": "ARGOCD_GITHUB_APP_INSTALLATION_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD GitHub App installation ID."
+    },
+    {
+      "name": "ARGOCD_GITHUB_APP_PRIVATE_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD GitHub App private key."
+    },
+    {
+      "name": "ARGOCD_OIDC_CLIENT_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Argo CD OIDC client secret."
+    },
+    {
+      "name": "HARBOR_REGISTRY_USERNAME",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor registry username for API/Web image build and deploy workflows."
+    },
+    {
+      "name": "HARBOR_REGISTRY_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor registry password for API/Web image build and deploy workflows."
+    },
+    {
+      "name": "CONTABO_ROOT_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor target root password for Ansible password-based SSH."
+    },
+    {
+      "name": "HARBOR_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor admin password for the Harbor Ansible playbook."
+    },
+    {
+      "name": "HARBOR_DB_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Harbor database password for the Harbor Ansible playbook."
+    },
+    {
+      "name": "CONTABO_VM2_ROOT_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL target root password for Ansible password-based SSH."
+    },
+    {
+      "name": "POSTGRES_ADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL admin password used by deploy and migration workflows."
+    },
+    {
+      "name": "POSTGRES_APP_DB",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL application database name."
+    },
+    {
+      "name": "POSTGRES_APP_USER",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL application user."
+    },
+    {
+      "name": "POSTGRES_APP_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "PostgreSQL application user password."
+    },
+    {
+      "name": "PGADMIN_EMAIL",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "pgAdmin bootstrap email."
+    },
+    {
+      "name": "PGADMIN_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "pgAdmin bootstrap password."
+    }
+  ]
+}

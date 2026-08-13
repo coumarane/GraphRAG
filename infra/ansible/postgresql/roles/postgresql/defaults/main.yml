@@ -1,0 +1,38 @@
+postgres_version: "18"
+postgresql_repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] https://apt.postgresql.org/pub/repos/apt {{ ansible_facts['distribution_release'] }}-pgdg main"
+postgresql_packages:
+  - "postgresql-{{ postgres_version }}"
+  - "postgresql-client-{{ postgres_version }}"
+  - "postgresql-contrib-{{ postgres_version }}"
+postgresql_service_name: postgresql
+postgresql_conf_path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+postgresql_pg_hba_path: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+postgres_listen_addresses: ["0.0.0.0"]
+postgres_allowed_cidrs: ["0.0.0.0/0"]
+postgres_auth_method: md5
+postgres_admin_user: postgres
+# Default pulls from env var when not passed via extra-vars; playbook asserts it is set
+postgres_admin_password: "{{ lookup('env', 'POSTGRES_ADMIN_PASSWORD') | default('', true) }}"
+# Application database bootstrap vars; prefer passing via extra-vars or GitHub secrets
+postgres_app_db: "{{ lookup('env', 'POSTGRES_APP_DB') | default('', true) }}"
+postgres_app_user: "{{ lookup('env', 'POSTGRES_APP_USER') | default('', true) }}"
+postgres_app_password: "{{ lookup('env', 'POSTGRES_APP_PASSWORD') | default('', true) }}"
+# pgAdmin web UI (installed via apt, optional disable via pgadmin_setup=false)
+pgadmin_setup: true
+pgadmin_email: "{{ lookup('env', 'PGADMIN_EMAIL') | default('', true) }}"
+pgadmin_password: "{{ lookup('env', 'PGADMIN_PASSWORD') | default('', true) }}"
+# pgAdmin repo codename (validated against the pgAdmin APT repo on 2026-08-12)
+pgadmin_distribution: "{{ ansible_facts['distribution_release'] }}"
+pgadmin_external_check: false
+pgadmin_install_method: auto  # auto|repo|container
+pgadmin_container_image: "dpage/pgadmin4:9.17"
+pgadmin_container_name: pgadmin4
+pgadmin_container_port: 8080
+pgadmin_container_data_dir: /var/lib/pgadmin
+
+# TLS/Let’s Encrypt for pgAdmin behind nginx
+pgadmin_domain: "database.chatwithdocs.org"
+pgadmin_enable_letsencrypt: true
+pgadmin_letsencrypt_email: "admin@chatwithdocs.org"
+pgadmin_https_port: 443
+pgadmin_open_firewall: true

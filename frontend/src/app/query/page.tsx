@@ -9,13 +9,14 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { AtSign, Paperclip, Send, Sparkles } from "lucide-react";
+import { AtSign, Check, Copy, Paperclip, Send, Sparkles } from "lucide-react";
 import { readTenantKey } from "@/components/AppShell";
 import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
 import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { readCachedSession } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import {
   createEmptyThread,
   createMessage,
@@ -384,6 +385,49 @@ function RetrievalDetails({ message }: { message: ChatMessage }) {
   );
 }
 
+function CopyMessageButton({
+  text,
+  className,
+  label = "Copy",
+}: {
+  text: string;
+  className?: string;
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    const value = text.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Ignore clipboard failures (permissions / insecure context).
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className={cn(
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/10 hover:text-foreground",
+        className,
+      )}
+      aria-label={copied ? "Copied" : label}
+      title={copied ? "Copied" : label}
+    >
+      {copied ? (
+        <Check className="h-4 w-4" aria-hidden />
+      ) : (
+        <Copy className="h-4 w-4" aria-hidden />
+      )}
+    </button>
+  );
+}
+
 function MessageBubble({
   message,
   uploaderName,
@@ -404,11 +448,18 @@ function MessageBubble({
 
   if (isUser) {
     return (
-      <div className="flex items-end justify-end gap-2.5">
-        <div className="max-w-[min(100%,36rem)] rounded-2xl bg-surface-elevated px-4 py-3 text-foreground shadow-sm">
-          <p className="select-text whitespace-pre-wrap text-[15px] leading-7">
-            {message.content}
-          </p>
+      <div className="group flex items-end justify-end gap-2.5">
+        <div className="flex max-w-[min(100%,36rem)] items-center gap-1">
+          <CopyMessageButton
+            text={message.content}
+            label="Copy"
+            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          />
+          <div className="rounded-2xl bg-surface-elevated px-4 py-3 text-foreground shadow-sm">
+            <p className="select-text whitespace-pre-wrap text-[15px] leading-7">
+              {message.content}
+            </p>
+          </div>
         </div>
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white"
@@ -421,12 +472,15 @@ function MessageBubble({
   }
 
   return (
-    <div className="flex items-start gap-3">
+    <div className="group flex items-start gap-3">
       <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
         <Sparkles className="h-4 w-4" aria-hidden />
       </div>
-      <div className="min-w-0 flex-1 max-w-[min(100%,48rem)] rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
-        <div className="space-y-4">
+      <div className="relative min-w-0 flex-1 max-w-[min(100%,48rem)] rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
+        <div className="absolute right-2 top-2 z-10 opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <CopyMessageButton text={message.content} label="Copy" />
+        </div>
+        <div className="space-y-4 pr-8">
           <div className="select-text">
             <FormattedAnswer
               answer={message.content}
