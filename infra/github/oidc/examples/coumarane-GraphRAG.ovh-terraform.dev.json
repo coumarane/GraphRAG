@@ -8,7 +8,7 @@
   "federated_credentials": [
     {
       "name": "github-environment-dev",
-      "subject": "repo:coumarane/GraphRAG:environment:dev",
+      "subject": "repo:coumarane@9210984/GraphRAG@1319645493:environment:dev",
       "description": "Allows GitHub Actions jobs in the dev environment to exchange the GitHub OIDC token for Azure access.",
       "issuer": "https://token.actions.githubusercontent.com",
       "audiences": [

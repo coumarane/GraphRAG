@@ -7,6 +7,7 @@ The script is intended for GitHub Actions identities such as the OVH Terraform w
 ## Files
 
 - [create_github_oidc_app_registration.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/oidc/create_github_oidc_app_registration.py)
+- [assign_azure_roles.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/oidc/assign_azure_roles.py)
 - [examples/coumarane-GraphRAG.ovh-terraform.dev.example.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/github/oidc/examples/coumarane-GraphRAG.ovh-terraform.dev.example.json)
 
 ## What it creates
@@ -50,7 +51,7 @@ Example:
   "federated_credentials": [
     {
       "name": "github-environment-dev",
-      "subject": "repo:coumarane/GraphRAG:environment:dev",
+      "subject": "repo:coumarane@9210984/GraphRAG@1319645493:environment:dev",
       "description": "Allows GitHub Actions jobs in the dev environment to exchange the GitHub OIDC token for Azure access."
     }
   ]
@@ -63,7 +64,11 @@ Important subject formats:
 - branch-scoped job: `repo:OWNER/REPO:ref:refs/heads/BRANCH`
 - pull request job: `repo:OWNER/REPO:pull_request`
 
-The current OVH Terraform workflow uses a GitHub environment, so `repo:coumarane/GraphRAG:environment:dev` is the relevant subject.
+The current OVH Terraform workflow uses a GitHub environment, and for this repository GitHub is currently presenting the immutable environment subject:
+
+- `repo:coumarane@9210984/GraphRAG@1319645493:environment:dev`
+
+Use the exact subject shown in the GitHub Actions `azure/login` log if it differs from the classic `repo:OWNER/REPO:environment:ENVIRONMENT` form.
 
 ## Dry run
 
@@ -113,9 +118,47 @@ The output includes the Azure client ID you must store in GitHub Actions as:
 
 For the OVH Terraform workflow, the rest of the required GitHub settings are documented in [infra/terraform/ovh-dedicated-reinstall/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/README.md).
 
+## Assign Azure RBAC roles
+
+After creating the app registration, grant the Azure roles required by the workflow:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id>
+```
+
+Dry run:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --dry-run
+```
+
+List only:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --action list
+```
+
+Delete the same workflow-specific assignments:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --action delete
+```
+
 ## Notes
 
-- The script does not assign Azure RBAC roles.
+- `create_github_oidc_app_registration.py` does not assign Azure RBAC roles.
+- `assign_azure_roles.py` manages the Azure RBAC roles needed by this OVH workflow.
+- For this OVH workflow, the minimum practical role set is:
+  - `Reader` on resource group `rg-safranysAI-Dev`
+  - `Storage Blob Data Contributor` on storage account `terraformstate240775`
+  - `Key Vault Secrets Officer` on Key Vault `safranys-kv-shared`
 - `--action delete` deletes the Azure App Registration identified by the config `display_name`.
 - If multiple app registrations already share the same display name, the script stops and asks for a unique display name.
 - Use `--delete-extra-federated-credentials` only when you want the config file to be the full source of truth.

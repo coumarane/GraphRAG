@@ -112,6 +112,55 @@ python3 infra/github/oidc/create_github_oidc_app_registration.py \
 
 The script output includes the client ID. Put that value into GitHub as secret `AZURE_CLIENT_ID`.
 
+If Azure login fails with `AADSTS700213` and the log shows a subject like:
+
+- `repo:coumarane@9210984/GraphRAG@1319645493:environment:dev`
+
+then your Azure federated credential must use that exact subject, including the owner and repository IDs. This repository is currently using that immutable subject format.
+
+## Azure RBAC required for the OIDC app
+
+Matching the federated credential is not enough. The Azure App Registration service principal also needs access to the subscription resources used by the workflow.
+
+If GitHub Actions fails with `No subscriptions found for ***`, the OIDC login succeeded but the service principal does not have subscription or resource access yet.
+
+Minimum practical role assignments for this workflow:
+
+- `Reader` on resource group `rg-safranysAI-Dev`
+- `Storage Blob Data Contributor` on storage account `terraformstate240775`
+- `Key Vault Secrets Officer` on Key Vault `safranys-kv-shared`
+
+Recommended helper:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id>
+```
+
+Dry run:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --dry-run
+```
+
+List current workflow-specific assignments:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --action list
+```
+
+Delete those assignments:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --action delete
+```
+
 ## Applying the GitHub config
 
 Fill the values in:
