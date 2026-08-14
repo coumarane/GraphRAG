@@ -25,9 +25,18 @@
         mode: "0644"
       notify: Restart HAProxy
 
+    - name: Install dedicated systemd unit for public ingress HAProxy
+      ansible.builtin.template:
+        src: templates/public-ingress-haproxy.service.j2
+        dest: /etc/systemd/system/public-ingress-haproxy.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload and Restart HAProxy
+
     - name: Ensure HAProxy service is enabled and started
       ansible.builtin.systemd_service:
-        name: haproxy.service
+        name: public-ingress-haproxy.service
         enabled: true
         state: started
 
@@ -51,5 +60,11 @@
   handlers:
     - name: Restart HAProxy
       ansible.builtin.systemd_service:
-        name: haproxy.service
+        name: public-ingress-haproxy.service
+        state: restarted
+
+    - name: Reload and Restart HAProxy
+      ansible.builtin.systemd_service:
+        name: public-ingress-haproxy.service
+        daemon_reload: true
         state: restarted
