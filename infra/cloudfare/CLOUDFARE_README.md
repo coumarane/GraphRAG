@@ -17,13 +17,18 @@ This folder contains the DNS payload and automation script used to manage Cloudf
 
 | Name                            | Type  | Content           | Proxy    |
 | ------------------------------- | ----- | ----------------- | -------- |
-| `chatwithdocs.org`            | `A` | `51.38.19.54`   | Proxied  |
-| `www.chatwithdocs.org`        | `A` | `51.38.19.54`   | Proxied  |
-| `api.chatwithdocs.org`        | `A` | `51.38.19.54`   | Proxied  |
-| `argocd.chatwithdocs.org`     | `A` | `51.38.19.54`   | Proxied  |
-| `prometheus.chatwithdocs.org` | `A` | `51.38.19.54`   | Proxied  |
+| `chatwithdocs.org`            | `A` | `193.70.35.121` | Proxied  |
+| `www.chatwithdocs.org`        | `A` | `193.70.35.121` | Proxied  |
+| `api.chatwithdocs.org`        | `A` | `193.70.35.121` | Proxied  |
+| `argocd.chatwithdocs.org`     | `A` | `193.70.35.121` | Proxied  |
+| `prometheus.chatwithdocs.org` | `A` | `193.70.35.121` | Proxied  |
 | `database.chatwithdocs.org`   | `A` | `167.86.88.114` | DNS only |
 | `harbor.chatwithdocs.org`     | `A` | `62.84.180.181` | DNS only |
+
+Temporary validation note:
+
+- The proxied application hostnames are temporarily pointed to the master public IP `193.70.35.121` for end-to-end validation.
+- The OVH Additional IP `51.38.19.54` remains the intended long-term public ingress IP, but it still requires separate OVH host/network configuration before it can replace the master IP safely.
 
 ## Prerequisites
 
@@ -119,9 +124,9 @@ python3 infra/cloudfare/apply_dns_records.py --list
 ## Expected output
 
 ```text
-CREATE: A api.chatwithdocs.org -> 51.38.19.54 (ttl=1, proxied=True)
-UPDATE: A www.chatwithdocs.org -> 51.38.19.54 (ttl=1, proxied=True)
-SKIP: A chatwithdocs.org -> 51.38.19.54 (ttl=1, proxied=True)
+CREATE: A api.chatwithdocs.org -> 193.70.35.121 (ttl=1, proxied=True)
+UPDATE: A www.chatwithdocs.org -> 193.70.35.121 (ttl=1, proxied=True)
+SKIP: A chatwithdocs.org -> 193.70.35.121 (ttl=1, proxied=True)
 ```
 
 ## Notes

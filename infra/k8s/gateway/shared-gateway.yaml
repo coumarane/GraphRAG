@@ -7,6 +7,12 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   gatewayClassName: eg
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: public-gateway-config
+      namespace: envoy-gateway-system
   listeners:
     - name: web-https
       hostname: chatwithdocs.org

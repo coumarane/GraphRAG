@@ -1,4 +1,6 @@
 installCRDs: true
+extraArgs:
+  - --enable-gateway-api
 
 # Recommended: makes webhook and controller stable under load
 replicaCount: 1

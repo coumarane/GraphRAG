@@ -1,0 +1,51 @@
+- name: Configure public ingress proxy on Kubernetes master
+  hosts: master
+  become: true
+  gather_facts: true
+  vars:
+    public_ingress_bind_address: "{{ ansible_default_ipv4.address }}"
+    public_ingress_backend_host: "127.0.0.1"
+    public_ingress_https_nodeport: 32443
+  tasks:
+    - name: Install HAProxy
+      ansible.builtin.package:
+        name: haproxy
+        state: present
+
+    - name: Configure HAProxy for Envoy Gateway HTTPS forwarding
+      ansible.builtin.template:
+        src: templates/haproxy-public-ingress.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart HAProxy
+
+    - name: Ensure HAProxy service is enabled and started
+      ansible.builtin.service:
+        name: haproxy
+        enabled: true
+        state: started
+
+    - name: Detect ufw availability
+      ansible.builtin.command: which ufw
+      register: public_ingress_ufw_cmd
+      changed_when: false
+      failed_when: false
+
+    - name: Allow HTTPS in ufw when available
+      ansible.builtin.command: ufw allow 443/tcp
+      register: public_ingress_ufw_443
+      changed_when: "'added' in (public_ingress_ufw_443.stdout | default(''))"
+      failed_when: false
+      when:
+        - public_ingress_ufw_cmd.rc == 0
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+  handlers:
+    - name: Restart HAProxy
+      ansible.builtin.service:
+        name: haproxy
+        state: restarted
