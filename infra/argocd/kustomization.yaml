@@ -6,7 +6,6 @@ resources:
   - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
   - namespace.yaml
   - httproute.yaml
-  - apps
 
 patches:
   - path: patches/tolerations.yaml

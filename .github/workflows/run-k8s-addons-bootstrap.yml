@@ -375,6 +375,11 @@ jobs:
 
           kubectl apply --server-side -k /tmp/k8s-addons/argocd
 
+          kubectl wait --for=condition=Established --timeout=300s \
+            crd/applications.argoproj.io \
+            crd/applicationsets.argoproj.io \
+            crd/appprojects.argoproj.io
+
           # Reconstruct PEM key exactly
           KEY_CONTENT="$(printf '%s' "$KEY_B64" | base64 -d)"
 
@@ -397,8 +402,11 @@ jobs:
           $(printf '%s\n' "$KEY_CONTENT" | sed 's/^/    /')
           EOF
 
+          kubectl apply -k /tmp/k8s-addons/argocd/apps
+
           kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=600s
           kubectl -n argocd logs deployment/argocd-repo-server --since=5m | tail -200
+          kubectl -n argocd get applications.argoproj.io
           kubectl -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1 && \
             echo "Argo CD initial admin secret is available in secret/argocd-initial-admin-secret."
           EOSSH
