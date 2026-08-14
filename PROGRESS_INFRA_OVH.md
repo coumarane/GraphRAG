@@ -15,6 +15,16 @@ Last updated: 2026-08-14
 - Azure Blob backend used for Terraform state
 - shared SSH private key generated and stored in Azure Key Vault
 - SSH connectivity validated from local Mac to all three OVH servers with the shared key
+- Kubernetes cluster installed successfully on the three OVH servers with Ansible
+- Cilium CNI installed and cluster node health validated
+- Kubernetes add-ons bootstrap completed successfully:
+  - MetalLB
+  - cert-manager
+  - Envoy Gateway
+  - Prometheus + Grafana
+  - Argo CD core
+- Argo CD app bootstrap separated from cluster add-ons bootstrap into its own workflow
+- Cloudflare DNS records for `chatwithdocs.org` and related subdomains prepared and aligned with `infra/cloudfare/dns_records.json`
 
 ## Current infrastructure state
 
@@ -30,12 +40,44 @@ Shared SSH key:
 - public key secret in Key Vault: `ovh-rag-reinstall-ssh-public-key`
 - local restore path used on Mac: `~/.ssh/ovh-rag-reinstall-ed25519`
 
+Kubernetes cluster:
+
+- control plane: `rag-master`
+- workers:
+  - `rag-worker-1`
+  - `rag-worker-2`
+- kubeconfig restored locally on Mac and cluster access validated
+
+Platform ingress and TLS:
+
+- Envoy Gateway is the intended ingress layer
+- cert-manager uses Cloudflare DNS-01 for `chatwithdocs.org`
+- shared Gateway listeners are prepared for:
+  - `chatwithdocs.org`
+  - `api.chatwithdocs.org`
+  - `argocd.chatwithdocs.org`
+  - `prometheus.chatwithdocs.org`
+
+Cloudflare DNS state:
+
+- `chatwithdocs.org` -> `51.38.19.54` proxied
+- `www.chatwithdocs.org` -> `51.38.19.54` proxied
+- `api.chatwithdocs.org` -> `51.38.19.54` proxied
+- `argocd.chatwithdocs.org` -> `51.38.19.54` proxied
+- `prometheus.chatwithdocs.org` -> `51.38.19.54` proxied
+- `database.chatwithdocs.org` -> `167.86.88.114` DNS only
+- `harbor.chatwithdocs.org` -> `62.84.180.181` DNS only
+
 ## Important implementation decisions
 
 - GitHub workflow uses tracked file `infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars`
 - local-only Terraform overrides use ignored file `infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars`
 - OVH reinstall template name is `ubuntu2604-server_64`
 - OVH template does not accept the `language` customization for this OS, so that field was removed
+- ingress-nginx was removed from the repository and replaced with Envoy Gateway + Gateway API resources
+- Grafana bootstrap no longer requires OIDC and defaults to login form + admin password
+- Argo CD bootstrap no longer requires OIDC and uses core install separately from application registration
+- Argo CD `Application` objects are now deployed through dedicated workflow `.github/workflows/run-argocd-apps-bootstrap.yml`
 
 ## Relevant files
 
@@ -47,7 +89,13 @@ Shared SSH key:
 - [infra/terraform/ovh-dedicated-reinstall/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/README.md)
 - [.github/workflows/run-ovh-terraform-reinstall.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-ovh-terraform-reinstall.yml)
 - [.github/workflows/reusable-ovh-terraform-reinstall.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/reusable-ovh-terraform-reinstall.yml)
+- [infra/ansible/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/README.md)
+- [.github/workflows/run-kubernetes-cluster-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-kubernetes-cluster-deploy.yml)
+- [.github/workflows/run-k8s-addons-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-k8s-addons-bootstrap.yml)
+- [.github/workflows/run-argocd-apps-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-argocd-apps-bootstrap.yml)
+- [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
+- [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
 
 ## Next step
 
-Proceed with the next infrastructure bootstrap phase on the three provisioned OVH servers, using the shared SSH key from Azure Key Vault and the Ansible/GitHub workflow setup already prepared in this repository.
+Deploy a small test application on the OVH Kubernetes cluster, expose it through Envoy Gateway on `chatwithdocs.org`, and validate end-to-end DNS, TLS, routing, and external access using the Cloudflare records already prepared in `infra/cloudfare`.
