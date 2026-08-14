@@ -32,11 +32,10 @@
 - name: Install kubelet, kubeadm, kubectl
   ansible.builtin.apt:
     name:
-      - "kubelet={{ common_kubernetes_version }}-1.1"
-      - "kubeadm={{ common_kubernetes_version }}-1.1"
-      - "kubectl={{ common_kubernetes_version }}-1.1"
+      - kubelet
+      - kubeadm
+      - kubectl
     state: present
-    allow_unauthenticated: true
   tags:
     - k8s_install
 
