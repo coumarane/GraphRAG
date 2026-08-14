@@ -18,8 +18,8 @@ on:
         required: true
         default: true
         type: boolean
-      install_ingress_nginx:
-        description: "Install/upgrade ingress-nginx"
+      install_envoy_gateway:
+        description: "Install/upgrade Envoy Gateway"
         required: true
         default: true
         type: boolean
@@ -89,7 +89,7 @@ jobs:
 
           # Helm values
           scp infra/helm/cert-manager/values.yaml     "${MASTER_HOST}:/tmp/k8s-addons/helm/cert-manager-values.yaml"
-          scp infra/helm/ingress-nginx/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/ingress-nginx-values.yaml"
+          scp infra/helm/envoy-gateway/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/envoy-gateway-values.yaml"
           scp infra/helm/cilium/values.yaml           "${MASTER_HOST}:/tmp/k8s-addons/helm/cilium-values.yaml"
           scp infra/helm/metallb/values.yaml          "${MASTER_HOST}:/tmp/k8s-addons/helm/metallb-values.yaml"
           scp infra/helm/elasticsearch/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/elasticsearch-values.yaml"
@@ -101,8 +101,12 @@ jobs:
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/clusterissuer-letsencrypt-prod.yaml"
           scp infra/helm/metallb/ipaddresspool.yaml \
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/metallb-ipaddresspool.yaml"
-          scp infra/k8s/monitoring/grafana-ingress.yaml \
-            "${MASTER_HOST}:/tmp/k8s-addons/k8s/grafana-ingress.yaml"
+          scp infra/k8s/monitoring/grafana-httproute.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/grafana-httproute.yaml"
+          scp infra/k8s/gateway/envoy-gatewayclass.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/envoy-gatewayclass.yaml"
+          scp infra/k8s/gateway/shared-gateway.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/shared-gateway.yaml"
 
           # Argo CD kustomize bundle
           scp -r infra/argocd/* "${MASTER_HOST}:/tmp/k8s-addons/argocd/"
@@ -236,34 +240,28 @@ jobs:
           kubectl get clusterissuer letsencrypt-prod
           EOSSH
 
-      - name: Install/upgrade ingress-nginx
-        if: inputs.install_ingress_nginx == true
+      - name: Install/upgrade Envoy Gateway
+        if: inputs.install_envoy_gateway == true
         run: |
           set -euo pipefail
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" bash -s <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
 
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-          helm repo update
+          helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
+            --version v1.8.3 \
+            --namespace envoy-gateway-system \
+            --create-namespace \
+            -f /tmp/k8s-addons/helm/envoy-gateway-values.yaml
 
-          # Clear any pending Helm operation lock before upgrading
-          STATUS=$(helm status ingress-nginx -n ingress-nginx --output json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('info',{}).get('status',''))" 2>/dev/null || echo "")
-          if [ "${STATUS:-}" != "" ] && echo "$STATUS" | grep -qi "^pending"; then
-            echo "Helm release 'ingress-nginx' is in pending state ($STATUS); uninstalling to clear the lock."
-            helm uninstall ingress-nginx -n ingress-nginx || true
-          fi
+          kubectl wait --timeout=10m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
-          # Clean up any stale admission jobs that can block helm --wait
-          kubectl -n ingress-nginx delete job ingress-nginx-admission-create ingress-nginx-admission-patch --ignore-not-found
+          kubectl apply -f /tmp/k8s-addons/k8s/envoy-gatewayclass.yaml
+          kubectl apply -f /tmp/k8s-addons/k8s/shared-gateway.yaml
 
-          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-            --namespace ingress-nginx --create-namespace \
-            -f /tmp/k8s-addons/helm/ingress-nginx-values.yaml \
-            --wait --timeout 15m0s --atomic --wait-for-jobs
-
-          kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=600s
-          kubectl -n ingress-nginx get svc
+          kubectl get gatewayclass eg
+          kubectl -n envoy-gateway-system get gateway public-gateway
+          kubectl -n envoy-gateway-system get svc
           EOSSH
 
       # - name: Install/upgrade Elasticsearch + Kibana
@@ -321,6 +319,11 @@ jobs:
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
 
+          if ! kubectl get gatewayclass eg >/dev/null 2>&1; then
+            echo "Envoy Gateway is not installed. Install it before applying Grafana HTTPRoute."
+            exit 1
+          fi
+
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo update
 
@@ -341,7 +344,7 @@ jobs:
             --set-string grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
             --wait --timeout 15m0s --atomic --wait-for-jobs
 
-          kubectl apply -f /tmp/k8s-addons/k8s/grafana-ingress.yaml
+          kubectl apply -f /tmp/k8s-addons/k8s/grafana-httproute.yaml
 
           kubectl -n monitoring rollout status deployment/kube-prometheus-stack-operator --timeout=600s
           kubectl -n monitoring rollout status statefulset/alertmanager-kube-prometheus-stack-alertmanager --timeout=600s
@@ -380,6 +383,11 @@ jobs:
             REPO_URL='${REPO_URL}' bash -s" <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
+
+          if ! kubectl get gatewayclass eg >/dev/null 2>&1; then
+            echo "Envoy Gateway is not installed. Install it before applying Argo CD HTTPRoute."
+            exit 1
+          fi
 
           kubectl get namespace argocd >/dev/null 2>&1 || kubectl create namespace argocd
 
@@ -437,9 +445,12 @@ jobs:
           echo "=== ClusterIssuers ==="
           kubectl get clusterissuer
 
-          echo "=== ingress-nginx ==="
-          kubectl -n ingress-nginx get svc
-          kubectl -n ingress-nginx get pods
+          echo "=== envoy gateway ==="
+          kubectl get gatewayclass
+          kubectl -n envoy-gateway-system get gateway
+          kubectl get httproute -A
+          kubectl -n envoy-gateway-system get svc
+          kubectl -n envoy-gateway-system get pods
 
           echo "=== observability (elasticsearch/kibana) ==="
           kubectl -n observability get svc

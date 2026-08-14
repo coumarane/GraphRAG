@@ -4,13 +4,13 @@ Minimal Kubernetes manifests to run the web container that is built and pushed t
 
 ## Prerequisites
 - cert-manager + `letsencrypt-prod` ClusterIssuer installed (see `infra/helm/cert-manager`).
-- ingress-nginx present (bootstrap workflow installs it).
+- Envoy Gateway present with the shared `public-gateway` Gateway installed by the bootstrap workflow.
 - Harbor image already pushed, e.g. `harbor.chatwithdocs.org/chatwithdocs/web:<tag>`.
 - Harbor pull credentials available.
 
 ## Configure
-1) Set the image tag in `infra/k8s/web/kustomization.yaml` (`newTag`) to the Harbor tag you want to deploy (defaults to `latest`).  
-2) Adjust the ingress host in `infra/k8s/web/ingress.yaml` (`web.chatwithdocs.org`) to your domain.  
+1) Set the image tag in `infra/k8s/web/kustomization.yaml` (`newTag`) to the Harbor tag you want to deploy (defaults to `latest`).
+2) Adjust the route host in `infra/k8s/web/httproute.yaml` (`chatwithdocs.org`) to your domain.
 3) If you need a different API URL at build time, set `inputs.image_tag` and the `NEXT_PUBLIC_API_URL` secret/var when running the GitHub Actions build so the baked image has the right URL.
 
 ## Deploy
@@ -29,7 +29,7 @@ kubectl -n chatwithdocs-web create secret docker-registry harbor-regcred \
 # 3) Deploy the app
 kubectl apply -k infra/k8s/web
 
-# 4) Wait for rollout and check ingress/TLS
+# 4) Wait for rollout and check route/TLS
 kubectl -n chatwithdocs-web rollout status deploy/web --timeout=180s
-kubectl -n chatwithdocs-web get ingress
+kubectl -n chatwithdocs-web get httproute
 ```
