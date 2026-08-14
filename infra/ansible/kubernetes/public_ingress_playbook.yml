@@ -40,7 +40,7 @@
 
     - name: Ensure HAProxy service is enabled and started
       ansible.builtin.systemd_service:
-        name: public-ingress-haproxy.service
+        name: public-ingress-haproxy
         enabled: true
         state: started
 
@@ -64,11 +64,11 @@
   handlers:
     - name: Restart HAProxy
       ansible.builtin.systemd_service:
-        name: public-ingress-haproxy.service
+        name: public-ingress-haproxy
         state: restarted
 
     - name: Reload and Restart HAProxy
       ansible.builtin.systemd_service:
-        name: public-ingress-haproxy.service
+        name: public-ingress-haproxy
         daemon_reload: true
         state: restarted
