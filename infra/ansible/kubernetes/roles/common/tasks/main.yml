@@ -86,6 +86,7 @@
   ansible.builtin.command: containerd config default
   register: common_containerd_default_config
   changed_when: false
+  when: not ansible_check_mode
 
 - name: Apply containerd config with systemd cgroup driver
   ansible.builtin.copy:
@@ -93,6 +94,7 @@
     content: "{{ common_containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
     mode: "0644"
   notify: Restart containerd
+  when: not ansible_check_mode
   tags:
     - containerd
 
