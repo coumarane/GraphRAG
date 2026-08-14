@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: smoke-web
+  labels:
+    app.kubernetes.io/name: chatwithdocs-smoke
+    app.kubernetes.io/part-of: chatwithdocs
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: chatwithdocs-smoke
+    app.kubernetes.io/part-of: chatwithdocs
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

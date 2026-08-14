@@ -1,0 +1,82 @@
+name: Run Smoke Web Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  deploy:
+    name: Deploy Smoke Web
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Ansible
+        uses: ./.github/actions/setup-ansible
+        with:
+          collections: kubernetes.core
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore shared SSH key from Key Vault
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secret-name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          key-path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+
+      - name: Configure SSH for master
+        id: master_ssh
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ env.K8S_INVENTORY }}
+          inventory-group: master
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ubuntu
+
+      - name: Export master host
+        run: echo "MASTER_HOST=${{ steps.master_ssh.outputs.first-host }}" >> "$GITHUB_ENV"
+
+      - name: Copy manifests to master
+        run: |
+          set -euo pipefail
+          ssh "$MASTER_HOST" "mkdir -p /tmp/chatwithdocs-smoke"
+          scp -r infra/k8s/smoke-web/* "${MASTER_HOST}:/tmp/chatwithdocs-smoke/"
+
+      - name: Apply manifests on cluster
+        run: |
+          set -euo pipefail
+          ssh "$MASTER_HOST" bash -s <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          kubectl apply -k /tmp/chatwithdocs-smoke
+
+          if ! kubectl -n chatwithdocs-smoke rollout status deploy/smoke-web --timeout=300s; then
+            echo "Rollout failed; collecting diagnostics..."
+            kubectl -n chatwithdocs-smoke get pods -o wide
+            kubectl -n chatwithdocs-smoke describe deploy/smoke-web
+            kubectl -n chatwithdocs-smoke get events --sort-by=.metadata.creationTimestamp | tail -n 30
+            exit 1
+          fi
+
+          kubectl -n chatwithdocs-smoke get pods -o wide
+          kubectl -n chatwithdocs-smoke get svc smoke-web
+          kubectl -n chatwithdocs-smoke get httproute smoke-web
+          kubectl -n envoy-gateway-system get gateway public-gateway -o wide
+          EOSSH
