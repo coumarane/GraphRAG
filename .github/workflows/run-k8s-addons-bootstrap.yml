@@ -105,6 +105,8 @@ jobs:
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/grafana-httproute.yaml"
           scp infra/k8s/gateway/envoy-gatewayclass.yaml \
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/envoy-gatewayclass.yaml"
+          scp infra/k8s/gateway/envoyproxy-public-gateway.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/envoyproxy-public-gateway.yaml"
           scp infra/k8s/gateway/shared-gateway.yaml \
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/shared-gateway.yaml"
 
@@ -259,10 +261,12 @@ jobs:
 
           kubectl wait --timeout=10m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
+          kubectl apply -f /tmp/k8s-addons/k8s/envoyproxy-public-gateway.yaml
           kubectl apply -f /tmp/k8s-addons/k8s/envoy-gatewayclass.yaml
           kubectl apply -f /tmp/k8s-addons/k8s/shared-gateway.yaml
 
           kubectl get gatewayclass eg
+          kubectl -n envoy-gateway-system get envoyproxy public-gateway-config
           kubectl -n envoy-gateway-system get gateway public-gateway
           kubectl -n envoy-gateway-system get svc
           kubectl get certificate -A || true

@@ -39,6 +39,7 @@ If you use SSH keys, see [README_SSH_KEY.md](/Users/coumaranecouppane/Dev/Projet
 
 - `kubernetes/playbook.yml`: bootstrap master and worker nodes
 - `kubernetes/install_packages_playbook.yml`: install Helm on the Kubernetes master
+- `kubernetes/public_ingress_playbook.yml`: configure host-level public HTTPS forwarding on the Kubernetes master
 - `harbor/playbook.yml`: install Harbor on a dedicated host
 - `postgresql/playbook.yml`: install PostgreSQL and optionally pgAdmin
 
@@ -73,6 +74,21 @@ Install Helm on the master:
 ansible-playbook infra/ansible/kubernetes/install_packages_playbook.yml \
   -i infra/ansible/kubernetes/inventory.ini
 ```
+
+Configure a host-level public HTTPS proxy on the master for Envoy Gateway:
+
+```bash
+ansible-playbook infra/ansible/kubernetes/public_ingress_playbook.yml \
+  -i infra/ansible/kubernetes/inventory.ini
+```
+
+This playbook:
+
+- installs HAProxy on the master
+- binds public port `443` on the master host
+- forwards TLS traffic to the Envoy Gateway NodePort `32443`
+
+This is the recommended validation path for OVH dedicated servers when using the master public IP directly. It avoids depending on MetalLB for public ingress on an OVH Additional IP `/32`.
 
 What the playbook does:
 

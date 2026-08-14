@@ -1,0 +1,53 @@
+name: Run Kubernetes Public Ingress Deploy
+
+on:
+  workflow_dispatch:
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  check-public-ingress:
+    uses: ./.github/workflows/reusable-ansible-check.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/kubernetes/inventory.ini
+      playbook_paths: infra/ansible/kubernetes/public_ingress_playbook.yml
+      playbook_args: -u ubuntu
+      artifact_name: kubernetes-public-ingress-check
+      syntax_check_paths: infra/ansible/kubernetes/public_ingress_playbook.yml
+      ansible_collections: kubernetes.core
+      ssh_user: ubuntu
+      ssh_master_group: master
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      ssh_private_key_secret_name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+      ssh_private_key_path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+    secrets:
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+
+  deploy-public-ingress:
+    needs: check-public-ingress
+    uses: ./.github/workflows/reusable-ansible-deploy.yml
+    with:
+      environment_name: dev
+      inventory_path: infra/ansible/kubernetes/inventory.ini
+      playbook_paths: infra/ansible/kubernetes/public_ingress_playbook.yml
+      playbook_args: -u ubuntu
+      syntax_check_paths: infra/ansible/kubernetes/public_ingress_playbook.yml
+      ansible_collections: kubernetes.core
+      ssh_user: ubuntu
+      ssh_master_group: master
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      ssh_private_key_secret_name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+      ssh_private_key_path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+    secrets:
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}

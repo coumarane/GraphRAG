@@ -4,14 +4,14 @@
     {
       "type": "A",
       "name": "api.chatwithdocs.org",
-      "content": "51.38.19.54",
+      "content": "193.70.35.121",
       "proxied": true,
       "ttl": 1
     },
     {
       "type": "A",
       "name": "argocd.chatwithdocs.org",
-      "content": "51.38.19.54",
+      "content": "193.70.35.121",
       "proxied": true,
       "ttl": 1
     },
@@ -32,21 +32,21 @@
     {
       "type": "A",
       "name": "prometheus.chatwithdocs.org",
-      "content": "51.38.19.54",
+      "content": "193.70.35.121",
       "proxied": true,
       "ttl": 1
     },
     {
       "type": "A",
       "name": "chatwithdocs.org",
-      "content": "51.38.19.54",
+      "content": "193.70.35.121",
       "proxied": true,
       "ttl": 1
     },
     {
       "type": "A",
       "name": "www.chatwithdocs.org",
-      "content": "51.38.19.54",
+      "content": "193.70.35.121",
       "proxied": true,
       "ttl": 1
     }
