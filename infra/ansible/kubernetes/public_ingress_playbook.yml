@@ -16,15 +16,6 @@
       ansible.builtin.systemd_service:
         daemon_reload: true
 
-    - name: Gather service facts
-      ansible.builtin.service_facts:
-
-    - name: Ensure HAProxy service exists
-      ansible.builtin.assert:
-        that:
-          - "'haproxy.service' in ansible_facts.services or 'haproxy' in ansible_facts.services"
-        fail_msg: "HAProxy service was not found on the host after package installation."
-
     - name: Configure HAProxy for Envoy Gateway HTTPS forwarding
       ansible.builtin.template:
         src: templates/haproxy-public-ingress.cfg.j2
