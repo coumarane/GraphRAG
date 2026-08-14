@@ -65,6 +65,14 @@
     - hostvars[groups['master'][0]]['kubeadm_join_command'] is defined
   tags:
     - k8s_worker
+
+- name: Restart kubelet after worker join
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+  when: not ansible_check_mode
+  tags:
+    - k8s_worker
 #
 # - name: Ensure Harbor registry hosts.d directory exists for containerd
 #   ansible.builtin.file:

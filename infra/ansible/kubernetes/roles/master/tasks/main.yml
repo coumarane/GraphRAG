@@ -121,6 +121,14 @@
   tags:
     - k8s_master
 
+- name: Restart kubelet after control plane bootstrap
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+  when: not ansible_check_mode
+  tags:
+    - k8s_master
+
 - name: Generate kubeadm join command from master
   ansible.builtin.command: kubeadm token create --print-join-command
   register: master_join_command_output # This output is now registered against 'k8s-master' host
