@@ -42,13 +42,12 @@ grafana:
   replicas: 1
   service:
     type: ClusterIP
-  envFromSecret: grafana-oidc-secret  # Secret must define GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
   grafana.ini:
     server:
       root_url: https://prometheus.chatwithdocs.org
     auth:
-      disable_login_form: true
-      oauth_auto_login: true
+      disable_login_form: false
+      oauth_auto_login: false
     # auth.generic_oauth:
     #   enabled: true
     #   name: Keycloak

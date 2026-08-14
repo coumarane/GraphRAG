@@ -10,6 +10,4 @@ resources:
 
 patches:
   - path: patches/tolerations.yaml
-  - path: patches/argocd-cm-oidc.yaml
   - path: patches/argocd-rbac-cm.yaml
-  - path: patches/argocd-secret-oidc.yaml

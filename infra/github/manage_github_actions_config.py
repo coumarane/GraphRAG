@@ -66,7 +66,7 @@ WORKFLOW_ENTRIES: tuple[ConfigEntry, ...] = (
         name="GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET",
         scope="env-secret",
         environment="dev",
-        description="Grafana OIDC client secret for Prometheus stack bootstrap.",
+        description="Optional Grafana OIDC client secret if Grafana generic OAuth is enabled later.",
         required_by=("run-k8s-addons-bootstrap.yml",),
     ),
     ConfigEntry(
@@ -101,7 +101,7 @@ WORKFLOW_ENTRIES: tuple[ConfigEntry, ...] = (
         name="ARGOCD_OIDC_CLIENT_SECRET",
         scope="env-secret",
         environment="dev",
-        description="Argo CD OIDC client secret.",
+        description="Optional Argo CD OIDC client secret if external OIDC login is enabled later.",
         required_by=("run-k8s-addons-bootstrap.yml",),
     ),
     ConfigEntry(

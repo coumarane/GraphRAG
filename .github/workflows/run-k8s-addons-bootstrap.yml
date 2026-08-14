@@ -301,21 +301,15 @@ jobs:
         if: inputs.install_prometheus == true
         env:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-          GRAFANA_OIDC_CLIENT_SECRET: ${{ secrets.GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
             echo "Missing secret GRAFANA_ADMIN_PASSWORD."
             exit 1
           fi
-          if [ -z "${GRAFANA_OIDC_CLIENT_SECRET:-}" ]; then
-            echo "Missing secret GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET."
-            exit 1
-          fi
 
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
-            "GRAFANA_ADMIN_PASSWORD='${GRAFANA_ADMIN_PASSWORD}' \
-             GRAFANA_OIDC_CLIENT_SECRET='${GRAFANA_OIDC_CLIENT_SECRET}' bash -s" <<'EOSSH'
+            "GRAFANA_ADMIN_PASSWORD='${GRAFANA_ADMIN_PASSWORD}' bash -s" <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
 
@@ -332,11 +326,6 @@ jobs:
             echo "Helm release 'kube-prometheus-stack' is in pending state ($STATUS); uninstalling to clear the lock."
             helm uninstall kube-prometheus-stack -n monitoring || true
           fi
-
-          # Ensure OIDC secret for Grafana (used via envFromSecret)
-          kubectl -n monitoring create secret generic grafana-oidc-secret \
-            --from-literal=GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET="${GRAFANA_OIDC_CLIENT_SECRET}" \
-            --dry-run=client -o yaml | kubectl apply -f -
 
           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
             -n monitoring --create-namespace \
@@ -360,14 +349,8 @@ jobs:
           ARGOCD_GITHUB_APP_ID: ${{ secrets.ARGOCD_GITHUB_APP_ID }}
           ARGOCD_GITHUB_APP_INSTALLATION_ID: ${{ secrets.ARGOCD_GITHUB_APP_INSTALLATION_ID }}
           ARGOCD_GITHUB_APP_PRIVATE_KEY: ${{ secrets.ARGOCD_GITHUB_APP_PRIVATE_KEY }}
-          ARGOCD_OIDC_CLIENT_SECRET: ${{ secrets.ARGOCD_OIDC_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-
-          if [ -z "${ARGOCD_OIDC_CLIENT_SECRET:-}" ]; then
-            echo "Missing secret ARGOCD_OIDC_CLIENT_SECRET."
-            exit 1
-          fi
 
           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
@@ -379,7 +362,6 @@ jobs:
             ARGOCD_GITHUB_APP_ID='${ARGOCD_GITHUB_APP_ID}' \
             ARGOCD_GITHUB_APP_INSTALLATION_ID='${ARGOCD_GITHUB_APP_INSTALLATION_ID}' \
             KEY_B64='${KEY_B64}' \
-            ARGOCD_OIDC_CLIENT_SECRET='${ARGOCD_OIDC_CLIENT_SECRET}' \
             REPO_URL='${REPO_URL}' bash -s" <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
@@ -390,16 +372,6 @@ jobs:
           fi
 
           kubectl get namespace argocd >/dev/null 2>&1 || kubectl create namespace argocd
-
-          # Inject OIDC client secret into patch before apply
-          python3 - "$ARGOCD_OIDC_CLIENT_SECRET" <<'PY'
-          import sys
-          secret = sys.argv[1]
-          path = "/tmp/k8s-addons/argocd/patches/argocd-secret-oidc.yaml"
-          data = open(path, "r", encoding="utf-8").read()
-          data = data.replace("REPLACE_WITH_KEYCLOAK_CLIENT_SECRET", secret)
-          open(path, "w", encoding="utf-8").write(data)
-          PY
 
           kubectl apply --server-side -k /tmp/k8s-addons/argocd
 
@@ -427,6 +399,8 @@ jobs:
 
           kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=600s
           kubectl -n argocd logs deployment/argocd-repo-server --since=5m | tail -200
+          kubectl -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1 && \
+            echo "Argo CD initial admin secret is available in secret/argocd-initial-admin-secret."
           EOSSH
 
       - name: Post-check
