@@ -18,8 +18,8 @@ on:
         required: true
         default: true
         type: boolean
-      install_ingress_nginx:
-        description: "Install/upgrade ingress-nginx"
+      install_envoy_gateway:
+        description: "Install/upgrade Envoy Gateway"
         required: true
         default: true
         type: boolean
@@ -89,7 +89,7 @@ jobs:
 
           # Helm values
           scp infra/helm/cert-manager/values.yaml     "${MASTER_HOST}:/tmp/k8s-addons/helm/cert-manager-values.yaml"
-          scp infra/helm/ingress-nginx/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/ingress-nginx-values.yaml"
+          scp infra/helm/envoy-gateway/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/envoy-gateway-values.yaml"
           scp infra/helm/cilium/values.yaml           "${MASTER_HOST}:/tmp/k8s-addons/helm/cilium-values.yaml"
           scp infra/helm/metallb/values.yaml          "${MASTER_HOST}:/tmp/k8s-addons/helm/metallb-values.yaml"
           scp infra/helm/elasticsearch/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/elasticsearch-values.yaml"
@@ -101,11 +101,18 @@ jobs:
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/clusterissuer-letsencrypt-prod.yaml"
           scp infra/helm/metallb/ipaddresspool.yaml \
             "${MASTER_HOST}:/tmp/k8s-addons/k8s/metallb-ipaddresspool.yaml"
-          scp infra/k8s/monitoring/grafana-ingress.yaml \
-            "${MASTER_HOST}:/tmp/k8s-addons/k8s/grafana-ingress.yaml"
+          scp infra/k8s/monitoring/grafana-httproute.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/grafana-httproute.yaml"
+          scp infra/k8s/gateway/envoy-gatewayclass.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/envoy-gatewayclass.yaml"
+          scp infra/k8s/gateway/shared-gateway.yaml \
+            "${MASTER_HOST}:/tmp/k8s-addons/k8s/shared-gateway.yaml"
 
-          # Argo CD kustomize bundle
-          scp -r infra/argocd/* "${MASTER_HOST}:/tmp/k8s-addons/argocd/"
+          # Argo CD core bundle
+          scp infra/argocd/kustomization.yaml "${MASTER_HOST}:/tmp/k8s-addons/argocd/kustomization.yaml"
+          scp infra/argocd/namespace.yaml "${MASTER_HOST}:/tmp/k8s-addons/argocd/namespace.yaml"
+          scp infra/argocd/httproute.yaml "${MASTER_HOST}:/tmp/k8s-addons/argocd/httproute.yaml"
+          scp -r infra/argocd/patches "${MASTER_HOST}:/tmp/k8s-addons/argocd/"
 
       - name: Prepare kubectl/helm access on master (ubuntu kubeconfig)
         run: |
@@ -236,34 +243,28 @@ jobs:
           kubectl get clusterissuer letsencrypt-prod
           EOSSH
 
-      - name: Install/upgrade ingress-nginx
-        if: inputs.install_ingress_nginx == true
+      - name: Install/upgrade Envoy Gateway
+        if: inputs.install_envoy_gateway == true
         run: |
           set -euo pipefail
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" bash -s <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
 
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-          helm repo update
+          helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
+            --version v1.8.3 \
+            --namespace envoy-gateway-system \
+            --create-namespace \
+            -f /tmp/k8s-addons/helm/envoy-gateway-values.yaml
 
-          # Clear any pending Helm operation lock before upgrading
-          STATUS=$(helm status ingress-nginx -n ingress-nginx --output json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('info',{}).get('status',''))" 2>/dev/null || echo "")
-          if [ "${STATUS:-}" != "" ] && echo "$STATUS" | grep -qi "^pending"; then
-            echo "Helm release 'ingress-nginx' is in pending state ($STATUS); uninstalling to clear the lock."
-            helm uninstall ingress-nginx -n ingress-nginx || true
-          fi
+          kubectl wait --timeout=10m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
-          # Clean up any stale admission jobs that can block helm --wait
-          kubectl -n ingress-nginx delete job ingress-nginx-admission-create ingress-nginx-admission-patch --ignore-not-found
+          kubectl apply -f /tmp/k8s-addons/k8s/envoy-gatewayclass.yaml
+          kubectl apply -f /tmp/k8s-addons/k8s/shared-gateway.yaml
 
-          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-            --namespace ingress-nginx --create-namespace \
-            -f /tmp/k8s-addons/helm/ingress-nginx-values.yaml \
-            --wait --timeout 15m0s --atomic --wait-for-jobs
-
-          kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=600s
-          kubectl -n ingress-nginx get svc
+          kubectl get gatewayclass eg
+          kubectl -n envoy-gateway-system get gateway public-gateway
+          kubectl -n envoy-gateway-system get svc
           EOSSH
 
       # - name: Install/upgrade Elasticsearch + Kibana
@@ -303,23 +304,22 @@ jobs:
         if: inputs.install_prometheus == true
         env:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-          GRAFANA_OIDC_CLIENT_SECRET: ${{ secrets.GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
             echo "Missing secret GRAFANA_ADMIN_PASSWORD."
             exit 1
           fi
-          if [ -z "${GRAFANA_OIDC_CLIENT_SECRET:-}" ]; then
-            echo "Missing secret GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET."
-            exit 1
-          fi
 
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
-            "GRAFANA_ADMIN_PASSWORD='${GRAFANA_ADMIN_PASSWORD}' \
-             GRAFANA_OIDC_CLIENT_SECRET='${GRAFANA_OIDC_CLIENT_SECRET}' bash -s" <<'EOSSH'
+            "GRAFANA_ADMIN_PASSWORD='${GRAFANA_ADMIN_PASSWORD}' bash -s" <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
+
+          if ! kubectl get gatewayclass eg >/dev/null 2>&1; then
+            echo "Envoy Gateway is not installed. Install it before applying Grafana HTTPRoute."
+            exit 1
+          fi
 
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo update
@@ -330,18 +330,13 @@ jobs:
             helm uninstall kube-prometheus-stack -n monitoring || true
           fi
 
-          # Ensure OIDC secret for Grafana (used via envFromSecret)
-          kubectl -n monitoring create secret generic grafana-oidc-secret \
-            --from-literal=GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET="${GRAFANA_OIDC_CLIENT_SECRET}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
             -n monitoring --create-namespace \
             -f /tmp/k8s-addons/helm/prometheus-stack-values.yaml \
             --set-string grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
             --wait --timeout 15m0s --atomic --wait-for-jobs
 
-          kubectl apply -f /tmp/k8s-addons/k8s/grafana-ingress.yaml
+          kubectl apply -f /tmp/k8s-addons/k8s/grafana-httproute.yaml
 
           kubectl -n monitoring rollout status deployment/kube-prometheus-stack-operator --timeout=600s
           kubectl -n monitoring rollout status statefulset/alertmanager-kube-prometheus-stack-alertmanager --timeout=600s
@@ -353,18 +348,11 @@ jobs:
       - name: Install/upgrade Argo CD (kustomize)
         if: inputs.install_argocd == true
         env:
-          ARGOCD_ADMIN_PASSWORD: ${{ secrets.ARGOCD_ADMIN_PASSWORD }}
           ARGOCD_GITHUB_APP_ID: ${{ secrets.ARGOCD_GITHUB_APP_ID }}
           ARGOCD_GITHUB_APP_INSTALLATION_ID: ${{ secrets.ARGOCD_GITHUB_APP_INSTALLATION_ID }}
           ARGOCD_GITHUB_APP_PRIVATE_KEY: ${{ secrets.ARGOCD_GITHUB_APP_PRIVATE_KEY }}
-          ARGOCD_OIDC_CLIENT_SECRET: ${{ secrets.ARGOCD_OIDC_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-
-          if [ -z "${ARGOCD_OIDC_CLIENT_SECRET:-}" ]; then
-            echo "Missing secret ARGOCD_OIDC_CLIENT_SECRET."
-            exit 1
-          fi
 
           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
@@ -372,28 +360,26 @@ jobs:
           KEY_B64="$(printf '%s' "${ARGOCD_GITHUB_APP_PRIVATE_KEY}" | tr -d '\r' | base64 -w0)"
 
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
-            "ARGOCD_ADMIN_PASSWORD='${ARGOCD_ADMIN_PASSWORD}' \
-            ARGOCD_GITHUB_APP_ID='${ARGOCD_GITHUB_APP_ID}' \
+            "ARGOCD_GITHUB_APP_ID='${ARGOCD_GITHUB_APP_ID}' \
             ARGOCD_GITHUB_APP_INSTALLATION_ID='${ARGOCD_GITHUB_APP_INSTALLATION_ID}' \
             KEY_B64='${KEY_B64}' \
-            ARGOCD_OIDC_CLIENT_SECRET='${ARGOCD_OIDC_CLIENT_SECRET}' \
             REPO_URL='${REPO_URL}' bash -s" <<'EOSSH'
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
 
+          if ! kubectl get gatewayclass eg >/dev/null 2>&1; then
+            echo "Envoy Gateway is not installed. Install it before applying Argo CD HTTPRoute."
+            exit 1
+          fi
+
           kubectl get namespace argocd >/dev/null 2>&1 || kubectl create namespace argocd
 
-          # Inject OIDC client secret into patch before apply
-          python3 - "$ARGOCD_OIDC_CLIENT_SECRET" <<'PY'
-          import sys
-          secret = sys.argv[1]
-          path = "/tmp/k8s-addons/argocd/patches/argocd-secret-oidc.yaml"
-          data = open(path, "r", encoding="utf-8").read()
-          data = data.replace("REPLACE_WITH_KEYCLOAK_CLIENT_SECRET", secret)
-          open(path, "w", encoding="utf-8").write(data)
-          PY
-
           kubectl apply --server-side -k /tmp/k8s-addons/argocd
+
+          kubectl wait --for=condition=Established --timeout=300s \
+            crd/applications.argoproj.io \
+            crd/applicationsets.argoproj.io \
+            crd/appprojects.argoproj.io
 
           # Reconstruct PEM key exactly
           KEY_CONTENT="$(printf '%s' "$KEY_B64" | base64 -d)"
@@ -419,6 +405,8 @@ jobs:
 
           kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=600s
           kubectl -n argocd logs deployment/argocd-repo-server --since=5m | tail -200
+          kubectl -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1 && \
+            echo "Argo CD initial admin secret is available in secret/argocd-initial-admin-secret."
           EOSSH
 
       - name: Post-check
@@ -437,9 +425,12 @@ jobs:
           echo "=== ClusterIssuers ==="
           kubectl get clusterissuer
 
-          echo "=== ingress-nginx ==="
-          kubectl -n ingress-nginx get svc
-          kubectl -n ingress-nginx get pods
+          echo "=== envoy gateway ==="
+          kubectl get gatewayclass
+          kubectl -n envoy-gateway-system get gateway
+          kubectl get httproute -A
+          kubectl -n envoy-gateway-system get svc
+          kubectl -n envoy-gateway-system get pods
 
           echo "=== observability (elasticsearch/kibana) ==="
           kubectl -n observability get svc

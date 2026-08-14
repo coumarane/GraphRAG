@@ -3,7 +3,7 @@
 Terraform stack to reinstall the existing OVH dedicated servers for the cluster from the OVHcloud OS template:
 
 - template type: `os basic`
-- template name: `ubuntu2604-server`
+- template name: `ubuntu2604-server_64`
 - OS label: `Ubuntu Server 26.04 "Resolute Raccoon" LTS`
 
 The server inventory and disk layout come from [infra/ovh/CLUSTER_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ovh/CLUSTER_README.md).
@@ -41,7 +41,8 @@ The Azure Blob container is created by the bootstrap stack in [bootstrap-azure-s
 - [variables.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/variables.tf): user inputs
 - [main.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/main.tf): OVH reinstall task, Key Vault secret publishing, SSH key generation
 - [outputs.tf](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/outputs.tf): task and secret outputs
-- [terraform.tfvars.example](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/terraform.tfvars.example): example inputs
+- [terraform.dev.tfvars](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars): tracked GitHub Actions inputs for the dev environment
+- `infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars`: ignored local-only overrides
 - [backend.hcl.example](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/backend.hcl.example): backend init settings
 
 ## Prerequisites
@@ -86,12 +87,10 @@ This creates the container `tfstate-ovh-dedicated-reinstall` in the existing sto
 
 ## Step 2: Configure the main stack
 
-Create the main variable file:
+Use the tracked dev variable file:
 
 ```bash
-cd /Users/coumaranecouppane/Dev/ProjetRag/GraphRAG
-cp infra/terraform/ovh-dedicated-reinstall/terraform.tfvars.example \
-  infra/terraform/ovh-dedicated-reinstall/terraform.tfvars
+cat infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars
 ```
 
 Default behavior:
@@ -100,9 +99,11 @@ Default behavior:
 - stores the private key in Key Vault secret `ovh-rag-reinstall-ssh-private-key`
 - stores the public key in Key Vault secret `ovh-rag-reinstall-ssh-public-key`
 - uses that public key for the OVH reinstall
+- for `ubuntu2604-server_64`, only sends customizations supported by the OVH template such as `hostname`, `sshKey`, and optional post-install settings
 
 Override this only if needed:
 
+- use `infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars` for local-only changes you do not want to commit
 - set `ssh_public_key` if you want to supply your own public key
 - set `auto_generate_ssh_key = false` if the key is managed outside Terraform
 - increment `ssh_private_key_secret_version` if you intentionally rotate the private key and want Terraform to publish a new Key Vault secret version
@@ -181,6 +182,8 @@ Workflow behavior:
 - logs into Azure using OIDC through `AZURE_CLIENT_ID`
 - restores the SSH private key from Key Vault when the secret already exists
 - generates `backend.hcl` on the runner
+- uses `infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars` by default in GitHub Actions
+- falls back to that tracked dev file when a custom `tfvars_file` input does not exist in the repository checkout
 - runs `terraform init`, `terraform validate`, then `terraform plan`
 - runs `terraform apply` only when you dispatch the workflow with `operation=apply`
 

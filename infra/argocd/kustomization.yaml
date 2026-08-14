@@ -5,11 +5,8 @@ namespace: argocd
 resources:
   - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
   - namespace.yaml
-  - ingress.yaml
-  - apps
+  - httproute.yaml
 
 patches:
   - path: patches/tolerations.yaml
-  - path: patches/argocd-cm-oidc.yaml
   - path: patches/argocd-rbac-cm.yaml
-  - path: patches/argocd-secret-oidc.yaml

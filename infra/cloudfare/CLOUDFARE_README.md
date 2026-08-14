@@ -6,6 +6,7 @@ This folder contains the DNS payload and automation script used to manage Cloudf
 
 - `dns_records.json`: source of truth for the DNS records to apply.
 - `apply_dns_records.py`: Python script that creates or updates records in Cloudflare.
+- `set_cloudflare_github_token.py`: Python script that creates or updates the GitHub Actions secret `CLOUDFLARE_API_TOKEN`.
 
 ## Managed zone
 
@@ -29,6 +30,7 @@ This folder contains the DNS payload and automation script used to manage Cloudf
 - Python 3 available locally.
 - A Cloudflare API token with `Zone DNS Write` permission for `chatwithdocs.org`.
 - The target zone already exists in Cloudflare.
+- `gh` authenticated locally if you want to push the token into GitHub Actions secrets.
 
 ## Run the script
 
@@ -40,6 +42,43 @@ python3 infra/cloudfare/apply_dns_records.py --list
 python3 infra/cloudfare/apply_dns_records.py --dry-run
 python3 infra/cloudfare/apply_dns_records.py
 ```
+
+## Create the GitHub Actions secret
+
+The Kubernetes add-ons workflow expects `CLOUDFLARE_API_TOKEN` as a GitHub Actions environment secret on environment `dev`.
+
+Using the local environment variable:
+
+```bash
+export CLOUDFLARE_API_TOKEN="your-token-here"
+python3 infra/cloudfare/set_cloudflare_github_token.py
+```
+
+Using a file:
+
+```bash
+python3 infra/cloudfare/set_cloudflare_github_token.py \
+  --token-file ~/.config/cloudflare/chatwithdocs.token
+```
+
+Preview only:
+
+```bash
+export CLOUDFLARE_API_TOKEN="your-token-here"
+python3 infra/cloudfare/set_cloudflare_github_token.py --dry-run
+```
+
+Show help:
+
+```bash
+python3 infra/cloudfare/set_cloudflare_github_token.py --help
+```
+
+Defaults:
+
+- repository: `coumarane/GraphRAG`
+- environment: `dev`
+- secret name: `CLOUDFLARE_API_TOKEN`
 
 ## Script behavior
 

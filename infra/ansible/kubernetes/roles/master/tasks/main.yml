@@ -13,19 +13,16 @@
     url: "https://pkgs.k8s.io/core:/stable:/{{ common_kubernetes_apt_repo_version }}/deb/Release.key"
     dest: /tmp/kubernetes-apt-release.key
     mode: "0644"
-  tags:
-    - k8s_install
-
-- name: Remove existing Kubernetes keyring if present (avoid invalid format)
-  ansible.builtin.file:
-    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    state: absent
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
 - name: Add Kubernetes APT GPG key (dearmor)
   ansible.builtin.command: >
     gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-apt-release.key
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -34,23 +31,25 @@
     repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ common_kubernetes_apt_repo_version }}/deb/ /"
     state: present
     filename: kubernetes
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
 - name: Update apt cache after adding repo
   ansible.builtin.apt:
     update_cache: true
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
 - name: Install kubelet, kubeadm, kubectl
   ansible.builtin.apt:
     name:
-      - "kubelet={{ common_kubernetes_version }}-1.1"
-      - "kubeadm={{ common_kubernetes_version }}-1.1"
-      - "kubectl={{ common_kubernetes_version }}-1.1"
+      - kubelet
+      - kubeadm
+      - kubectl
     state: present
-    allow_unauthenticated: true
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -62,6 +61,7 @@
     - kubelet
     - kubeadm
     - kubectl
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -70,6 +70,7 @@
   args:
     creates: /etc/kubernetes/admin.conf
   register: master_kubeadm_init_output
+  when: not ansible_check_mode
   tags:
     - k8s_master
 
@@ -104,6 +105,7 @@
     mode: "0755"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
+  when: not ansible_check_mode
   tags:
     - k8s_master
 
@@ -115,6 +117,15 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0644"
+  when: not ansible_check_mode
+  tags:
+    - k8s_master
+
+- name: Restart kubelet after control plane bootstrap
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+  when: not ansible_check_mode
   tags:
     - k8s_master
 
@@ -122,13 +133,16 @@
   ansible.builtin.command: kubeadm token create --print-join-command
   register: master_join_command_output # This output is now registered against 'k8s-master' host
   changed_when: false
+  when: not ansible_check_mode
 
 - name: Set fact with kubeadm join command for worker nodes
   ansible.builtin.set_fact:
     kubeadm_join_command: "{{ master_join_command_output.stdout_lines | last }}"
+  when: not ansible_check_mode and master_join_command_output is defined
 
 - name: Debug - Print join command (for master node)
   ansible.builtin.debug:
     msg: "Kubeadm join command for worker: {{ master_join_command_output.stdout_lines | last }}"
+  when: not ansible_check_mode and master_join_command_output is defined
   # This debug still runs on the master, showing the master's generated command.
   # The fact 'master_join_command_output' is now correctly available as hostvars['k8s-master']['master_join_command_output']

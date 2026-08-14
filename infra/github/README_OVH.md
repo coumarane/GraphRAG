@@ -78,13 +78,18 @@ Suggested values:
 Minimum rights for the current Terraform workflow:
 
 - `GET` -> `/dedicated/server/*`
-- `POST` -> `/dedicated/server/*`
+- `GET` -> `/dedicated/server/*/task/*`
+- `GET` -> `/dedicated/server/*/install/status`
+- `POST` -> `/dedicated/server/*/reinstall`
 - `GET` -> `/dedicated/installationTemplate/*`
 
 Why these rights are needed:
 
-- `/dedicated/server/*`: read dedicated server details and trigger the reinstall task
-- `/dedicated/installationTemplate/*`: read the installation template such as `ubuntu2604-server`
+- `/dedicated/server/*`: read dedicated server details
+- `/dedicated/server/*/task/*`: poll the reinstall task status until Terraform sees completion
+- `/dedicated/server/*/install/status`: read the detailed install progress exposed by OVH
+- `/dedicated/server/*/reinstall`: trigger the reinstall task
+- `/dedicated/installationTemplate/*`: read the installation template such as `ubuntu2604-server_64`
 
 Restricted IPs:
 
@@ -99,6 +104,10 @@ After you click `Create`, OVH returns:
 - `Application Secret` -> `OVH_APPLICATION_SECRET`
 - `Consumer Key` -> `OVH_CONSUMER_KEY`
 
+If you later discover that the OVH API rights are incomplete, create a new OVH API token with the corrected rights and rotate the GitHub secrets. OVHcloud does not provide a practical in-place rights editing flow for an existing token in this workflow.
+
+If a Terraform apply already created reinstall tasks before failing on task polling permissions, check the task state in OVHcloud before rerunning `terraform apply` or the GitHub workflow. Otherwise you may enqueue duplicate reinstall tasks for the same servers.
+
 ## Where `AZURE_CLIENT_ID` comes from
 
 `AZURE_CLIENT_ID` is the Azure App Registration client ID used by GitHub OIDC.
@@ -111,6 +120,57 @@ python3 infra/github/oidc/create_github_oidc_app_registration.py \
 ```
 
 The script output includes the client ID. Put that value into GitHub as secret `AZURE_CLIENT_ID`.
+
+If Azure login fails with `AADSTS700213` and the log shows a subject like:
+
+- `repo:coumarane@9210984/GraphRAG@1319645493:environment:dev`
+
+then your Azure federated credential must use that exact subject, including the owner and repository IDs. This repository is currently using that immutable subject format.
+
+## Azure RBAC required for the OIDC app
+
+Matching the federated credential is not enough. The Azure App Registration service principal also needs access to the subscription resources used by the workflow.
+
+If GitHub Actions fails with `No subscriptions found for ***`, the OIDC login succeeded but the service principal does not have subscription or resource access yet.
+
+Minimum practical role assignments for this workflow:
+
+- `Reader` on resource group `rg-safranysAI-Dev`
+- `Storage Blob Data Contributor` on storage account `terraformstate240775`
+- `Key Vault Secrets Officer` on Key Vault `safranys-kv-shared`
+
+For a human user to view the SSH private key secret value in Azure Portal, assign `Key Vault Secrets User` on `safranys-kv-shared`. `Owner`, `Contributor`, or `Key Vault Contributor` are not enough to read secret contents when the vault uses Azure RBAC.
+
+Recommended helper:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id>
+```
+
+Dry run:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --dry-run
+```
+
+List current workflow-specific assignments:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --action list
+```
+
+Delete those assignments:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --action delete
+```
 
 ## Applying the GitHub config
 
@@ -197,6 +257,9 @@ Inputs:
 - `operation=plan` for a safe first run
 - `operation=apply` for the actual reinstall
 - `environment_name=dev`
+- `tfvars_file=infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars` by default
+
+If you provide a custom `tfvars_file` input and that file is not present in the repository checkout, the workflow falls back to the tracked `terraform.dev.tfvars` file.
 
 ## Notes
 

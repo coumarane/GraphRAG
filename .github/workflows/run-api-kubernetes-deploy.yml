@@ -133,5 +133,5 @@ jobs:
             exit 1
           fi
 
-          kubectl -n chatwithdocs-api get ingress api
+          kubectl -n chatwithdocs-api get httproute api
           EOSSH

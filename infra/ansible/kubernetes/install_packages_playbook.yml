@@ -4,7 +4,5 @@
   hosts: master # Target the master node as it has kubectl configured
   become: true # All tasks will run with sudo
   gather_facts: true
-  collections:
-    - kubernetes.core # This tells Ansible to ensure modules from kubernetes.core are available
   roles:
     - helm

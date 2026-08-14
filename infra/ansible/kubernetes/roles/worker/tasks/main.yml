@@ -5,6 +5,7 @@
     url: "https://pkgs.k8s.io/core:/stable:/{{ common_kubernetes_apt_repo_version }}/deb/Release.key"
     dest: /tmp/kubernetes-apt-release.key
     mode: "0644"
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -12,6 +13,7 @@
   ansible.builtin.shell: gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg < /tmp/kubernetes-apt-release.key
   args:
     creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -20,23 +22,25 @@
     repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ common_kubernetes_apt_repo_version }}/deb/ /"
     state: present
     filename: kubernetes
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
 - name: Update apt cache after adding repo
   ansible.builtin.apt:
     update_cache: true
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
 - name: Install kubelet, kubeadm, kubectl
   ansible.builtin.apt:
     name:
-      - "kubelet={{ common_kubernetes_version }}-1.1"
-      - "kubeadm={{ common_kubernetes_version }}-1.1"
-      - "kubectl={{ common_kubernetes_version }}-1.1"
+      - kubelet
+      - kubeadm
+      - kubectl
     state: present
-    allow_unauthenticated: true
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -48,6 +52,7 @@
     - kubelet
     - kubeadm
     - kubectl
+  when: not ansible_check_mode
   tags:
     - k8s_install
 
@@ -55,7 +60,17 @@
   ansible.builtin.command: "{{ hostvars[groups['master'][0]]['kubeadm_join_command'] }}"
   args:
     creates: /etc/kubernetes/kubelet.conf # Ensures this task only runs if not already joined
-  when: "hostvars[groups['master'][0]]['kubeadm_join_command'] is defined"
+  when:
+    - not ansible_check_mode
+    - hostvars[groups['master'][0]]['kubeadm_join_command'] is defined
+  tags:
+    - k8s_worker
+
+- name: Restart kubelet after worker join
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+  when: not ansible_check_mode
   tags:
     - k8s_worker
 #

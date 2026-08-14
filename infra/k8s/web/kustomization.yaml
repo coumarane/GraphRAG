@@ -11,7 +11,7 @@ resources:
 - configmap.yaml
 - deployment.yaml
 - service.yaml
-- ingress.yaml
+- httproute.yaml
 
 images:
 - digest: sha256:6044eb091d7dbd417292058c70b890684faf411a521031fc642a109f2a41999b

@@ -107,22 +107,43 @@ jobs:
           install-sshpass: ${{ inputs.install_sshpass }}
           collections: ${{ inputs.ansible_collections }}
 
+      - name: Resolve workflow configuration
+        id: resolve
+        shell: bash
+        env:
+          EFFECTIVE_AZURE_CLIENT_ID: ${{ secrets.azure_client_id || secrets.AZURE_CLIENT_ID }}
+          EFFECTIVE_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id || vars.AZURE_SUBSCRIPTION_ID }}
+          EFFECTIVE_AZURE_TENANT_ID: ${{ inputs.azure_tenant_id || vars.AZURE_TENANT_ID }}
+          EFFECTIVE_AZURE_KEY_VAULT_NAME: ${{ inputs.azure_key_vault_name || vars.AZURE_KEY_VAULT_NAME }}
+          EFFECTIVE_SSH_PRIVATE_KEY_SECRET_NAME: ${{ inputs.ssh_private_key_secret_name || vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          EFFECTIVE_SSH_PRIVATE_KEY_PATH: ${{ inputs.ssh_private_key_path || vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+        run: |
+          set -euo pipefail
+          {
+            echo "azure_client_id=${EFFECTIVE_AZURE_CLIENT_ID}"
+            echo "azure_subscription_id=${EFFECTIVE_AZURE_SUBSCRIPTION_ID}"
+            echo "azure_tenant_id=${EFFECTIVE_AZURE_TENANT_ID}"
+            echo "azure_key_vault_name=${EFFECTIVE_AZURE_KEY_VAULT_NAME}"
+            echo "ssh_private_key_secret_name=${EFFECTIVE_SSH_PRIVATE_KEY_SECRET_NAME}"
+            echo "ssh_private_key_path=${EFFECTIVE_SSH_PRIVATE_KEY_PATH}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Azure login
-        if: ${{ inputs.azure_key_vault_name != '' && inputs.ssh_private_key_secret_name != '' }}
+        if: ${{ steps.resolve.outputs.azure_key_vault_name != '' && steps.resolve.outputs.ssh_private_key_secret_name != '' && steps.resolve.outputs.azure_client_id != '' }}
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.azure_client_id }}
-          tenant-id: ${{ inputs.azure_tenant_id }}
-          subscription-id: ${{ inputs.azure_subscription_id }}
+          client-id: ${{ steps.resolve.outputs.azure_client_id }}
+          tenant-id: ${{ steps.resolve.outputs.azure_tenant_id }}
+          subscription-id: ${{ steps.resolve.outputs.azure_subscription_id }}
 
       - name: Restore shared SSH key from Key Vault
-        if: ${{ inputs.azure_key_vault_name != '' && inputs.ssh_private_key_secret_name != '' }}
+        if: ${{ steps.resolve.outputs.azure_key_vault_name != '' && steps.resolve.outputs.ssh_private_key_secret_name != '' }}
         id: restore_shared_ssh
         uses: ./.github/actions/restore-ssh-key-from-keyvault
         with:
-          key-vault-name: ${{ inputs.azure_key_vault_name }}
-          secret-name: ${{ inputs.ssh_private_key_secret_name }}
-          key-path: ${{ inputs.ssh_private_key_path }}
+          key-vault-name: ${{ steps.resolve.outputs.azure_key_vault_name }}
+          secret-name: ${{ steps.resolve.outputs.ssh_private_key_secret_name }}
+          key-path: ${{ steps.resolve.outputs.ssh_private_key_path }}
 
       - name: Configure SSH for master hosts
         if: ${{ inputs.ssh_master_group != '' }}
@@ -130,7 +151,7 @@ jobs:
         with:
           inventory-path: ${{ inputs.inventory_path }}
           inventory-group: ${{ inputs.ssh_master_group }}
-          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path || steps.resolve.outputs.ssh_private_key_path }}
           ssh-user: ${{ inputs.ssh_user }}
 
       - name: Configure SSH for worker hosts
@@ -139,7 +160,7 @@ jobs:
         with:
           inventory-path: ${{ inputs.inventory_path }}
           inventory-group: ${{ inputs.ssh_worker_group }}
-          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path || steps.resolve.outputs.ssh_private_key_path }}
           ssh-user: ${{ inputs.ssh_user }}
 
       - name: Syntax check playbooks

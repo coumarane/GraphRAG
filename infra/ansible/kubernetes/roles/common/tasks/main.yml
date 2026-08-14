@@ -47,9 +47,8 @@
     - system_prep
 
 - name: Load kernel modules immediately
-  ansible.builtin.modprobe:
-    name: "{{ item }}"
-    state: present
+  ansible.builtin.command: "modprobe {{ item }}"
+  changed_when: false
   loop:
     - overlay
     - br_netfilter
@@ -87,6 +86,7 @@
   ansible.builtin.command: containerd config default
   register: common_containerd_default_config
   changed_when: false
+  when: not ansible_check_mode
 
 - name: Apply containerd config with systemd cgroup driver
   ansible.builtin.copy:
@@ -94,19 +94,21 @@
     content: "{{ common_containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
     mode: "0644"
   notify: Restart containerd
+  when: not ansible_check_mode
   tags:
     - containerd
 
-# handlers/main.yml
-- name: Restart containerd
-  ansible.builtin.systemd:
-    name: containerd
-    state: restarted
+- name: Flush containerd handlers before Kubernetes bootstrap
+  ansible.builtin.meta: flush_handlers
+  when: not ansible_check_mode
+  tags:
+    - containerd
 
 - name: Enable and start containerd service
   ansible.builtin.systemd:
     name: containerd
     enabled: true
     state: started
+  when: not ansible_check_mode
   tags:
     - containerd

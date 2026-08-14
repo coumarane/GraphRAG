@@ -1,0 +1,58 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: envoy-gateway-system
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  gatewayClassName: eg
+  listeners:
+    - name: web-https
+      hostname: chatwithdocs.org
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: chatwithdocs-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: api-https
+      hostname: api.chatwithdocs.org
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: chatwithdocs-api-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: argocd-https
+      hostname: argocd.chatwithdocs.org
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: chatwithdocs-argocd-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: grafana-https
+      hostname: prometheus.chatwithdocs.org
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: chatwithdocs-prometheus-tls
+      allowedRoutes:
+        namespaces:
+          from: All

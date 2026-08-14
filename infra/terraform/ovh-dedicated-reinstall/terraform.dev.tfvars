@@ -5,7 +5,7 @@ azure_resource_group_name = "rg-safranysAI-Dev"
 azure_key_vault_name      = "safranys-kv-shared"
 
 # OVH Dedicated Server Reinstallation Configuration
-installation_template_name      = "ubuntu2604-server"
+installation_template_name      = "ubuntu2604-server_64"
 auto_generate_ssh_key           = true
 ssh_private_key_path            = "~/.ssh/ovh-rag-reinstall-ed25519"
 manage_ssh_key_in_key_vault     = true

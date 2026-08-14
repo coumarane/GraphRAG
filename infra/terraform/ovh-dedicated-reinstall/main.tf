@@ -1,8 +1,4 @@
 locals {
-  common_customizations = {
-    language = "en-us"
-  }
-
   ssh_private_key_path = pathexpand(var.ssh_private_key_path)
   ssh_keygen_script    = <<-EOT
     set -euo pipefail
@@ -82,7 +78,6 @@ resource "ovh_dedicated_server_reinstall_task" "cluster" {
     hostname                 = each.value.hostname
     post_installation_script = var.post_installation_script_base64
     ssh_key                  = local.effective_ssh_public_key
-    language                 = local.common_customizations.language
   }
 
   storage {

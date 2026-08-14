@@ -11,7 +11,7 @@
   tags: [helm_install]
 
 - name: Ensure curl and gpg are present (RHEL/CentOS)
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name:
       - curl
       - gnupg
