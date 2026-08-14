@@ -47,9 +47,8 @@
     - system_prep
 
 - name: Load kernel modules immediately
-  ansible.builtin.modprobe:
-    name: "{{ item }}"
-    state: present
+  ansible.builtin.command: "modprobe {{ item }}"
+  changed_when: false
   loop:
     - overlay
     - br_netfilter

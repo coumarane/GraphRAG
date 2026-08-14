@@ -16,16 +16,11 @@
   tags:
     - k8s_install
 
-- name: Remove existing Kubernetes keyring if present (avoid invalid format)
-  ansible.builtin.file:
-    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    state: absent
-  tags:
-    - k8s_install
-
 - name: Add Kubernetes APT GPG key (dearmor)
   ansible.builtin.command: >
     gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-apt-release.key
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   tags:
     - k8s_install
 
