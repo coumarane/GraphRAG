@@ -16,15 +16,16 @@
       ansible.builtin.systemd_service:
         daemon_reload: true
 
-    - name: Gather package facts
-      ansible.builtin.package_facts:
-        manager: auto
+    - name: Check HAProxy systemd unit file
+      ansible.builtin.stat:
+        path: /lib/systemd/system/haproxy.service
+      register: haproxy_unit_file
 
-    - name: Ensure HAProxy package is installed
+    - name: Ensure HAProxy systemd unit exists
       ansible.builtin.assert:
         that:
-          - "'haproxy' in ansible_facts.packages"
-        fail_msg: "HAProxy package is not installed on the host."
+          - haproxy_unit_file.stat.exists
+        fail_msg: "HAProxy systemd unit file was not found on the host."
 
     - name: Configure HAProxy for Envoy Gateway HTTPS forwarding
       ansible.builtin.template:
