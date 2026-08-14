@@ -265,6 +265,7 @@ jobs:
           kubectl get gatewayclass eg
           kubectl -n envoy-gateway-system get gateway public-gateway
           kubectl -n envoy-gateway-system get svc
+          kubectl get certificate -A || true
           EOSSH
 
       # - name: Install/upgrade Elasticsearch + Kibana
@@ -424,6 +425,9 @@ jobs:
 
           echo "=== ClusterIssuers ==="
           kubectl get clusterissuer
+
+          echo "=== certificates ==="
+          kubectl get certificate,certificaterequest,order,challenge -A || true
 
           echo "=== envoy gateway ==="
           kubectl get gatewayclass
