@@ -78,12 +78,17 @@ Suggested values:
 Minimum rights for the current Terraform workflow:
 
 - `GET` -> `/dedicated/server/*`
-- `POST` -> `/dedicated/server/*`
+- `GET` -> `/dedicated/server/*/task/*`
+- `GET` -> `/dedicated/server/*/install/status`
+- `POST` -> `/dedicated/server/*/reinstall`
 - `GET` -> `/dedicated/installationTemplate/*`
 
 Why these rights are needed:
 
-- `/dedicated/server/*`: read dedicated server details and trigger the reinstall task
+- `/dedicated/server/*`: read dedicated server details
+- `/dedicated/server/*/task/*`: poll the reinstall task status until Terraform sees completion
+- `/dedicated/server/*/install/status`: read the detailed install progress exposed by OVH
+- `/dedicated/server/*/reinstall`: trigger the reinstall task
 - `/dedicated/installationTemplate/*`: read the installation template such as `ubuntu2604-server_64`
 
 Restricted IPs:
@@ -98,6 +103,10 @@ After you click `Create`, OVH returns:
 - `Application Key` -> `OVH_APPLICATION_KEY`
 - `Application Secret` -> `OVH_APPLICATION_SECRET`
 - `Consumer Key` -> `OVH_CONSUMER_KEY`
+
+If you later discover that the OVH API rights are incomplete, create a new OVH API token with the corrected rights and rotate the GitHub secrets. OVHcloud does not provide a practical in-place rights editing flow for an existing token in this workflow.
+
+If a Terraform apply already created reinstall tasks before failing on task polling permissions, check the task state in OVHcloud before rerunning `terraform apply` or the GitHub workflow. Otherwise you may enqueue duplicate reinstall tasks for the same servers.
 
 ## Where `AZURE_CLIENT_ID` comes from
 
@@ -129,6 +138,8 @@ Minimum practical role assignments for this workflow:
 - `Reader` on resource group `rg-safranysAI-Dev`
 - `Storage Blob Data Contributor` on storage account `terraformstate240775`
 - `Key Vault Secrets Officer` on Key Vault `safranys-kv-shared`
+
+For a human user to view the SSH private key secret value in Azure Portal, assign `Key Vault Secrets User` on `safranys-kv-shared`. `Owner`, `Contributor`, or `Key Vault Contributor` are not enough to read secret contents when the vault uses Azure RBAC.
 
 Recommended helper:
 
