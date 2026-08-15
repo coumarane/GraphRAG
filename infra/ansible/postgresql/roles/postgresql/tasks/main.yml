@@ -177,6 +177,7 @@
   become: true
   become_user: postgres
   community.postgresql.postgresql_db:
+    maintenance_db: postgres
     name: "{{ postgresql_app_db }}"
     state: present
 
