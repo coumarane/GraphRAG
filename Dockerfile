@@ -25,7 +25,7 @@ COPY alembic.ini ./
 COPY config ./config
 
 RUN uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
-      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra redis --extra minio --extra azure --extra qdrant --extra neo4j \
       --extra observability
 
 USER app
