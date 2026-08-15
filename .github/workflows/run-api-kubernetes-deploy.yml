@@ -148,11 +148,11 @@ jobs:
 
           kubectl apply -f /tmp/chatwithdocs-api/namespace.yaml
 
-          kubectl -n chatwithdocs-api create secret docker-registry harbor-regcred \\
-            --docker-server="\${REGISTRY_HOST}" \\
-            --docker-username="\${HARBOR_USERNAME}" \\
-            --docker-password="\${HARBOR_PASSWORD}" \\
-            --docker-email=admin@safranys.com \\
+          kubectl -n chatwithdocs-api create secret docker-registry harbor-regcred \
+            --docker-server="${REGISTRY_HOST}" \
+            --docker-username="${HARBOR_USERNAME}" \
+            --docker-password="${HARBOR_PASSWORD}" \
+            --docker-email=admin@safranys.com \
             --dry-run=client -o yaml | kubectl apply -f -
 
           kubectl apply -k /tmp/chatwithdocs-api
