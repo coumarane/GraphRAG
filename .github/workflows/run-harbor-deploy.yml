@@ -10,7 +10,7 @@ on:
       harbor_hostname:
         description: "Hostname that Harbor should advertise"
         required: false
-        default: "harbor.chatwithdocs.org"
+        default: "harbor.safranys.com"
 
 env:
   ANSIBLE_HOST_KEY_CHECKING: "False"
@@ -33,7 +33,7 @@ jobs:
         harbor_hostname=${{ inputs.harbor_hostname }}
         harbor_protocol=https
         harbor_enable_letsencrypt=true
-        harbor_letsencrypt_email=contact@chatwithdocs.org
+        harbor_letsencrypt_email=contact@safranys.com
 
   deploy:
     needs: check
@@ -52,4 +52,4 @@ jobs:
         harbor_hostname=${{ inputs.harbor_hostname }}
         harbor_protocol=https
         harbor_enable_letsencrypt=true
-        harbor_letsencrypt_email=contact@chatwithdocs.org
+        harbor_letsencrypt_email=contact@safranys.com

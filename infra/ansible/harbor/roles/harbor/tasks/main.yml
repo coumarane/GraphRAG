@@ -128,6 +128,11 @@
       #  private_key: ""
   when: harbor_protocol_effective == 'http'
 
+- name: Check if Harbor already installed
+  ansible.builtin.stat:
+    path: "{{ harbor_install_dir }}/common/config/core/env"
+  register: harbor_core_env
+
 - name: Stop existing Harbor containers to free port 80 for certbot
   ansible.builtin.command: docker compose -f {{ harbor_install_dir }}/docker-compose.yml down
   when:
@@ -169,11 +174,6 @@
         certificate: "{{ harbor_certificate_path }}"
         private_key: "{{ harbor_private_key_path }}"
   when: harbor_protocol_effective == 'https'
-
-- name: Check if Harbor already installed
-  ansible.builtin.stat:
-    path: "{{ harbor_install_dir }}/common/config/core/env"
-  register: harbor_core_env
 
 - name: Install Harbor (first run)
   ansible.builtin.command: "./install.sh --with-trivy"

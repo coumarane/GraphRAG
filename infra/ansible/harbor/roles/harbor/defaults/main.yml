@@ -8,7 +8,7 @@ harbor_db_password: "{{ lookup('env', 'HARBOR_DB_PASSWORD') | default(omit, true
 harbor_hostname: "{{ ansible_host }}"
 harbor_protocol: http
 harbor_enable_letsencrypt: true
-harbor_letsencrypt_email: "admin@chatwithdocs.org"
+harbor_letsencrypt_email: "admin@safranys.com"
 harbor_https_port: 443
 harbor_certificate_path: "/etc/letsencrypt/live/{{ harbor_hostname }}/fullchain.pem"
 harbor_private_key_path: "/etc/letsencrypt/live/{{ harbor_hostname }}/privkey.pem"

@@ -1,8 +1,8 @@
 # Harbor deployment settings
-harbor_hostname: "harbor.chatwithdocs.org"
+harbor_hostname: "harbor.safranys.com"
 harbor_protocol: "https"
 harbor_enable_letsencrypt: true
-harbor_letsencrypt_email: "admin@chatwithdocs.org"
+harbor_letsencrypt_email: "admin@safranys.com"
 
 # Optional: override if you want non-default data volume/path/port
 # harbor_data_volume: /data
