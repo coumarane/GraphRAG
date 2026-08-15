@@ -26,7 +26,10 @@ COPY config ./config
 
 RUN uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
-      --extra observability
+      --extra observability \
+    && uv pip install --python .venv/bin/python \
+      "azure-storage-blob>=12.26,<13" \
+      "azure-identity>=1.23,<2"
 
 USER app
 
