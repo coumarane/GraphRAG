@@ -29,6 +29,7 @@ Last updated: 2026-08-15
 - Public ingress validation completed successfully using the master public IP `193.70.35.121`
 - Dedicated public ingress workflow created for OVH-friendly exposure of Envoy Gateway through HAProxy on `rag-master`
 - Harbor deployment workflow stabilized and Harbor access validated through `https://harbor.safranys.com/harbor/projects`
+- Harbor-backed smoke image push and Kubernetes pull path validated successfully through `https://chatwithdocs.org`
 
 ## Current infrastructure state
 
@@ -81,6 +82,9 @@ Harbor state:
 - Harbor server IP: `62.84.180.181`
 - Harbor is reachable over HTTPS with a valid public certificate
 - Harbor deployment is managed through the Ansible workflow `.github/workflows/run-harbor-deploy.yml`
+- Harbor robot account credentials are validated for Docker login
+- GitHub Actions can push the smoke image to Harbor
+- Kubernetes can pull the smoke image from Harbor using namespace secret `harbor-regcred`
 
 ## Important implementation decisions
 
@@ -100,6 +104,11 @@ Harbor state:
   - temporary Cloudflare DNS targeting `193.70.35.121`
 - Harbor Ansible check mode now exits before installer/certbot operations because the Harbor online installer workflow is not meaningfully dry-runnable
 - reusable Ansible GitHub workflows now pass secrets through `secrets:` instead of embedding them in `with.extra_vars`
+- Harbor robot usernames can contain `$`, so Harbor login handling and remote deploy secret passing were adjusted to avoid shell expansion issues
+- the smoke deployment path is now Harbor-backed and validates:
+  - GitHub Actions push to Harbor
+  - Kubernetes pull from Harbor
+  - public HTTPS routing on `chatwithdocs.org`
 
 ## Relevant files
 
@@ -117,6 +126,8 @@ Harbor state:
 - [.github/workflows/run-kubernetes-public-ingress-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-kubernetes-public-ingress-deploy.yml)
 - [.github/workflows/run-argocd-apps-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-argocd-apps-bootstrap.yml)
 - [.github/workflows/run-harbor-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-harbor-deploy.yml)
+- [.github/workflows/build-and-push-smoke-web-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-smoke-web-image.yml)
+- [.github/workflows/run-smoke-web-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-smoke-web-deploy.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
 - [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
@@ -126,4 +137,4 @@ Harbor state:
 
 ## Next step
 
-Replace the smoke test application with the real platform application path, then validate Argo CD-managed deployment, Harbor image pull flow, and end-to-end routing on the same public ingress path already validated on `chatwithdocs.org`.
+Build and deploy the real `chatwithdocs` application images from Harbor, then validate application behavior and route management on the same ingress path already proven with the Harbor-backed smoke deployment.
