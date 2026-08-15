@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Harbor image tag to deploy (defaults to latest)"
+        description: "Optional Harbor image tag to deploy. Leave empty to use the digest already committed in kustomization."
         required: false
-        default: "latest"
+        default: ""
 
 permissions:
   contents: read
@@ -41,22 +41,58 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Resolve target image tag
+      - name: Optionally override kustomization image tag
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ inputs.image_tag }}"
-          TAG="${TAG:-latest}"
-          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
-          echo "Using image tag: $TAG"
-          
-      - name: Patch kustomization with image tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${IMAGE_TAG:?IMAGE_TAG is not set}"
-          perl -0pi -e "s|(^\s*newTag:\s*).*$|\$1${IMAGE_TAG}|m" infra/k8s/web/kustomization.yaml
-          grep -n "newTag:" infra/k8s/web/kustomization.yaml
+          IMAGE_TAG="${{ inputs.image_tag }}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "Using committed kustomization digest for Web deploy."
+            exit 0
+          fi
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("infra/k8s/web/kustomization.yaml")
+          text = path.read_text(encoding="utf-8")
+          lines = text.splitlines()
+          out = []
+          in_images = False
+          in_target = False
+          inserted = False
+          image_tag = """${{ inputs.image_tag }}"""
+
+          for line in lines:
+            stripped = line.strip()
+            if stripped == "images:":
+              in_images = True
+              out.append(line)
+              continue
+            if in_images and line.startswith("- "):
+              if in_target and not inserted:
+                out.append(f"  newTag: {image_tag}")
+                inserted = True
+              in_target = False
+            if in_images and stripped.startswith("- digest:"):
+              continue
+            if in_images and stripped == "name: harbor.safranys.com/chatwithdocs/web":
+              in_target = True
+            if in_target and stripped.startswith("digest:"):
+              continue
+            if in_target and stripped.startswith("newTag:"):
+              out.append(f"  newTag: {image_tag}")
+              inserted = True
+              continue
+            out.append(line)
+
+          if in_target and not inserted:
+            out.append(f"  newTag: {image_tag}")
+
+          path.write_text("\n".join(out) + "\n", encoding="utf-8")
+          PY
+
+          sed -n '1,120p' infra/k8s/web/kustomization.yaml
       
       - name: Azure login
         uses: azure/login@v2
@@ -103,13 +139,12 @@ jobs:
             exit 1
           fi
 
-          ssh "$MASTER_HOST" bash -s <<EOSSH
-          set -euo pipefail
-          export KUBECONFIG=/home/ubuntu/.kube/config
+          REMOTE_REGISTRY_HOST="$(printf '%q' "${REGISTRY_HOST}")"
+          REMOTE_HARBOR_USERNAME="$(printf '%q' "${HARBOR_USERNAME}")"
+          REMOTE_HARBOR_PASSWORD="$(printf '%q' "${HARBOR_PASSWORD}")"
 
-          REGISTRY_HOST="${REGISTRY_HOST}"
-          HARBOR_USERNAME="${HARBOR_USERNAME}"
-          HARBOR_PASSWORD="${HARBOR_PASSWORD}"
+          ssh "$MASTER_HOST" "export KUBECONFIG=/home/ubuntu/.kube/config REGISTRY_HOST=${REMOTE_REGISTRY_HOST} HARBOR_USERNAME=${REMOTE_HARBOR_USERNAME} HARBOR_PASSWORD=${REMOTE_HARBOR_PASSWORD}; bash -s" <<'EOSSH'
+          set -euo pipefail
 
           # Ensure namespace exists
           kubectl apply -f /tmp/chatwithdocs-web/namespace.yaml
@@ -133,6 +168,7 @@ jobs:
             echo "Rollout failed; collecting diagnostics..."
             kubectl -n chatwithdocs-web get pods -o wide
             kubectl -n chatwithdocs-web describe deploy/web
+            kubectl -n chatwithdocs-web describe pods
             kubectl -n chatwithdocs-web get events --sort-by=.metadata.creationTimestamp | tail -n 30
             exit 1
           fi

@@ -5,13 +5,14 @@ Minimal Kubernetes manifests to run the web container that is built and pushed t
 ## Prerequisites
 - cert-manager + `letsencrypt-prod` ClusterIssuer installed (see `infra/helm/cert-manager`).
 - Envoy Gateway present with the shared `public-gateway` Gateway installed by the bootstrap workflow.
-- Harbor image already pushed, e.g. `harbor.chatwithdocs.org/chatwithdocs/web:<tag>`.
+- Harbor image already pushed, e.g. `harbor.safranys.com/chatwithdocs/web:<tag>`.
 - Harbor pull credentials available.
 
 ## Configure
-1) Set the image tag in `infra/k8s/web/kustomization.yaml` (`newTag`) to the Harbor tag you want to deploy (defaults to `latest`).
-2) Adjust the route host in `infra/k8s/web/httproute.yaml` (`chatwithdocs.org`) to your domain.
-3) If you need a different API URL at build time, set `inputs.image_tag` and the `NEXT_PUBLIC_API_URL` secret/var when running the GitHub Actions build so the baked image has the right URL.
+1) By default the build workflow commits the image digest into `infra/k8s/web/kustomization.yaml`.
+2) If you want to override that manually for a one-off deploy, set `newTag` for the Harbor image or use `.github/workflows/run-web-kubernetes-deploy.yml` with `image_tag`.
+3) Adjust the route host in `infra/k8s/web/httproute.yaml` (`chatwithdocs.org`) to your domain.
+4) If you need a different API URL at build time, set the appropriate frontend environment values before building the image.
 
 ## Deploy
 ```bash
@@ -20,7 +21,7 @@ kubectl apply -f infra/k8s/web/namespace.yaml
 
 # 2) Create/refresh Harbor imagePullSecret (fills harbor-regcred referenced by the Deployment)
 kubectl -n chatwithdocs-web create secret docker-registry harbor-regcred \
-  --docker-server=harbor.chatwithdocs.org \
+  --docker-server=harbor.safranys.com \
   --docker-username=$HARBOR_USERNAME \
   --docker-password=$HARBOR_PASSWORD \
   --docker-email=devnull@example.com \
