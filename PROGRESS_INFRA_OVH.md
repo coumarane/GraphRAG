@@ -41,12 +41,15 @@ Last updated: 2026-08-15
 - PostgreSQL GitHub workflow updated to support destructive rebuild from scratch
 - PostgreSQL Ansible role refactored for rebuild support, lint-safe variable naming, and explicit restart handling
 - PostgreSQL bootstrap path migrated to direct `psql` commands for app database and role setup
+- Database migrations workflow fixed to target `database.safranys.com` by default
+- Database migrations executed successfully against the dedicated PostgreSQL host
 - Kubernetes add-ons workflow extended to install in-cluster data services for application dependencies:
   - Redis
   - Qdrant
   - Neo4j
 - MinIO is intentionally deferred pending the final storage decision between Azure Storage and S3-compatible object storage
 - local-path provisioner added and validated for PVC-backed in-cluster services
+- Browser login path validated successfully through `https://chatwithdocs.org` with the bootstrap admin account
 
 ## Current infrastructure state
 
@@ -119,10 +122,15 @@ Application deployment state:
 
 - web application is deployed in namespace `chatwithdocs-web`
 - API application is deployed in namespace `chatwithdocs-api`
+- API deployment rollout is healthy after successful schema migration
+- web deployment rollout is healthy after loading mounted runtime env before Next.js startup
 - API Kubernetes health probes were corrected to the mounted FastAPI paths:
   - `/api/v1/health/live`
   - `/api/v1/health/ready`
-- authentication bootstrap is not configured yet, so no initial application admin account exists at this stage
+- authentication bootstrap is configured and validated
+- bootstrap admin login validated with:
+  - `AUTH_BOOTSTRAP_EMAIL=admin@chatwithdocs.com`
+  - `AUTH_BOOTSTRAP_PASSWORD` from synced production secrets
 - API and web redeploy are now intended to target the dedicated PostgreSQL host instead of any in-cluster database path
 - in-cluster dependency services are now deployed before the next API/web redeploy:
   - Redis for cache/session-style needs
@@ -148,12 +156,14 @@ Dedicated PostgreSQL state:
 - PostgreSQL stabilization fixes applied on Saturday, August 15, 2026:
   - destructive rebuild option
   - default target host switch to `database.safranys.com`
+  - database migrations workflow host switch to `database.safranys.com`
   - role variable prefix cleanup for ansible-lint
   - missing PostgreSQL restart handler
   - explicit `psql` bootstrap path using `argv`
 - current status:
   - host connectivity and package installation are working
-  - PostgreSQL bootstrap is still being stabilized in the application DB / role creation path
+  - schema migration path is validated through `.github/workflows/run-database-migrations.yml`
+  - API startup now succeeds against the migrated database schema
 
 Azure application secrets state:
 
@@ -209,6 +219,7 @@ Azure application secrets state:
   - Kubernetes pull for `api` and `web`
   - public routing of `chatwithdocs.org` to the real web service
   - public routing of `api.chatwithdocs.org` to the real API service
+- the web server-side auth proxy now explicitly sources `/app/.env` before starting Next.js so `RAG_API_URL` is honored at runtime
 - stateful in-cluster application dependencies now use:
   - Rancher `local-path-provisioner`
   - explicit `local-path` PVC binding in Redis, Qdrant, and Neo4j Helm values
@@ -268,4 +279,7 @@ Azure application secrets state:
 
 ## Next step
 
-Finish stabilizing the dedicated PostgreSQL rebuild on `database.safranys.com`, update API production env values to the rebuilt database endpoint and real credentials, sync `.env.production` and `frontend/.env.production` into Azure Key Vault, then redeploy and validate the real API and web applications from Kubernetes.
+Prepare the next application services and operational capabilities on top of the now-working platform baseline:
+- worker deployment and background processing validation
+- remaining app infrastructure dependencies such as object storage decision
+- Argo CD application management for non-smoke workloads
