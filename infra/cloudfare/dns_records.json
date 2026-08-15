@@ -17,20 +17,6 @@
     },
     {
       "type": "A",
-      "name": "database.chatwithdocs.org",
-      "content": "167.86.88.114",
-      "proxied": false,
-      "ttl": 1
-    },
-    {
-      "type": "A",
-      "name": "harbor.chatwithdocs.org",
-      "content": "62.84.180.181",
-      "proxied": false,
-      "ttl": 1
-    },
-    {
-      "type": "A",
       "name": "prometheus.chatwithdocs.org",
       "content": "193.70.35.121",
       "proxied": true,

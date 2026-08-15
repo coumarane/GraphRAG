@@ -122,6 +122,8 @@ Notes:
 
 - Harbor defaults to version `2.15.2`.
 - Let’s Encrypt is enabled by default, so `harbor_hostname` must resolve publicly before the run.
+- The current default Harbor hostname in this repository is `harbor.safranys.com`.
+- For Let’s Encrypt HTTP-01, keep `harbor.safranys.com` in Cloudflare as `DNS only` and make sure ports `80` and `443` on `62.84.180.181` are reachable from the Internet during issuance and renewal.
 - Harbor upgrades are in-place only. Harbor does not support downgrades after schema changes.
 
 ## PostgreSQL setup
@@ -178,7 +180,7 @@ ssh ubuntu@193.70.35.121 'kubectl --kubeconfig /etc/kubernetes/admin.conf get no
 Check Harbor:
 
 ```bash
-curl -I https://harbor.chatwithdocs.org
+curl -I https://harbor.safranys.com
 ```
 
 Check PostgreSQL:

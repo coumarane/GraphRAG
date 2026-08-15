@@ -12,6 +12,11 @@
         name: haproxy
         state: present
 
+    - name: Reload systemd units after HAProxy install
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: not ansible_check_mode
+
     - name: Configure HAProxy for Envoy Gateway HTTPS forwarding
       ansible.builtin.template:
         src: templates/haproxy-public-ingress.cfg.j2
@@ -21,11 +26,26 @@
         mode: "0644"
       notify: Restart HAProxy
 
+    - name: Install dedicated systemd unit for public ingress HAProxy
+      ansible.builtin.template:
+        src: templates/public-ingress-haproxy.service.j2
+        dest: /etc/systemd/system/public-ingress-haproxy.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload and Restart HAProxy
+
+    - name: Reload systemd after installing public ingress HAProxy unit
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: not ansible_check_mode
+
     - name: Ensure HAProxy service is enabled and started
-      ansible.builtin.service:
-        name: haproxy
+      ansible.builtin.systemd_service:
+        name: public-ingress-haproxy
         enabled: true
         state: started
+      when: not ansible_check_mode
 
     - name: Detect ufw availability
       ansible.builtin.command: which ufw
@@ -43,9 +63,18 @@
 
     - name: Flush handlers
       ansible.builtin.meta: flush_handlers
+      when: not ansible_check_mode
 
   handlers:
     - name: Restart HAProxy
-      ansible.builtin.service:
-        name: haproxy
+      ansible.builtin.systemd_service:
+        name: public-ingress-haproxy
         state: restarted
+      when: not ansible_check_mode
+
+    - name: Reload and Restart HAProxy
+      ansible.builtin.systemd_service:
+        name: public-ingress-haproxy
+        daemon_reload: true
+        state: restarted
+      when: not ansible_check_mode

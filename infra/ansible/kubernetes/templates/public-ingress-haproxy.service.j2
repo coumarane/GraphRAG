@@ -1,0 +1,14 @@
+[Unit]
+Description=Public ingress HAProxy for Envoy Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg
+ExecReload=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -c
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -25,6 +25,9 @@ Last updated: 2026-08-14
   - Argo CD core
 - Argo CD app bootstrap separated from cluster add-ons bootstrap into its own workflow
 - Cloudflare DNS records for `chatwithdocs.org` and related subdomains prepared and aligned with `infra/cloudfare/dns_records.json`
+- Smoke test application deployed successfully and validated through `https://chatwithdocs.org`
+- Public ingress validation completed successfully using the master public IP `193.70.35.121`
+- Dedicated public ingress workflow created for OVH-friendly exposure of Envoy Gateway through HAProxy on `rag-master`
 
 ## Current infrastructure state
 
@@ -57,14 +60,17 @@ Platform ingress and TLS:
   - `api.chatwithdocs.org`
   - `argocd.chatwithdocs.org`
   - `prometheus.chatwithdocs.org`
+- public HTTPS validation currently uses `193.70.35.121` on `rag-master`
+- HAProxy on `rag-master` forwards public `443` to the Envoy Gateway NodePort
+- the OVH Additional IP `51.38.19.54` remains a later networking task and is not the active validated ingress path yet
 
 Cloudflare DNS state:
 
-- `chatwithdocs.org` -> `51.38.19.54` proxied
-- `www.chatwithdocs.org` -> `51.38.19.54` proxied
-- `api.chatwithdocs.org` -> `51.38.19.54` proxied
-- `argocd.chatwithdocs.org` -> `51.38.19.54` proxied
-- `prometheus.chatwithdocs.org` -> `51.38.19.54` proxied
+- `chatwithdocs.org` -> `193.70.35.121` proxied
+- `www.chatwithdocs.org` -> `193.70.35.121` proxied
+- `api.chatwithdocs.org` -> `193.70.35.121` proxied
+- `argocd.chatwithdocs.org` -> `193.70.35.121` proxied
+- `prometheus.chatwithdocs.org` -> `193.70.35.121` proxied
 - `database.chatwithdocs.org` -> `167.86.88.114` DNS only
 - `harbor.chatwithdocs.org` -> `62.84.180.181` DNS only
 
@@ -78,6 +84,12 @@ Cloudflare DNS state:
 - Grafana bootstrap no longer requires OIDC and defaults to login form + admin password
 - Argo CD bootstrap no longer requires OIDC and uses core install separately from application registration
 - Argo CD `Application` objects are now deployed through dedicated workflow `.github/workflows/run-argocd-apps-bootstrap.yml`
+- the initial MetalLB-based public ingress design was not suitable for the OVH Additional IP `/32` validation path
+- the validated public ingress path now uses:
+  - Envoy Gateway inside Kubernetes
+  - a dedicated `EnvoyProxy` with `NodePort` exposure
+  - HAProxy on `rag-master` for public `443`
+  - temporary Cloudflare DNS targeting `193.70.35.121`
 
 ## Relevant files
 
@@ -92,10 +104,14 @@ Cloudflare DNS state:
 - [infra/ansible/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/README.md)
 - [.github/workflows/run-kubernetes-cluster-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-kubernetes-cluster-deploy.yml)
 - [.github/workflows/run-k8s-addons-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-k8s-addons-bootstrap.yml)
+- [.github/workflows/run-kubernetes-public-ingress-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-kubernetes-public-ingress-deploy.yml)
 - [.github/workflows/run-argocd-apps-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-argocd-apps-bootstrap.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
+- [infra/ansible/kubernetes/public_ingress_playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/kubernetes/public_ingress_playbook.yml)
+- [infra/k8s/gateway/envoyproxy-public-gateway.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/gateway/envoyproxy-public-gateway.yaml)
+- [infra/k8s/smoke-web/kustomization.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/smoke-web/kustomization.yaml)
 
 ## Next step
 
-Deploy a small test application on the OVH Kubernetes cluster, expose it through Envoy Gateway on `chatwithdocs.org`, and validate end-to-end DNS, TLS, routing, and external access using the Cloudflare records already prepared in `infra/cloudfare`.
+Replace the smoke test application with the real platform application path, then validate Argo CD-managed deployment, Harbor image pull flow, and end-to-end routing on the same public ingress path already validated on `chatwithdocs.org`.
