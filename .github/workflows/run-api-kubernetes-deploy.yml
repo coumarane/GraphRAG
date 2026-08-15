@@ -48,7 +48,7 @@ jobs:
           IMAGE_TAG="${{ inputs.image_tag }}"
           if [ -z "${IMAGE_TAG}" ]; then
             echo "Using committed kustomization digest for API deploy."
-            if ! grep -Eq '^[[:space:]]+digest:[[:space:]]+sha256:' infra/k8s/api/kustomization.yaml; then
+            if ! grep -Eq '^[[:space:]-]*digest:[[:space:]]+sha256:' infra/k8s/api/kustomization.yaml; then
               echo "Committed API kustomization is missing a digest. Build the API image first so GitOps updates the manifest."
               exit 1
             fi
