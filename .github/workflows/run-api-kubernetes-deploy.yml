@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Optional Harbor image tag to deploy. Leave empty to use the digest already committed in kustomization."
+        description: "Optional Harbor image tag to deploy. Leave empty to use the committed digest. Do not use 'latest'."
         required: false
         default: ""
 
@@ -41,15 +41,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Optionally override kustomization image tag
+      - name: Validate deploy image selection
         shell: bash
         run: |
           set -euo pipefail
           IMAGE_TAG="${{ inputs.image_tag }}"
           if [ -z "${IMAGE_TAG}" ]; then
             echo "Using committed kustomization digest for API deploy."
+            if ! grep -Eq '^[[:space:]]+digest:[[:space:]]+sha256:' infra/k8s/api/kustomization.yaml; then
+              echo "Committed API kustomization is missing a digest. Build the API image first so GitOps updates the manifest."
+              exit 1
+            fi
             exit 0
           fi
+
+          case "${IMAGE_TAG}" in
+            latest|*:latest|*latest*)
+              echo "Manual deploy using 'latest' is blocked. Use the committed digest path or a specific immutable tag."
+              exit 1
+              ;;
+          esac
+
+          echo "WARNING: manual image_tag override bypasses the committed GitOps digest for this deploy."
+
+      - name: Optionally override kustomization image tag
+        if: ${{ inputs.image_tag != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
           python3 <<'PY'
           from pathlib import Path
