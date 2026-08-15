@@ -23,7 +23,7 @@ Pass via extra-vars or environment (GitHub Secrets in the workflow):
 
 Optional:
 - `postgres_rebuild` (default `false`) – destructive reset: purge existing PostgreSQL packages and wipe data/config directories before reinstall
-- `pgadmin_setup` (default `true` in defaults) – set to `false` to skip pgAdmin
+- `pgadmin_setup` (default `false`) – set to `true` to install pgAdmin
 - `pgadmin_email`, `pgadmin_password` (>=8 chars) – required when pgAdmin enabled
 - `postgres_version` – defaults to `18`
 - `pgadmin_install_method` – `auto` (default; uses container on Noble), `repo`, or `container`

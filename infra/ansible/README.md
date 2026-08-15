@@ -149,8 +149,6 @@ export POSTGRES_ADMIN_PASSWORD='change-me'
 export POSTGRES_APP_DB='chatwithdocs_db'
 export POSTGRES_APP_USER='chatwithdocs'
 export POSTGRES_APP_PASSWORD='change-me-too'
-export PGADMIN_EMAIL='admin@chatwithdocs.org'
-export PGADMIN_PASSWORD='change-me-again'
 
 ansible-playbook infra/ansible/postgresql/playbook.yml \
   -i infra/ansible/postgresql/inventory.ini

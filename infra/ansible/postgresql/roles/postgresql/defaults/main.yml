@@ -31,8 +31,8 @@ postgresql_admin_password: "{{ lookup('env', 'POSTGRES_ADMIN_PASSWORD') | defaul
 postgresql_app_db: "{{ lookup('env', 'POSTGRES_APP_DB') | default('', true) }}"
 postgresql_app_user: "{{ lookup('env', 'POSTGRES_APP_USER') | default('', true) }}"
 postgresql_app_password: "{{ lookup('env', 'POSTGRES_APP_PASSWORD') | default('', true) }}"
-# pgAdmin web UI (installed via apt, optional disable via postgresql_pgadmin_setup=false)
-postgresql_pgadmin_setup: true
+# pgAdmin web UI (disabled by default; enable explicitly when needed)
+postgresql_pgadmin_setup: false
 postgresql_pgadmin_email: "{{ lookup('env', 'PGADMIN_EMAIL') | default('', true) }}"
 postgresql_pgadmin_password: "{{ lookup('env', 'PGADMIN_PASSWORD') | default('', true) }}"
 # pgAdmin repo codename (validated against the pgAdmin APT repo on 2026-08-12)
