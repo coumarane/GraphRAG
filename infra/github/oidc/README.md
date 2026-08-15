@@ -2,7 +2,7 @@
 
 This folder contains automation to create, update, or delete an Azure App Registration and GitHub Actions OIDC federated credentials for a repository.
 
-The script is intended for GitHub Actions identities such as the OVH Terraform workflow in this repository.
+The scripts are intended for GitHub Actions identities such as the OVH Terraform workflow and the Azure Terraform workflow in this repository.
 
 ## Files
 
@@ -118,13 +118,33 @@ The output includes the Azure client ID you must store in GitHub Actions as:
 
 For the OVH Terraform workflow, the rest of the required GitHub settings are documented in [infra/terraform/ovh-dedicated-reinstall/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/terraform/ovh-dedicated-reinstall/README.md).
 
+For the Azure Terraform workflow, the GitHub workflow entrypoint is [run-azure-terraform.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-azure-terraform.yml).
+
 ## Assign Azure RBAC roles
 
-After creating the app registration, grant the Azure roles required by the workflow:
+After creating the app registration, grant the Azure roles required by the workflow.
+
+Grant both OVH and Azure Terraform roles:
 
 ```bash
 python3 infra/github/oidc/assign_azure_roles.py \
   --client-id <azure-client-id>
+```
+
+Grant only the OVH Terraform roles:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --profile ovh
+```
+
+Grant only the Azure Terraform roles:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --profile azure-terraform
 ```
 
 Dry run:
@@ -154,11 +174,14 @@ python3 infra/github/oidc/assign_azure_roles.py \
 ## Notes
 
 - `create_github_oidc_app_registration.py` does not assign Azure RBAC roles.
-- `assign_azure_roles.py` manages the Azure RBAC roles needed by this OVH workflow.
-- For this OVH workflow, the minimum practical role set is:
+- `assign_azure_roles.py` manages the Azure RBAC roles needed by the OVH and Azure Terraform workflows.
+- Profile `ovh` grants the OVH Terraform role set:
   - `Reader` on resource group `rg-safranysAI-Dev`
   - `Storage Blob Data Contributor` on storage account `terraformstate240775`
   - `Key Vault Secrets Officer` on Key Vault `safranys-kv-shared`
+- Profile `azure-terraform` grants the Azure Terraform role set:
+  - `Contributor` on resource group `rg-safranysAI-Dev`
+- Profile `all` grants both role sets and is the default.
 - `--action delete` deletes the Azure App Registration identified by the config `display_name`.
 - If multiple app registrations already share the same display name, the script stops and asks for a unique display name.
 - Use `--delete-extra-federated-credentials` only when you want the config file to be the full source of truth.

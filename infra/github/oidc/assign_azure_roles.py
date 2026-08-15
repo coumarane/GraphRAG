@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Create, delete, or list the Azure RBAC assignments required by the "
-            "GitHub OIDC app used by the OVH Terraform workflow."
+            "GitHub OIDC app used by the OVH and Azure Terraform workflows."
         )
     )
     parser.add_argument(
@@ -58,6 +58,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--key-vault-name",
         default=DEFAULT_KEY_VAULT_NAME,
         help=f"Azure Key Vault used for SSH key persistence. Default: {DEFAULT_KEY_VAULT_NAME}",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=("ovh", "azure-terraform", "all"),
+        default="all",
+        help=(
+            "Role set to manage. "
+            "'ovh' grants the existing OVH Terraform roles, "
+            "'azure-terraform' grants the Azure app Terraform role, "
+            "'all' grants both."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -116,6 +127,7 @@ def build_desired_assignments(
     resource_group_name: str,
     storage_account_name: str,
     key_vault_name: str,
+    profile: str,
 ) -> list[RoleAssignment]:
     resource_group_scope = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}"
     storage_scope = (
@@ -124,11 +136,21 @@ def build_desired_assignments(
     key_vault_scope = (
         f"{resource_group_scope}/providers/Microsoft.KeyVault/vaults/{key_vault_name}"
     )
-    return [
-        RoleAssignment(role_name="Reader", scope=resource_group_scope),
-        RoleAssignment(role_name="Storage Blob Data Contributor", scope=storage_scope),
-        RoleAssignment(role_name="Key Vault Secrets Officer", scope=key_vault_scope),
-    ]
+    assignments: list[RoleAssignment] = []
+
+    if profile in ("ovh", "all"):
+        assignments.extend(
+            [
+                RoleAssignment(role_name="Reader", scope=resource_group_scope),
+                RoleAssignment(role_name="Storage Blob Data Contributor", scope=storage_scope),
+                RoleAssignment(role_name="Key Vault Secrets Officer", scope=key_vault_scope),
+            ]
+        )
+
+    if profile in ("azure-terraform", "all"):
+        assignments.append(RoleAssignment(role_name="Contributor", scope=resource_group_scope))
+
+    return assignments
 
 
 def list_assignments_for_scope(client_id: str, scope: str) -> list[dict[str, Any]]:
@@ -267,6 +289,7 @@ def main() -> int:
         resource_group_name=args.resource_group_name,
         storage_account_name=args.storage_account_name,
         key_vault_name=args.key_vault_name,
+        profile=args.profile,
     )
 
     if args.action == "apply":
@@ -296,6 +319,7 @@ def main() -> int:
         "resource_group_name": args.resource_group_name,
         "storage_account_name": args.storage_account_name,
         "key_vault_name": args.key_vault_name,
+        "profile": args.profile,
         "changes": result,
         "summary": summary,
     }
@@ -307,6 +331,7 @@ def main() -> int:
     print(f"Client ID: {args.client_id}")
     print(f"Principal ID: {principal_id}")
     print(f"Action: {args.action}")
+    print(f"Profile: {args.profile}")
     print(f"Dry run: {'yes' if args.dry_run else 'no'}")
     print("")
     print_table("Created", result.get("created", []))
