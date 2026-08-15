@@ -6,6 +6,8 @@ This folder contains two helpers:
   Grants, removes, or lists an Azure RBAC role on a Key Vault.
 - [manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
   Syncs any dotenv file to Azure Key Vault.
+- [create_keyvault_csi_app.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/create_keyvault_csi_app.py)
+  Creates the Azure App Registration, Service Principal, and optional client secret for Kubernetes Key Vault CSI runtime access.
 
 ## Scope
 
@@ -19,9 +21,10 @@ Current Key Vaults:
 ## Quick Start
 
 1. Login to Azure CLI.
-2. Grant the right Key Vault RBAC role.
-3. Verify you can write a test secret.
-4. Sync the env file.
+2. Create the CSI runtime app if you do not have one yet.
+3. Grant the right Key Vault RBAC role.
+4. Verify you can write a test secret.
+5. Sync the env file.
 
 ## 1. Azure Login
 
@@ -30,7 +33,51 @@ az login
 az account set --subscription a555786b-b00c-4cea-946c-5c435d5e7100
 ```
 
-## 2. Grant RBAC
+## 2. Create The CSI Runtime App
+
+Create the dedicated App Registration and Service Principal for Kubernetes CSI runtime:
+
+```bash
+python3 infra/azure/create_keyvault_csi_app.py \
+  --display-name graphrag-kv-csi-dev \
+  --create-client-secret
+```
+
+Important:
+
+- copy the printed client secret immediately
+- use the output to fill these GitHub secrets:
+  - `AZURE_KEYVAULT_CSI_CLIENT_ID`
+  - `AZURE_KEYVAULT_CSI_CLIENT_SECRET`
+
+Useful variants:
+
+- Dry run:
+
+```bash
+python3 infra/azure/create_keyvault_csi_app.py \
+  --display-name graphrag-kv-csi-dev \
+  --create-client-secret \
+  --dry-run
+```
+
+- List existing app:
+
+```bash
+python3 infra/azure/create_keyvault_csi_app.py \
+  --display-name graphrag-kv-csi-dev \
+  --action list
+```
+
+- Delete app:
+
+```bash
+python3 infra/azure/create_keyvault_csi_app.py \
+  --display-name graphrag-kv-csi-dev \
+  --action delete
+```
+
+## 3. Grant RBAC
 
 Operator access for syncing `.env` into Key Vault:
 
@@ -73,6 +120,97 @@ python3 infra/azure/assign_keyvault_role.py \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets User" \
   --assignee "$AZURE_CLIENT_ID" \
+  --principal-type ServicePrincipal
+```
+
+## CSI Runtime Identity
+
+The Kubernetes pods do not use GitHub OIDC directly at runtime.
+
+For Azure Key Vault CSI access, the cluster uses a client ID and client secret for an Azure App Registration / Service Principal.
+
+Recommended model:
+
+- GitHub workflows:
+  - keep using OIDC with `AZURE_CLIENT_ID`
+- Kubernetes CSI runtime:
+  - use a dedicated App Registration
+  - grant it `Key Vault Secrets User`
+  - store its credentials in GitHub secrets
+
+### Where `AZURE_KEYVAULT_CSI_CLIENT_SECRET` Comes From
+
+`AZURE_KEYVAULT_CSI_CLIENT_SECRET` is the client secret of the Azure App Registration used by the Secrets Store CSI Azure provider.
+
+Create it in Azure Portal:
+
+1. Open `Microsoft Entra ID`
+2. Open `App registrations`
+3. Open the app you want to use for Kubernetes CSI runtime
+4. Go to `Certificates & secrets`
+5. Select `New client secret`
+6. Give it a name such as `graphrag-kv-csi`
+7. Choose the expiry period
+8. Create the secret
+9. Copy the secret value immediately
+
+Important:
+
+- Azure only shows the secret value once
+- the secret `Value` is what you store in GitHub
+- do not confuse it with the secret `ID`
+
+### Recommended GitHub Secrets
+
+Recommended dedicated CSI secrets:
+
+- `AZURE_KEYVAULT_CSI_CLIENT_ID`
+- `AZURE_KEYVAULT_CSI_CLIENT_SECRET`
+
+The deploy workflows also support fallback to:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+
+But for least privilege and cleaner separation, it is better to use dedicated CSI credentials instead of reusing the workflow identity.
+
+### GitHub Secret Setup Example
+
+If you create a dedicated App Registration for CSI:
+
+- `AZURE_KEYVAULT_CSI_CLIENT_ID`
+  - value: the application (client) ID of that App Registration
+- `AZURE_KEYVAULT_CSI_CLIENT_SECRET`
+  - value: the client secret value created under `Certificates & secrets`
+
+### Required RBAC For The CSI Identity
+
+Grant this role to the CSI App Registration / Service Principal:
+
+- `Key Vault Secrets User`
+
+Grant it on:
+
+- `graphrag-kv-api`
+- `graphrag-kv-web`
+
+Example:
+
+```bash
+python3 infra/azure/assign_keyvault_role.py \
+  --vault-name graphrag-kv-api \
+  --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets User" \
+  --assignee "$AZURE_KEYVAULT_CSI_CLIENT_ID" \
+  --principal-type ServicePrincipal
+```
+
+```bash
+python3 infra/azure/assign_keyvault_role.py \
+  --vault-name graphrag-kv-web \
+  --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets User" \
+  --assignee "$AZURE_KEYVAULT_CSI_CLIENT_ID" \
   --principal-type ServicePrincipal
 ```
 
@@ -130,7 +268,7 @@ python3 infra/azure/assign_keyvault_role.py \
   --principal-type ServicePrincipal
 ```
 
-## 3. Verify Access
+## 4. Verify Access
 
 After RBAC assignment, wait a few minutes for propagation, then test:
 
@@ -149,7 +287,7 @@ Note:
 - for CSI runtime access, the correct least-privilege role is `Key Vault Secrets User`
 - `Key Vault Secrets User` is enough for Kubernetes runtime reads, but not for syncing `.env` into the vault
 
-## 4. Sync Env File To Key Vault
+## 5. Sync Env File To Key Vault
 
 Sync API env:
 
