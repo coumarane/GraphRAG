@@ -1,6 +1,6 @@
 # Infra Progress: OVH Cluster Bootstrap
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 ## Scope completed
 
@@ -28,6 +28,7 @@ Last updated: 2026-08-14
 - Smoke test application deployed successfully and validated through `https://chatwithdocs.org`
 - Public ingress validation completed successfully using the master public IP `193.70.35.121`
 - Dedicated public ingress workflow created for OVH-friendly exposure of Envoy Gateway through HAProxy on `rag-master`
+- Harbor deployment workflow stabilized and Harbor access validated through `https://harbor.safranys.com/harbor/projects`
 
 ## Current infrastructure state
 
@@ -72,7 +73,14 @@ Cloudflare DNS state:
 - `argocd.chatwithdocs.org` -> `193.70.35.121` proxied
 - `prometheus.chatwithdocs.org` -> `193.70.35.121` proxied
 - `database.chatwithdocs.org` -> `167.86.88.114` DNS only
-- `harbor.chatwithdocs.org` -> `62.84.180.181` DNS only
+- `harbor.safranys.com` -> `62.84.180.181` DNS only
+
+Harbor state:
+
+- Harbor host: `harbor.safranys.com`
+- Harbor server IP: `62.84.180.181`
+- Harbor is reachable over HTTPS with a valid public certificate
+- Harbor deployment is managed through the Ansible workflow `.github/workflows/run-harbor-deploy.yml`
 
 ## Important implementation decisions
 
@@ -90,6 +98,8 @@ Cloudflare DNS state:
   - a dedicated `EnvoyProxy` with `NodePort` exposure
   - HAProxy on `rag-master` for public `443`
   - temporary Cloudflare DNS targeting `193.70.35.121`
+- Harbor Ansible check mode now exits before installer/certbot operations because the Harbor online installer workflow is not meaningfully dry-runnable
+- reusable Ansible GitHub workflows now pass secrets through `secrets:` instead of embedding them in `with.extra_vars`
 
 ## Relevant files
 
@@ -106,8 +116,10 @@ Cloudflare DNS state:
 - [.github/workflows/run-k8s-addons-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-k8s-addons-bootstrap.yml)
 - [.github/workflows/run-kubernetes-public-ingress-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-kubernetes-public-ingress-deploy.yml)
 - [.github/workflows/run-argocd-apps-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-argocd-apps-bootstrap.yml)
+- [.github/workflows/run-harbor-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-harbor-deploy.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
+- [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
 - [infra/ansible/kubernetes/public_ingress_playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/kubernetes/public_ingress_playbook.yml)
 - [infra/k8s/gateway/envoyproxy-public-gateway.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/gateway/envoyproxy-public-gateway.yaml)
 - [infra/k8s/smoke-web/kustomization.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/smoke-web/kustomization.yaml)
