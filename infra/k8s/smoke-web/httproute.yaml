@@ -11,7 +11,7 @@ spec:
       namespace: envoy-gateway-system
       sectionName: web-https
   hostnames:
-    - chatwithdocs.org
+    - smoke.chatwithdocs.org
   rules:
     - matches:
         - path:
