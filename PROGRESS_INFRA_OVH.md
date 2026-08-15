@@ -34,6 +34,9 @@ Last updated: 2026-08-15
 - Azure Key Vault env sync tooling created for application configuration secrets
 - Azure RBAC helper created to grant `Key Vault Secrets Officer` on app Key Vaults
 - Azure env sync documentation added for API and web app secret management
+- Azure Key Vault CSI-based secret mount pattern added for Kubernetes API and web deployments
+- Kubernetes add-ons workflow extended to install Secrets Store CSI Driver + Azure Key Vault provider
+- API and web deploy workflows extended to provision namespace-level CSI auth secret for Key Vault access
 
 ## Current infrastructure state
 
@@ -124,6 +127,14 @@ Azure application secrets state:
   - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-api`
   - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-web`
   - env sync cannot run successfully until RBAC is granted and propagated
+- Kubernetes runtime secret consumption design is now prepared:
+  - Azure Key Vault secrets mounted into pods through Secrets Store CSI Driver
+  - `initContainer` generates `/app/.env` into a shared `emptyDir`
+  - main container starts only after `.env` exists
+- additional current blocker for runtime secret mount:
+  - the Azure identity used by the CSI provider still needs Key Vault read access on `graphrag-kv-api`
+  - the Azure identity used by the CSI provider still needs Key Vault read access on `graphrag-kv-web`
+  - the cluster still needs the CSI add-on workflow to be executed after these repo changes
 
 ## Important implementation decisions
 
@@ -159,6 +170,11 @@ Azure application secrets state:
   - sync from any dotenv file to any Key Vault
   - optional scoped cleanup of managed secrets with `--delete-missing`
   - explicit RBAC assignment helper for `Key Vault Secrets Officer`
+- Kubernetes app runtime secret delivery now targets:
+  - Secrets Store CSI Driver
+  - Azure Key Vault provider
+  - `SecretProviderClass` per namespace
+  - `initContainer`-rendered `.env` files instead of ConfigMap-based app config
 
 ## Relevant files
 
@@ -187,13 +203,16 @@ Azure application secrets state:
 - [infra/azure/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/README.md)
 - [infra/azure/manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
 - [infra/azure/assign_keyvault_secrets_officer.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_secrets_officer.py)
+- [infra/k8s/api/secretproviderclass.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/api/secretproviderclass.yaml)
+- [infra/k8s/web/secretproviderclass.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/web/secretproviderclass.yaml)
 - [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
 - [infra/ansible/kubernetes/public_ingress_playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/kubernetes/public_ingress_playbook.yml)
 - [infra/k8s/gateway/envoyproxy-public-gateway.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/gateway/envoyproxy-public-gateway.yaml)
 - [infra/k8s/smoke-web/kustomization.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/smoke-web/kustomization.yaml)
 - [infra/k8s/api/deployment.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/api/deployment.yaml)
 - [infra/k8s/web/deployment.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/web/deployment.yaml)
+- [.github/workflows/run-k8s-addons-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-k8s-addons-bootstrap.yml)
 
 ## Next step
 
-Grant Key Vault RBAC on `graphrag-kv-api` and `graphrag-kv-web`, sync `.env.production` and `frontend/.env.production` into Azure Key Vault, then wire the deployed applications to consume those secrets and finish authentication bootstrap validation.
+Grant the required Key Vault RBAC to both the local operator and the CSI runtime identity, sync `.env.production` and `frontend/.env.production` into Azure Key Vault, run the CSI add-on bootstrap, then validate API and web startup from Azure-mounted secrets and finish authentication bootstrap validation.

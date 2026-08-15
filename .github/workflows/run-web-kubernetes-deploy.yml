@@ -131,6 +131,9 @@ jobs:
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
           HARBOR_PASSWORD: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+          AZURE_KEYVAULT_CSI_CLIENT_ID: ${{ secrets.AZURE_KEYVAULT_CSI_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+          AZURE_KEYVAULT_CSI_CLIENT_SECRET: ${{ secrets.AZURE_KEYVAULT_CSI_CLIENT_SECRET || secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
 
@@ -138,16 +141,28 @@ jobs:
             echo "Harbor credentials missing; set HARBOR_REGISTRY_USERNAME and HARBOR_REGISTRY_PASSWORD."
             exit 1
           fi
+          if [ -z "${AZURE_KEYVAULT_CSI_CLIENT_ID:-}" ] || [ -z "${AZURE_KEYVAULT_CSI_CLIENT_SECRET:-}" ] || [ -z "${AZURE_TENANT_ID:-}" ]; then
+            echo "Azure CSI credentials missing; set AZURE_KEYVAULT_CSI_CLIENT_ID or AZURE_CLIENT_ID, AZURE_KEYVAULT_CSI_CLIENT_SECRET or AZURE_CLIENT_SECRET, and AZURE_TENANT_ID."
+            exit 1
+          fi
 
           REMOTE_REGISTRY_HOST="$(printf '%q' "${REGISTRY_HOST}")"
           REMOTE_HARBOR_USERNAME="$(printf '%q' "${HARBOR_USERNAME}")"
           REMOTE_HARBOR_PASSWORD="$(printf '%q' "${HARBOR_PASSWORD}")"
+          REMOTE_AZURE_KEYVAULT_CSI_CLIENT_ID="$(printf '%q' "${AZURE_KEYVAULT_CSI_CLIENT_ID}")"
+          REMOTE_AZURE_KEYVAULT_CSI_CLIENT_SECRET="$(printf '%q' "${AZURE_KEYVAULT_CSI_CLIENT_SECRET}")"
+          REMOTE_AZURE_TENANT_ID="$(printf '%q' "${AZURE_TENANT_ID}")"
 
-          ssh "$MASTER_HOST" "export KUBECONFIG=/home/ubuntu/.kube/config REGISTRY_HOST=${REMOTE_REGISTRY_HOST} HARBOR_USERNAME=${REMOTE_HARBOR_USERNAME} HARBOR_PASSWORD=${REMOTE_HARBOR_PASSWORD}; bash -s" <<'EOSSH'
+          ssh "$MASTER_HOST" "export KUBECONFIG=/home/ubuntu/.kube/config REGISTRY_HOST=${REMOTE_REGISTRY_HOST} HARBOR_USERNAME=${REMOTE_HARBOR_USERNAME} HARBOR_PASSWORD=${REMOTE_HARBOR_PASSWORD} AZURE_KEYVAULT_CSI_CLIENT_ID=${REMOTE_AZURE_KEYVAULT_CSI_CLIENT_ID} AZURE_KEYVAULT_CSI_CLIENT_SECRET=${REMOTE_AZURE_KEYVAULT_CSI_CLIENT_SECRET} AZURE_TENANT_ID=${REMOTE_AZURE_TENANT_ID}; bash -s" <<'EOSSH'
           set -euo pipefail
 
           # Ensure namespace exists
           kubectl apply -f /tmp/chatwithdocs-web/namespace.yaml
+
+          if ! kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io >/dev/null 2>&1; then
+            echo "Secrets Store CSI Driver is not installed. Run the k8s add-ons bootstrap workflow with install_azure_keyvault_csi=true first."
+            exit 1
+          fi
 
           # Harbor pull secret
           kubectl -n chatwithdocs-web create secret docker-registry harbor-regcred \
@@ -156,6 +171,12 @@ jobs:
             --docker-password="${HARBOR_PASSWORD}" \
             --docker-email=admin@safranys.com \
             --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl -n chatwithdocs-web create secret generic secrets-store-creds \
+            --from-literal clientid="${AZURE_KEYVAULT_CSI_CLIENT_ID}" \
+            --from-literal clientsecret="${AZURE_KEYVAULT_CSI_CLIENT_SECRET}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n chatwithdocs-web label secret secrets-store-creds secrets-store.csi.k8s.io/used=true --overwrite
 
           # Deploy manifests
           kubectl apply -k /tmp/chatwithdocs-web

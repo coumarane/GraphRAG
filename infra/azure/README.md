@@ -3,7 +3,7 @@
 This folder contains two helpers:
 
 - [assign_keyvault_secrets_officer.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_secrets_officer.py)
-  Grants or removes the Azure RBAC role `Key Vault Secrets Officer` on a Key Vault.
+  Grants, removes, or lists an Azure RBAC role on a Key Vault.
 - [manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
   Syncs any dotenv file to Azure Key Vault.
 
@@ -19,7 +19,7 @@ Current Key Vaults:
 ## Quick Start
 
 1. Login to Azure CLI.
-2. Grant yourself `Key Vault Secrets Officer` on the target Key Vault.
+2. Grant the right Key Vault RBAC role.
 3. Verify you can write a test secret.
 4. Sync the env file.
 
@@ -32,20 +32,48 @@ az account set --subscription a555786b-b00c-4cea-946c-5c435d5e7100
 
 ## 2. Grant RBAC
 
-Grant the role to your current signed-in Azure user on the API Key Vault:
+Operator access for syncing `.env` into Key Vault:
+
+Grant `Key Vault Secrets Officer` to your current signed-in Azure user on the API Key Vault:
 
 ```bash
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-api \
-  --resource-group rg-safranysAI-Dev
+  --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets Officer"
 ```
 
-Grant the role to your current signed-in Azure user on the web Key Vault:
+Grant `Key Vault Secrets Officer` to your current signed-in Azure user on the web Key Vault:
 
 ```bash
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-web \
-  --resource-group rg-safranysAI-Dev
+  --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets Officer"
+```
+
+CSI runtime access for Kubernetes pods:
+
+Grant `Key Vault Secrets User` to the service principal used by the CSI provider on the API Key Vault:
+
+```bash
+python3 infra/azure/assign_keyvault_secrets_officer.py \
+  --vault-name graphrag-kv-api \
+  --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets User" \
+  --assignee "$AZURE_CLIENT_ID" \
+  --principal-type ServicePrincipal
+```
+
+Grant `Key Vault Secrets User` to the service principal used by the CSI provider on the web Key Vault:
+
+```bash
+python3 infra/azure/assign_keyvault_secrets_officer.py \
+  --vault-name graphrag-kv-web \
+  --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets User" \
+  --assignee "$AZURE_CLIENT_ID" \
+  --principal-type ServicePrincipal
 ```
 
 Useful variants:
@@ -56,6 +84,7 @@ Useful variants:
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets Officer" \
   --dry-run
 ```
 
@@ -65,6 +94,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets Officer" \
   --action list
 ```
 
@@ -74,6 +104,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets Officer" \
   --action delete
 ```
 
@@ -83,6 +114,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets Officer" \
   --assignee your.user@company.com \
   --principal-type User
 ```
@@ -93,6 +125,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 python3 infra/azure/assign_keyvault_secrets_officer.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
+  --role-name "Key Vault Secrets User" \
   --assignee 00000000-0000-0000-0000-000000000000 \
   --principal-type ServicePrincipal
 ```
@@ -109,6 +142,12 @@ az keyvault secret set \
 ```
 
 If this fails with `Forbidden`, RBAC has not propagated yet or the assignment is missing.
+
+Note:
+
+- the write test above is for operator access using `Key Vault Secrets Officer`
+- for CSI runtime access, the correct least-privilege role is `Key Vault Secrets User`
+- `Key Vault Secrets User` is enough for Kubernetes runtime reads, but not for syncing `.env` into the vault
 
 ## 4. Sync Env File To Key Vault
 
@@ -206,6 +245,10 @@ python3 infra/azure/manage_keyvault_app_env.py \
 Recommended role:
 
 - `Key Vault Secrets Officer`
+
+Runtime read-only role for Kubernetes CSI:
+
+- `Key Vault Secrets User`
 
 Broader alternative:
 

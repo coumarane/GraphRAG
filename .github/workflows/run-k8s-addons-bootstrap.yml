@@ -23,6 +23,11 @@ on:
         required: true
         default: true
         type: boolean
+      install_azure_keyvault_csi:
+        description: "Install/upgrade Secrets Store CSI Driver + Azure Key Vault provider"
+        required: true
+        default: true
+        type: boolean
       install_prometheus:
         description: "Install/upgrade Prometheus + Grafana stack"
         required: true
@@ -270,6 +275,26 @@ jobs:
           kubectl -n envoy-gateway-system get gateway public-gateway
           kubectl -n envoy-gateway-system get svc
           kubectl get certificate -A || true
+          EOSSH
+
+      - name: Install/upgrade Azure Key Vault CSI provider
+        if: inputs.install_azure_keyvault_csi == true
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" bash -s <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          helm repo add csi-secrets-store-provider-azure https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+          helm repo update
+
+          helm upgrade --install akv-secrets-provider csi-secrets-store-provider-azure/csi-secrets-store-provider-azure \
+            --namespace kube-system \
+            --wait --timeout 10m0s --atomic
+
+          kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
+          kubectl -n kube-system wait --for=condition=ready pod -l app=secrets-store-csi-driver --timeout=600s
+          kubectl -n kube-system wait --for=condition=ready pod -l app=csi-secrets-store-provider-azure --timeout=600s
           EOSSH
 
       # - name: Install/upgrade Elasticsearch + Kibana

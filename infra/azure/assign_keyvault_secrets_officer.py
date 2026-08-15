@@ -8,15 +8,14 @@ import sys
 from typing import Any
 
 
-ROLE_NAME = "Key Vault Secrets Officer"
+DEFAULT_ROLE_NAME = "Key Vault Secrets Officer"
 DEFAULT_SUBSCRIPTION_ID = "a555786b-b00c-4cea-946c-5c435d5e7100"
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Create, delete, or list the Azure RBAC assignment for "
-            "'Key Vault Secrets Officer' on a target Key Vault."
+            "Create, delete, or list an Azure RBAC assignment on a target Key Vault."
         )
     )
     parser.add_argument(
@@ -39,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("apply", "delete", "list"),
         default="apply",
         help="Whether to create the assignment, delete it, or list current state.",
+    )
+    parser.add_argument(
+        "--role-name",
+        default=DEFAULT_ROLE_NAME,
+        help=f"Azure RBAC role name to assign on the Key Vault. Default: {DEFAULT_ROLE_NAME}",
     )
     parser.add_argument(
         "--assignee",
@@ -176,17 +180,27 @@ def list_assignments(*, assignee: str, scope: str) -> list[dict[str, Any]]:
     return data or []
 
 
-def find_existing_assignment(*, assignee: str, scope: str) -> dict[str, Any] | None:
+def find_existing_assignment(*, assignee: str, scope: str, role_name: str) -> dict[str, Any] | None:
     assignments = list_assignments(assignee=assignee, scope=scope)
     for assignment in assignments:
-        if assignment.get("roleDefinitionName") == ROLE_NAME:
+        if assignment.get("roleDefinitionName") == role_name:
             return assignment
     return None
 
 
-def apply_assignment(*, principal: dict[str, str], scope: str, dry_run: bool) -> dict[str, list[str]]:
-    label = f"{ROLE_NAME} :: {scope}"
-    existing = find_existing_assignment(assignee=principal["assignee"], scope=scope)
+def apply_assignment(
+    *,
+    principal: dict[str, str],
+    scope: str,
+    role_name: str,
+    dry_run: bool,
+) -> dict[str, list[str]]:
+    label = f"{role_name} :: {scope}"
+    existing = find_existing_assignment(
+        assignee=principal["assignee"],
+        scope=scope,
+        role_name=role_name,
+    )
     if existing:
         return {"created": [], "unchanged": [label]}
 
@@ -195,7 +209,7 @@ def apply_assignment(*, principal: dict[str, str], scope: str, dry_run: bool) ->
         "assignment",
         "create",
         "--role",
-        ROLE_NAME,
+        role_name,
         "--scope",
         scope,
         "--output",
@@ -217,9 +231,19 @@ def apply_assignment(*, principal: dict[str, str], scope: str, dry_run: bool) ->
     return {"created": [label], "unchanged": []}
 
 
-def delete_assignment(*, principal: dict[str, str], scope: str, dry_run: bool) -> dict[str, list[str]]:
-    label = f"{ROLE_NAME} :: {scope}"
-    existing = find_existing_assignment(assignee=principal["assignee"], scope=scope)
+def delete_assignment(
+    *,
+    principal: dict[str, str],
+    scope: str,
+    role_name: str,
+    dry_run: bool,
+) -> dict[str, list[str]]:
+    label = f"{role_name} :: {scope}"
+    existing = find_existing_assignment(
+        assignee=principal["assignee"],
+        scope=scope,
+        role_name=role_name,
+    )
     if not existing:
         return {"deleted": [], "missing": [label]}
 
@@ -231,7 +255,7 @@ def delete_assignment(*, principal: dict[str, str], scope: str, dry_run: bool) -
             "--assignee",
             principal["assignee"],
             "--role",
-            ROLE_NAME,
+            role_name,
             "--scope",
             scope,
         ],
@@ -262,15 +286,29 @@ def main() -> int:
     )
 
     if args.action == "apply":
-        result = apply_assignment(principal=principal, scope=scope, dry_run=args.dry_run)
+        result = apply_assignment(
+            principal=principal,
+            scope=scope,
+            role_name=args.role_name,
+            dry_run=args.dry_run,
+        )
     elif args.action == "delete":
-        result = delete_assignment(principal=principal, scope=scope, dry_run=args.dry_run)
+        result = delete_assignment(
+            principal=principal,
+            scope=scope,
+            role_name=args.role_name,
+            dry_run=args.dry_run,
+        )
     else:
         result = {}
 
-    existing = find_existing_assignment(assignee=principal["assignee"], scope=scope)
+    existing = find_existing_assignment(
+        assignee=principal["assignee"],
+        scope=scope,
+        role_name=args.role_name,
+    )
     summary = {
-        "role": ROLE_NAME,
+        "role": args.role_name,
         "scope": scope,
         "status": "present" if existing else "missing",
     }
@@ -300,7 +338,7 @@ def main() -> int:
     print_table("Missing", result.get("missing", []))
     if result:
         print("")
-    print(f"ROLE: {ROLE_NAME}")
+    print(f"ROLE: {args.role_name}")
     print(f"STATUS: {summary['status']}")
     print(f"SCOPE: {scope}")
     return 0

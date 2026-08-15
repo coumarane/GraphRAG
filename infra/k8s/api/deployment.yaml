@@ -20,6 +20,29 @@ spec:
     spec:
       imagePullSecrets:
         - name: harbor-regcred
+      initContainers:
+        - name: render-env-file
+          image: alpine:3.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              umask 077
+              : > /work/.env
+              for file in /mnt/azure-keyvault/*; do
+                [ -f "$file" ] || continue
+                name="$(basename "$file")"
+                value="$(cat "$file")"
+                printf '%s=%s\n' "$name" "$value" >> /work/.env
+              done
+              test -s /work/.env
+          volumeMounts:
+            - name: azure-keyvault-secrets
+              mountPath: /mnt/azure-keyvault
+              readOnly: true
+            - name: runtime-env
+              mountPath: /work
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Exists"
@@ -31,14 +54,14 @@ spec:
         - name: api
           image: harbor.safranys.com/chatwithdocs/api:latest
           imagePullPolicy: IfNotPresent
-          envFrom:
-            - configMapRef:
-                name: api-config
-            # - secretRef:
-            #     name: api-secrets
           ports:
             - name: http
               containerPort: 8000
+          volumeMounts:
+            - name: runtime-env
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /api/v1/health/ready
@@ -60,3 +83,14 @@ spec:
             limits:
               cpu: 500m
               memory: 1Gi
+      volumes:
+        - name: azure-keyvault-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: api-azure-keyvault-env
+            nodePublishSecretRef:
+              name: secrets-store-creds
+        - name: runtime-env
+          emptyDir: {}
