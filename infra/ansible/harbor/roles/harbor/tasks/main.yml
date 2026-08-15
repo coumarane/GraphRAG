@@ -21,6 +21,19 @@
       harbor_enable_letsencrypt=true. Current value:
       {{ harbor_hostname | default('undefined') }}
 
+- name: Skip Harbor installation tasks in Ansible check mode
+  when: ansible_check_mode
+  block:
+    - name: Explain Harbor check mode limitation
+      ansible.builtin.debug:
+        msg: >-
+          Harbor installation tasks are skipped in Ansible check mode because
+          the online installer download, certbot issuance, and Harbor
+          install/prepare steps require real remote changes.
+
+    - name: End Harbor role for this host during check mode
+      ansible.builtin.meta: end_host
+
 - name: Install prerequisite apt packages
   ansible.builtin.apt:
     name:
