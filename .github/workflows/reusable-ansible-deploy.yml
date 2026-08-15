@@ -84,6 +84,24 @@ on:
     secrets:
       azure_client_id:
         required: false
+      ansible_password:
+        required: false
+      harbor_admin_password:
+        required: false
+      harbor_db_password:
+        required: false
+      postgres_admin_password:
+        required: false
+      postgres_app_db:
+        required: false
+      postgres_app_user:
+        required: false
+      postgres_app_password:
+        required: false
+      pgadmin_email:
+        required: false
+      pgadmin_password:
+        required: false
 
 permissions:
   contents: read
@@ -175,15 +193,67 @@ jobs:
           ${{ inputs.syntax_check_paths }}
           EOF
 
+      - name: Build effective Ansible extra vars
+        id: effective_extra_vars
+        shell: bash
+        env:
+          INPUT_EXTRA_VARS: ${{ inputs.extra_vars }}
+          SECRET_ANSIBLE_PASSWORD: ${{ secrets.ansible_password }}
+          SECRET_HARBOR_ADMIN_PASSWORD: ${{ secrets.harbor_admin_password }}
+          SECRET_HARBOR_DB_PASSWORD: ${{ secrets.harbor_db_password }}
+          SECRET_POSTGRES_ADMIN_PASSWORD: ${{ secrets.postgres_admin_password }}
+          SECRET_POSTGRES_APP_DB: ${{ secrets.postgres_app_db }}
+          SECRET_POSTGRES_APP_USER: ${{ secrets.postgres_app_user }}
+          SECRET_POSTGRES_APP_PASSWORD: ${{ secrets.postgres_app_password }}
+          SECRET_PGADMIN_EMAIL: ${{ secrets.pgadmin_email }}
+          SECRET_PGADMIN_PASSWORD: ${{ secrets.pgadmin_password }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+          import shlex
+
+          extra_vars = {}
+          raw = os.environ.get("INPUT_EXTRA_VARS", "").strip()
+          if raw:
+            for token in shlex.split(raw):
+              key, sep, value = token.partition("=")
+              if not sep:
+                raise SystemExit(f"Invalid extra_vars token: {token}")
+              extra_vars[key] = value
+
+          secret_map = {
+            "ansible_password": os.environ.get("SECRET_ANSIBLE_PASSWORD", ""),
+            "harbor_admin_password": os.environ.get("SECRET_HARBOR_ADMIN_PASSWORD", ""),
+            "harbor_db_password": os.environ.get("SECRET_HARBOR_DB_PASSWORD", ""),
+            "postgres_admin_password": os.environ.get("SECRET_POSTGRES_ADMIN_PASSWORD", ""),
+            "postgres_app_db": os.environ.get("SECRET_POSTGRES_APP_DB", ""),
+            "postgres_app_user": os.environ.get("SECRET_POSTGRES_APP_USER", ""),
+            "postgres_app_password": os.environ.get("SECRET_POSTGRES_APP_PASSWORD", ""),
+            "pgadmin_email": os.environ.get("SECRET_PGADMIN_EMAIL", ""),
+            "pgadmin_password": os.environ.get("SECRET_PGADMIN_PASSWORD", ""),
+          }
+
+          for key, value in secret_map.items():
+            if value:
+              extra_vars[key] = value
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+            fh.write("json<<EOF\n")
+            fh.write(json.dumps(extra_vars))
+            fh.write("\nEOF\n")
+          PY
+
       - name: Run playbooks
         shell: bash
         run: |
           set -euo pipefail
-          EXTRA_VARS='${{ inputs.extra_vars }}'
+          EXTRA_VARS='${{ steps.effective_extra_vars.outputs.json }}'
           EXTRA_ARGS='${{ inputs.playbook_args }}'
           while IFS= read -r playbook; do
             [ -n "${playbook}" ] || continue
-            if [ -n "${EXTRA_VARS}" ]; then
+            if [ "${EXTRA_VARS}" != "{}" ]; then
               ansible-playbook "${playbook}" -i "${{ inputs.inventory_path }}" ${EXTRA_ARGS} --extra-vars "${EXTRA_VARS}"
             else
               ansible-playbook "${playbook}" -i "${{ inputs.inventory_path }}" ${EXTRA_ARGS}

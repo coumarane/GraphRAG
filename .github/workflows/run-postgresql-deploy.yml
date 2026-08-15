@@ -27,15 +27,16 @@ jobs:
       install_sshpass: true
       ansible_collections: community.postgresql
       extra_vars: >-
-        ansible_password=${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
         postgres_version=${{ inputs.postgres_version }}
         ansible_host=${{ inputs.target_host }}
-        postgres_admin_password=${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-        postgres_app_db=${{ secrets.POSTGRES_APP_DB }}
-        postgres_app_user=${{ secrets.POSTGRES_APP_USER }}
-        postgres_app_password=${{ secrets.POSTGRES_APP_PASSWORD }}
-        pgadmin_email=${{ secrets.PGADMIN_EMAIL }}
-        pgadmin_password=${{ secrets.PGADMIN_PASSWORD }}
+    secrets:
+      ansible_password: ${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
+      postgres_admin_password: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+      postgres_app_db: ${{ secrets.POSTGRES_APP_DB }}
+      postgres_app_user: ${{ secrets.POSTGRES_APP_USER }}
+      postgres_app_password: ${{ secrets.POSTGRES_APP_PASSWORD }}
+      pgadmin_email: ${{ secrets.PGADMIN_EMAIL }}
+      pgadmin_password: ${{ secrets.PGADMIN_PASSWORD }}
 
   deploy:
     needs: check
@@ -48,12 +49,13 @@ jobs:
       install_sshpass: true
       ansible_collections: community.postgresql
       extra_vars: >-
-        ansible_password=${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
         postgres_version=${{ inputs.postgres_version }}
         ansible_host=${{ inputs.target_host }}
-        postgres_admin_password=${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-        postgres_app_db=${{ secrets.POSTGRES_APP_DB }}
-        postgres_app_user=${{ secrets.POSTGRES_APP_USER }}
-        postgres_app_password=${{ secrets.POSTGRES_APP_PASSWORD }}
-        pgadmin_email=${{ secrets.PGADMIN_EMAIL }}
-        pgadmin_password=${{ secrets.PGADMIN_PASSWORD }}
+    secrets:
+      ansible_password: ${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
+      postgres_admin_password: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+      postgres_app_db: ${{ secrets.POSTGRES_APP_DB }}
+      postgres_app_user: ${{ secrets.POSTGRES_APP_USER }}
+      postgres_app_password: ${{ secrets.POSTGRES_APP_PASSWORD }}
+      pgadmin_email: ${{ secrets.PGADMIN_EMAIL }}
+      pgadmin_password: ${{ secrets.PGADMIN_PASSWORD }}
