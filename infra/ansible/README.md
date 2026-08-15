@@ -186,7 +186,7 @@ curl -I https://harbor.safranys.com
 Check PostgreSQL:
 
 ```bash
-psql "postgresql://chatwithdocs:password@database.chatwithdocs.org:5432/chatwithdocs_db"
+psql "postgresql://chatwithdocs:password@database.safranys.com:5432/chatwithdocs_db"
 ```
 
 ## Upgrade guidance

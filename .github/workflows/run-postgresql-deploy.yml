@@ -7,10 +7,15 @@ on:
         description: "PostgreSQL version to install (default 18)"
         required: false
         default: "18"
+      postgres_rebuild:
+        description: "Purge existing PostgreSQL packages/data before reinstall"
+        required: false
+        default: false
+        type: boolean
       target_host:
         description: "Hostname or IP where PostgreSQL should be installed"
         required: false
-        default: database.chatwithdocs.org
+        default: database.safranys.com
 
 env:
   ANSIBLE_HOST_KEY_CHECKING: "False"
@@ -32,6 +37,7 @@ jobs:
       ansible_collections: community.postgresql
       extra_vars: >-
         postgres_version=${{ inputs.postgres_version }}
+        postgres_rebuild=${{ inputs.postgres_rebuild }}
         ansible_host=${{ inputs.target_host }}
     secrets:
       ansible_password: ${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
@@ -54,6 +60,7 @@ jobs:
       ansible_collections: community.postgresql
       extra_vars: >-
         postgres_version=${{ inputs.postgres_version }}
+        postgres_rebuild=${{ inputs.postgres_rebuild }}
         ansible_host=${{ inputs.target_host }}
     secrets:
       ansible_password: ${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}

@@ -4,9 +4,20 @@ postgresql_packages:
   - "postgresql-{{ postgres_version }}"
   - "postgresql-client-{{ postgres_version }}"
   - "postgresql-contrib-{{ postgres_version }}"
+postgresql_purge_packages:
+  - "postgresql"
+  - "postgresql-*"
+  - "postgresql-client*"
+  - "postgresql-common"
 postgresql_service_name: postgresql
 postgresql_conf_path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
 postgresql_pg_hba_path: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+postgresql_data_root: /var/lib/postgresql
+postgresql_config_root: /etc/postgresql
+postgresql_run_root: /var/run/postgresql
+postgresql_log_root: /var/log/postgresql
+postgresql_repo_file: /etc/apt/sources.list.d/postgresql-pgdg.list
+postgres_rebuild: false
 postgres_listen_addresses: ["0.0.0.0"]
 postgres_allowed_cidrs: ["0.0.0.0/0"]
 postgres_auth_method: md5
@@ -31,8 +42,8 @@ pgadmin_container_port: 8080
 pgadmin_container_data_dir: /var/lib/pgadmin
 
 # TLS/Let’s Encrypt for pgAdmin behind nginx
-pgadmin_domain: "database.chatwithdocs.org"
+pgadmin_domain: "database.safranys.com"
 pgadmin_enable_letsencrypt: true
-pgadmin_letsencrypt_email: "admin@chatwithdocs.org"
+pgadmin_letsencrypt_email: "admin@safranys.com"
 pgadmin_https_port: 443
 pgadmin_open_firewall: true

@@ -52,6 +52,44 @@
     state: present
     update_cache: true
 
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Stop PostgreSQL service before destructive rebuild
+  ansible.builtin.systemd:
+    name: "{{ postgresql_service_name }}"
+    state: stopped
+  when:
+    - postgres_rebuild | bool
+    - >
+      (postgresql_service_name + '.service') in ansible_facts.services
+      or postgresql_service_name in ansible_facts.services
+
+- name: Purge existing PostgreSQL packages
+  ansible.builtin.apt:
+    name: "{{ postgresql_purge_packages }}"
+    state: absent
+    purge: true
+    autoremove: true
+  when: postgres_rebuild | bool
+
+- name: Remove PostgreSQL data and config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ postgresql_data_root }}"
+    - "{{ postgresql_config_root }}"
+    - "{{ postgresql_run_root }}"
+    - "{{ postgresql_log_root }}"
+  when: postgres_rebuild | bool
+
+- name: Remove PostgreSQL apt repository file during rebuild
+  ansible.builtin.file:
+    path: "{{ postgresql_repo_file }}"
+    state: absent
+  when: postgres_rebuild | bool
+
 - name: Remove existing PostgreSQL keyring (prevent corruption)
   ansible.builtin.file:
     path: /usr/share/keyrings/postgresql-archive-keyring.gpg
