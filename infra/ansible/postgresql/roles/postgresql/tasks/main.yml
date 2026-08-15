@@ -192,6 +192,7 @@
   become: true
   become_user: postgres
   community.postgresql.postgresql_privs:
+    login_db: postgres
     database: "{{ postgresql_app_db }}"
     type: database
     roles: "{{ postgresql_app_user }}"
@@ -202,6 +203,7 @@
   become: true
   become_user: postgres
   community.postgresql.postgresql_privs:
+    login_db: postgres
     database: "{{ postgresql_app_db }}"
     type: schema
     objs: public
