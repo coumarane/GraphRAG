@@ -23,6 +23,8 @@ dependencies = [
   "alembic>=1.14,<2",
   "minio>=7.2,<8",
   "httpx>=0.28,<1",
+  "azure-storage-blob>=12.26,<13",
+  "azure-identity>=1.23,<2",
   "pypdfium2>=4.30,<5",
   "pillow>=12.3.0",
   "pyjwt>=2.9,<3",
@@ -50,6 +52,10 @@ redis = [
 ]
 minio = [
   "minio>=7.2,<8",
+]
+azure = [
+  "azure-storage-blob>=12.26,<13",
+  "azure-identity>=1.23,<2",
 ]
 qdrant = [
   "qdrant-client>=1.12,<2",
@@ -92,7 +98,7 @@ observability = [
   "prometheus-client>=0.21,<1",
 ]
 all = [
-  "enterprise-rag-anything[api,cli,postgres,redis,minio,qdrant,neo4j,llm,parsers,observability]",
+  "enterprise-rag-anything[api,cli,postgres,redis,minio,azure,qdrant,neo4j,llm,parsers,observability]",
 ]
 
 [project.urls]
@@ -179,6 +185,7 @@ exclude = [
 [[tool.mypy.overrides]]
 module = [
   "minio.*",
+  "azure.*",
   "qdrant_client.*",
   "neo4j.*",
   "magic.*",
