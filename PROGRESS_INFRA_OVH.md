@@ -30,6 +30,7 @@ Last updated: 2026-08-15
 - Dedicated public ingress workflow created for OVH-friendly exposure of Envoy Gateway through HAProxy on `rag-master`
 - Harbor deployment workflow stabilized and Harbor access validated through `https://harbor.safranys.com/harbor/projects`
 - Harbor-backed smoke image push and Kubernetes pull path validated successfully through `https://chatwithdocs.org`
+- Real `chatwithdocs` API and web images built, pushed to Harbor, and deployed on the OVH Kubernetes cluster
 
 ## Current infrastructure state
 
@@ -52,6 +53,10 @@ Kubernetes cluster:
   - `rag-worker-1`
   - `rag-worker-2`
 - kubeconfig restored locally on Mac and cluster access validated
+- application namespaces deployed:
+  - `chatwithdocs-api`
+  - `chatwithdocs-web`
+  - `chatwithdocs-smoke`
 
 Platform ingress and TLS:
 
@@ -65,6 +70,8 @@ Platform ingress and TLS:
 - public HTTPS validation currently uses `193.70.35.121` on `rag-master`
 - HAProxy on `rag-master` forwards public `443` to the Envoy Gateway NodePort
 - the OVH Additional IP `51.38.19.54` remains a later networking task and is not the active validated ingress path yet
+- production hostname `chatwithdocs.org` is now routed to the real web application
+- smoke route was moved off the production hostname to avoid `HTTPRoute` conflicts
 
 Cloudflare DNS state:
 
@@ -85,6 +92,17 @@ Harbor state:
 - Harbor robot account credentials are validated for Docker login
 - GitHub Actions can push the smoke image to Harbor
 - Kubernetes can pull the smoke image from Harbor using namespace secret `harbor-regcred`
+- GitHub Actions can also push the real `api` and `web` images to Harbor
+- Kubernetes can pull the real `api` and `web` images from Harbor using namespace secret `harbor-regcred`
+
+Application deployment state:
+
+- web application is deployed in namespace `chatwithdocs-web`
+- API application is deployed in namespace `chatwithdocs-api`
+- API Kubernetes health probes were corrected to the mounted FastAPI paths:
+  - `/api/v1/health/live`
+  - `/api/v1/health/ready`
+- authentication bootstrap is not configured yet, so no initial application admin account exists at this stage
 
 ## Important implementation decisions
 
@@ -109,6 +127,11 @@ Harbor state:
   - GitHub Actions push to Harbor
   - Kubernetes pull from Harbor
   - public HTTPS routing on `chatwithdocs.org`
+- the real application deployment path is now Harbor-backed and validates:
+  - GitHub Actions push for `api` and `web`
+  - Kubernetes pull for `api` and `web`
+  - public routing of `chatwithdocs.org` to the real web service
+  - public routing of `api.chatwithdocs.org` to the real API service
 
 ## Relevant files
 
@@ -128,13 +151,19 @@ Harbor state:
 - [.github/workflows/run-harbor-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-harbor-deploy.yml)
 - [.github/workflows/build-and-push-smoke-web-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-smoke-web-image.yml)
 - [.github/workflows/run-smoke-web-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-smoke-web-deploy.yml)
+- [.github/workflows/build-and-push-api-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-api-image.yml)
+- [.github/workflows/build-and-push-web-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-web-image.yml)
+- [.github/workflows/run-api-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-api-kubernetes-deploy.yml)
+- [.github/workflows/run-web-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-web-kubernetes-deploy.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
 - [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
 - [infra/ansible/kubernetes/public_ingress_playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/kubernetes/public_ingress_playbook.yml)
 - [infra/k8s/gateway/envoyproxy-public-gateway.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/gateway/envoyproxy-public-gateway.yaml)
 - [infra/k8s/smoke-web/kustomization.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/smoke-web/kustomization.yaml)
+- [infra/k8s/api/deployment.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/api/deployment.yaml)
+- [infra/k8s/web/deployment.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/web/deployment.yaml)
 
 ## Next step
 
-Build and deploy the real `chatwithdocs` application images from Harbor, then validate application behavior and route management on the same ingress path already proven with the Harbor-backed smoke deployment.
+Configure authentication bootstrap for the first application admin account, store the related secrets securely, then validate end-user login on the deployed `chatwithdocs` web application.
