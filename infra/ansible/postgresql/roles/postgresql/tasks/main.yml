@@ -191,24 +191,20 @@
 - name: Grant privileges to application role
   become: true
   become_user: postgres
-  community.postgresql.postgresql_privs:
+  community.postgresql.postgresql_query:
     login_db: postgres
-    database: "{{ postgresql_app_db }}"
-    type: database
-    roles: "{{ postgresql_app_user }}"
-    objs: "{{ postgresql_app_db }}"
-    privs: "ALL"
+    query: >-
+      GRANT ALL PRIVILEGES ON DATABASE "{{ postgresql_app_db }}"
+      TO "{{ postgresql_app_user }}";
 
 - name: Grant usage/create on public schema to application role
   become: true
   become_user: postgres
-  community.postgresql.postgresql_privs:
-    login_db: postgres
-    database: "{{ postgresql_app_db }}"
-    type: schema
-    objs: public
-    roles: "{{ postgresql_app_user }}"
-    privs: "USAGE,CREATE"
+  community.postgresql.postgresql_query:
+    login_db: "{{ postgresql_app_db }}"
+    query: >-
+      GRANT USAGE, CREATE ON SCHEMA public
+      TO "{{ postgresql_app_user }}";
 
 - name: Download pgAdmin apt signing key (ASCII)
   ansible.builtin.get_url:
