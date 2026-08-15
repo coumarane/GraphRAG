@@ -1,5 +1,14 @@
 - name: Install PostgreSQL 18
   hosts: postgresql
   become: true
+  vars:
+    postgresql_version: "{{ postgres_version | default(postgresql_version, true) }}"
+    postgresql_rebuild: "{{ postgres_rebuild | default(postgresql_rebuild, true) }}"
+    postgresql_admin_password: "{{ postgres_admin_password | default(postgresql_admin_password, true) }}"
+    postgresql_app_db: "{{ postgres_app_db | default(postgresql_app_db, true) }}"
+    postgresql_app_user: "{{ postgres_app_user | default(postgresql_app_user, true) }}"
+    postgresql_app_password: "{{ postgres_app_password | default(postgresql_app_password, true) }}"
+    postgresql_pgadmin_email: "{{ pgadmin_email | default(postgresql_pgadmin_email, true) }}"
+    postgresql_pgadmin_password: "{{ pgadmin_password | default(postgresql_pgadmin_password, true) }}"
   roles:
     - postgresql
