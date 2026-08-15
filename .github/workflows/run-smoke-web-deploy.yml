@@ -71,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          perl -0pi -e "s|(^\\s*newTag:\\s*).*$|\\\$1${IMAGE_TAG}|m" infra/k8s/smoke-web/kustomization.yaml
+          sed -i "s|^[[:space:]]*newTag:.*$|    newTag: ${IMAGE_TAG}|" infra/k8s/smoke-web/kustomization.yaml
           grep -n "newTag:" infra/k8s/smoke-web/kustomization.yaml
 
       - name: Copy manifests to master
@@ -92,13 +92,12 @@ jobs:
             exit 1
           fi
 
-          ssh "$MASTER_HOST" bash -s <<EOSSH
-          set -euo pipefail
-          export KUBECONFIG=/home/ubuntu/.kube/config
+          REMOTE_REGISTRY_HOST="$(printf '%q' "${REGISTRY_HOST}")"
+          REMOTE_HARBOR_USERNAME="$(printf '%q' "${HARBOR_USERNAME}")"
+          REMOTE_HARBOR_PASSWORD="$(printf '%q' "${HARBOR_PASSWORD}")"
 
-          REGISTRY_HOST="${REGISTRY_HOST}"
-          HARBOR_USERNAME="${HARBOR_USERNAME}"
-          HARBOR_PASSWORD="${HARBOR_PASSWORD}"
+          ssh "$MASTER_HOST" "export KUBECONFIG=/home/ubuntu/.kube/config REGISTRY_HOST=${REMOTE_REGISTRY_HOST} HARBOR_USERNAME=${REMOTE_HARBOR_USERNAME} HARBOR_PASSWORD=${REMOTE_HARBOR_PASSWORD}; bash -s" <<'EOSSH'
+          set -euo pipefail
 
           kubectl apply -f /tmp/chatwithdocs-smoke/namespace.yaml
           kubectl -n chatwithdocs-smoke create secret docker-registry harbor-regcred \

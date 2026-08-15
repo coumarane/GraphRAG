@@ -29,10 +29,14 @@ runs:
 
     - name: Login to Harbor
       shell: bash
+      env:
+        HARBOR_REGISTRY_HOST: ${{ inputs.registry-host }}
+        HARBOR_USERNAME: ${{ inputs.username }}
+        HARBOR_PASSWORD: ${{ inputs.password }}
       run: |
         set -euo pipefail
-        if [ -z "${{ inputs.username }}" ] || [ -z "${{ inputs.password }}" ]; then
+        if [ -z "${HARBOR_USERNAME}" ] || [ -z "${HARBOR_PASSWORD}" ]; then
           echo "Harbor credentials are missing."
           exit 1
         fi
-        echo "${{ inputs.password }}" | docker login "${{ inputs.registry-host }}" -u "${{ inputs.username }}" --password-stdin
+        printf '%s\n' "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY_HOST}" -u "${HARBOR_USERNAME}" --password-stdin

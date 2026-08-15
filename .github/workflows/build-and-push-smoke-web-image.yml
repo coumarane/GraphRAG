@@ -23,6 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Login to Harbor
         uses: ./.github/actions/login-harbor
         with:
