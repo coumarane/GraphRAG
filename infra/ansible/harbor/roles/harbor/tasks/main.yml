@@ -5,13 +5,34 @@
       - harbor_admin_password | length >= 8
       - harbor_db_password is defined
       - harbor_db_password | length >= 8
-    fail_msg: "harbor_admin_password and harbor_db_password must be provided (>=8 characters). Pass them via extra vars or env HARBOR_ADMIN_PASSWORD/HARBOR_DB_PASSWORD."
+    fail_msg: >-
+      harbor_admin_password and harbor_db_password must be provided (>=8
+      characters). Pass them via extra vars or env
+      HARBOR_ADMIN_PASSWORD/HARBOR_DB_PASSWORD.
 
 - name: Validate hostname for Let's Encrypt (must be DNS name, not IP)
   ansible.builtin.assert:
     that:
-      - harbor_enable_letsencrypt | default(false) | bool == false or (harbor_hostname is defined and harbor_hostname is match('^[A-Za-z0-9.-]+$') and not (harbor_hostname is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')))
-    fail_msg: "harbor_hostname must be a DNS name (not an IP) when harbor_enable_letsencrypt=true. Current value: {{ harbor_hostname | default('undefined') }}"
+      - not (harbor_enable_letsencrypt | default(false) | bool) or harbor_hostname is defined
+      - not (harbor_enable_letsencrypt | default(false) | bool) or harbor_hostname is match('^[A-Za-z0-9.-]+$')
+      - not (harbor_enable_letsencrypt | default(false) | bool) or not (harbor_hostname is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$'))
+    fail_msg: >-
+      harbor_hostname must be a DNS name (not an IP) when
+      harbor_enable_letsencrypt=true. Current value:
+      {{ harbor_hostname | default('undefined') }}
+
+- name: Skip Harbor installation tasks in Ansible check mode
+  when: ansible_check_mode
+  block:
+    - name: Explain Harbor check mode limitation
+      ansible.builtin.debug:
+        msg: >-
+          Harbor installation tasks are skipped in Ansible check mode because
+          the online installer download, certbot issuance, and Harbor
+          install/prepare steps require real remote changes.
+
+    - name: End Harbor role for this host during check mode
+      ansible.builtin.meta: end_host
 
 - name: Install prerequisite apt packages
   ansible.builtin.apt:
@@ -135,6 +156,7 @@
 
 - name: Stop existing Harbor containers to free port 80 for certbot
   ansible.builtin.command: docker compose -f {{ harbor_install_dir }}/docker-compose.yml down
+  changed_when: true
   when:
     - harbor_protocol_effective == 'https'
     - (harbor_enable_letsencrypt | bool)
@@ -150,7 +172,6 @@
     - harbor_protocol_effective == 'https'
     - (harbor_enable_letsencrypt | bool)
   failed_when: false
-  ignore_errors: true
 
 - name: Obtain/Renew Let's Encrypt certificate (standalone)
   ansible.builtin.command: >
@@ -184,12 +205,14 @@
     COMPOSE_HTTP_TIMEOUT: "600"
     DOCKER_CLIENT_TIMEOUT: "600"
   register: harbor_install_result
+  changed_when: true
   retries: 3
   delay: 20
   until: harbor_install_result is succeeded
   when: not harbor_core_env.stat.exists
 
 - name: Reconfigure Harbor (subsequent runs)
+  when: harbor_core_env.stat.exists
   block:
     - name: Prepare Harbor with updated configuration
       ansible.builtin.command: ./prepare
@@ -199,6 +222,7 @@
         TERM: dumb
         COMPOSE_HTTP_TIMEOUT: "600"
         DOCKER_CLIENT_TIMEOUT: "600"
+      changed_when: true
     - name: Restart Harbor stack
       ansible.builtin.command: docker compose -f {{ harbor_install_dir }}/docker-compose.yml up -d
       args:
@@ -207,7 +231,7 @@
         TERM: dumb
         COMPOSE_HTTP_TIMEOUT: "600"
         DOCKER_CLIENT_TIMEOUT: "600"
-  when: harbor_core_env.stat.exists
+      changed_when: true
 
 - name: Install systemd service for Harbor
   ansible.builtin.template:
