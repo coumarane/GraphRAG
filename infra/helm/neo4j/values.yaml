@@ -1,0 +1,34 @@
+neo4j:
+  name: chatwithdocs-graph
+  edition: community
+  minimumClusterSize: 1
+  resources:
+    cpu: "0.5"
+    memory: "2Gi"
+
+config:
+  server.memory.heap.initial_size: "512m"
+  server.memory.heap.max_size: "512m"
+  server.memory.pagecache.size: "512m"
+
+volumes:
+  data:
+    mode: dynamic
+    dynamic:
+      storageClassName: local-path
+      accessModes:
+        - ReadWriteOnce
+      requests:
+        storage: 20Gi
+
+services:
+  neo4j:
+    enabled: false
+
+tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"

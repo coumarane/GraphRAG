@@ -6,7 +6,7 @@ on:
       target_host:
         description: "Database host (default from secrets)"
         required: false
-        default: "database.chatwithdocs.org"
+        default: "database.safranys.com"
       postgres_port:
         description: "PostgreSQL port"
         required: false
@@ -38,12 +38,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     env:
-      DB_HOST: ${{ inputs.target_host || 'database.chatwithdocs.org' }}
+      DB_HOST: ${{ inputs.target_host || 'database.safranys.com' }}
       DB_PORT: ${{ inputs.postgres_port }}
       DB_NAME: ${{ secrets.POSTGRES_APP_DB }}
       DB_USER: ${{ secrets.POSTGRES_APP_USER }}
       DB_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
-      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.chatwithdocs.org' }}:${{ inputs.postgres_port }}/${{ secrets.POSTGRES_APP_DB }}
+      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.safranys.com' }}:${{ inputs.postgres_port }}/${{ secrets.POSTGRES_APP_DB }}
 
     steps:
       - name: Checkout repository

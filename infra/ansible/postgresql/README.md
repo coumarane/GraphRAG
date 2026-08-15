@@ -1,6 +1,6 @@
 # PostgreSQL Ansible Role
 
-Provision PostgreSQL (default v18) and bootstrap an application database/user, with optional pgAdmin install.
+Provision PostgreSQL (default v18) on the dedicated database host and bootstrap an application database/user, with optional pgAdmin install.
 
 ## Inventory
 
@@ -22,7 +22,8 @@ Pass via extra-vars or environment (GitHub Secrets in the workflow):
 - `postgres_app_password` (>=8 chars) – application user password
 
 Optional:
-- `pgadmin_setup` (default `false` here) – set to `true` to install pgAdmin
+- `postgres_rebuild` (default `false`) – destructive reset: purge existing PostgreSQL packages and wipe data/config directories before reinstall
+- `pgadmin_setup` (default `false`) – set to `true` to install pgAdmin
 - `pgadmin_email`, `pgadmin_password` (>=8 chars) – required when pgAdmin enabled
 - `postgres_version` – defaults to `18`
 - `pgadmin_install_method` – `auto` (default; uses container on Noble), `repo`, or `container`
@@ -34,6 +35,13 @@ Optional:
 ansible-playbook infra/ansible/postgresql/playbook.yml \
   -i infra/ansible/postgresql/inventory.ini \
   --extra-vars "ansible_password=<root_pw> postgres_admin_password=<admin_pw> postgres_app_db=<db> postgres_app_user=<user> postgres_app_password=<user_pw>"
+```
+
+Run a destructive rebuild from scratch:
+```
+ansible-playbook infra/ansible/postgresql/playbook.yml \
+  -i infra/ansible/postgresql/inventory.ini \
+  --extra-vars "ansible_password=<root_pw> postgres_admin_password=<admin_pw> postgres_app_db=<db> postgres_app_user=<user> postgres_app_password=<user_pw> postgres_rebuild=true"
 ```
 
 Enable pgAdmin on supported codenames (e.g., jammy):
@@ -56,7 +64,17 @@ Enable pgAdmin in container mode (default on Noble) on port 8080:
 - `POSTGRES_APP_PASSWORD`
 - (optional) `PGADMIN_EMAIL`, `PGADMIN_PASSWORD` if enabling pgAdmin via extra-vars.
 
-Trigger manually via the “Deploy PostgreSQL 18” workflow dispatch. Use inputs to override target host or version.
+Trigger manually via the “Run PostgreSQL Deploy” workflow dispatch.
+
+Recommended dedicated-host run for this repository:
+- `target_host=database.safranys.com`
+- `postgres_rebuild=true` for a clean reinstall from scratch
+- `postgres_version=18`
+
+Warning:
+- `postgres_rebuild=true` is destructive.
+- It purges installed PostgreSQL packages and removes existing PostgreSQL data/config directories on the target host.
+- Use it only when you explicitly want a fresh rebuild.
 
 ## Accessing pgAdmin (optional)
 
@@ -70,9 +88,9 @@ Log in with `pgadmin_email`/`pgadmin_password`, then add your PostgreSQL server 
 Here’s what to fill in on that pgAdmin “Register Server” form:
 
 Server Name: any label you like (e.g., Prod Postgres).
-Host name/address:  / database.chatwithdocs.org (or the host you set in inventory).
+Host name/address: `database.safranys.com` (or the host you set in inventory).
 Port: 5432 (unless you changed it).
 Maintenance database: postgres (or your app DB if you prefer).
 Username: your app DB user (the value you set for postgres_app_user).
 Password: your app DB user password (postgres_app_password).
-SSL: leave default Prefer unless you’ve set up TLS.
+SSL: leave default Prefer unless you’ve set up PostgreSQL TLS.

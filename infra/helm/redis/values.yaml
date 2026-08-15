@@ -1,0 +1,31 @@
+architecture: standalone
+
+auth:
+  enabled: true
+  existingSecret: redis-auth
+  existingSecretPasswordKey: redis-password
+
+master:
+  service:
+    type: ClusterIP
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  tolerations:
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+replica:
+  replicaCount: 0

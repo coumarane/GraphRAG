@@ -5,21 +5,35 @@
       "scope": "env-secret",
       "environment": "dev",
       "value": "",
-      "description": "Azure workload identity application client ID used by the OVH Terraform workflow."
+      "description": "Azure workload identity application client ID used by the OVH and Azure Terraform workflows."
     },
     {
       "name": "AZURE_SUBSCRIPTION_ID",
       "scope": "env-var",
       "environment": "dev",
       "value": "",
-      "description": "Azure subscription ID used by the OVH Terraform workflow backend and provider."
+      "description": "Azure subscription ID used by the OVH and Azure Terraform workflow backends and providers."
     },
     {
       "name": "AZURE_TENANT_ID",
       "scope": "env-var",
       "environment": "dev",
       "value": "",
-      "description": "Azure tenant ID used by the OVH Terraform workflow backend and provider."
+      "description": "Azure tenant ID used by the OVH and Azure Terraform workflow backends and providers."
+    },
+    {
+      "name": "AZURE_KEYVAULT_CSI_CLIENT_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure Key Vault CSI driver client ID used by the OVH Terraform workflow."
+    },
+    {
+      "name": "AZURE_KEYVAULT_CSI_CLIENT_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure Key Vault CSI driver client secret used by the OVH Terraform workflow."
     },
     {
       "name": "OVH_APPLICATION_KEY",
@@ -47,21 +61,28 @@
       "scope": "env-var",
       "environment": "dev",
       "value": "",
-      "description": "Azure resource group that contains the OVH Terraform state storage account."
+      "description": "Azure resource group that contains the Terraform state storage account for OVH and Azure stacks."
     },
     {
       "name": "AZURE_STORAGE_ACCOUNT_NAME",
       "scope": "env-var",
       "environment": "dev",
       "value": "",
-      "description": "Azure storage account that contains the OVH Terraform state container."
+      "description": "Azure storage account that contains the Terraform state containers for OVH and Azure stacks."
     },
     {
       "name": "AZURE_TERRAFORM_STATE_CONTAINER_NAME",
       "scope": "env-var",
       "environment": "dev",
       "value": "",
-      "description": "Azure blob container used by the OVH Terraform remote state backend."
+      "description": "Azure blob container used by the OVH and Azure Terraform remote state backends."
+    },
+    {
+      "name": "AZURE_APP_TERRAFORM_STATE_KEY",
+      "scope": "env-var",
+      "environment": "dev",
+      "value": "azure-rag-storage.tfstate",
+      "description": "Optional Azure blob name for the Azure Terraform remote state file."
     },
     {
       "name": "AZURE_KEY_VAULT_NAME",
@@ -146,6 +167,27 @@
       "environment": "dev",
       "value": "",
       "description": "Optional Argo CD OIDC client secret if external OIDC login is enabled later."
+    },
+    {
+      "name": "REDIS_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Redis password for the in-cluster Redis Helm deployment."
+    },
+    {
+      "name": "QDRANT_API_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Qdrant API key for the in-cluster Qdrant Helm deployment."
+    },
+    {
+      "name": "NEO4J_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Neo4j initial password for the in-cluster Neo4j Helm deployment."
     },
     {
       "name": "HARBOR_REGISTRY_USERNAME",

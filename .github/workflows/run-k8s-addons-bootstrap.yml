@@ -23,6 +23,31 @@ on:
         required: true
         default: true
         type: boolean
+      install_azure_keyvault_csi:
+        description: "Install/upgrade Secrets Store CSI Driver + Azure Key Vault provider"
+        required: true
+        default: true
+        type: boolean
+      install_local_path_provisioner:
+        description: "Install/upgrade local-path provisioner for PVC-backed in-cluster services"
+        required: true
+        default: true
+        type: boolean
+      install_redis:
+        description: "Install/upgrade Redis (internal ClusterIP only)"
+        required: true
+        default: true
+        type: boolean
+      install_qdrant:
+        description: "Install/upgrade Qdrant (internal ClusterIP only)"
+        required: true
+        default: true
+        type: boolean
+      install_neo4j:
+        description: "Install/upgrade Neo4j (internal ClusterIP only)"
+        required: true
+        default: true
+        type: boolean
       install_prometheus:
         description: "Install/upgrade Prometheus + Grafana stack"
         required: true
@@ -95,6 +120,9 @@ jobs:
           scp infra/helm/elasticsearch/values.yaml    "${MASTER_HOST}:/tmp/k8s-addons/helm/elasticsearch-values.yaml"
           scp infra/helm/kibana/values.yaml           "${MASTER_HOST}:/tmp/k8s-addons/helm/kibana-values.yaml"
           scp infra/helm/prometheus-stack/values.yaml "${MASTER_HOST}:/tmp/k8s-addons/helm/prometheus-stack-values.yaml"
+          scp infra/helm/redis/values.yaml            "${MASTER_HOST}:/tmp/k8s-addons/helm/redis-values.yaml"
+          scp infra/helm/qdrant/values.yaml           "${MASTER_HOST}:/tmp/k8s-addons/helm/qdrant-values.yaml"
+          scp infra/helm/neo4j/values.yaml            "${MASTER_HOST}:/tmp/k8s-addons/helm/neo4j-values.yaml"
 
           # Raw k8s manifests
           scp infra/k8s/cert-manager/clusterissuer-letsencrypt-prod.yaml \
@@ -270,6 +298,131 @@ jobs:
           kubectl -n envoy-gateway-system get gateway public-gateway
           kubectl -n envoy-gateway-system get svc
           kubectl get certificate -A || true
+          EOSSH
+
+      - name: Install/upgrade Azure Key Vault CSI provider
+        if: inputs.install_azure_keyvault_csi == true
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" bash -s <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          helm repo add csi-secrets-store-provider-azure https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+          helm repo update
+
+          helm upgrade --install akv-secrets-provider csi-secrets-store-provider-azure/csi-secrets-store-provider-azure \
+            --namespace kube-system \
+            --wait --timeout 10m0s --atomic
+
+          kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
+          kubectl -n kube-system wait --for=condition=ready pod -l app=secrets-store-csi-driver --timeout=600s
+          kubectl -n kube-system wait --for=condition=ready pod -l app=csi-secrets-store-provider-azure --timeout=600s
+          EOSSH
+
+      - name: Install/upgrade local-path provisioner
+        if: inputs.install_local_path_provisioner == true
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" bash -s <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
+
+          kubectl -n local-path-storage wait --for=condition=Available deployment/local-path-provisioner --timeout=600s
+          kubectl get storageclass local-path
+          EOSSH
+
+      - name: Install/upgrade Redis
+        if: inputs.install_redis == true
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REDIS_PASSWORD:-}" ]; then
+            echo "Missing secret REDIS_PASSWORD."
+            exit 1
+          fi
+
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
+            "REDIS_PASSWORD='${REDIS_PASSWORD}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+          kubectl create namespace redis --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n redis create secret generic redis-auth \
+            --from-literal=redis-password="${REDIS_PASSWORD}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          helm upgrade --install redis bitnami/redis \
+            --namespace redis \
+            -f /tmp/k8s-addons/helm/redis-values.yaml \
+            --wait --timeout 15m0s --atomic --wait-for-jobs
+
+          kubectl -n redis rollout status statefulset/redis-master --timeout=600s
+          kubectl -n redis get svc
+          EOSSH
+
+      - name: Install/upgrade Qdrant
+        if: inputs.install_qdrant == true
+        env:
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${QDRANT_API_KEY:-}" ]; then
+            echo "Missing secret QDRANT_API_KEY."
+            exit 1
+          fi
+
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
+            "QDRANT_API_KEY='${QDRANT_API_KEY}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          helm repo add qdrant https://qdrant.github.io/qdrant-helm
+          helm repo update
+
+          helm upgrade --install qdrant qdrant/qdrant \
+            --namespace qdrant --create-namespace \
+            -f /tmp/k8s-addons/helm/qdrant-values.yaml \
+            --set-string apiKey="${QDRANT_API_KEY}" \
+            --wait --timeout 15m0s --atomic --wait-for-jobs
+
+          kubectl -n qdrant rollout status statefulset/qdrant --timeout=600s
+          kubectl -n qdrant get svc
+          EOSSH
+
+      - name: Install/upgrade Neo4j
+        if: inputs.install_neo4j == true
+        env:
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NEO4J_PASSWORD:-}" ]; then
+            echo "Missing secret NEO4J_PASSWORD."
+            exit 1
+          fi
+
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
+            "NEO4J_PASSWORD='${NEO4J_PASSWORD}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          helm repo add neo4j https://helm.neo4j.com/neo4j
+          helm repo update
+
+          helm upgrade --install neo4j neo4j/neo4j \
+            --namespace neo4j --create-namespace \
+            -f /tmp/k8s-addons/helm/neo4j-values.yaml \
+            --set-string neo4j.password="${NEO4J_PASSWORD}" \
+            --wait --timeout 20m0s --atomic --wait-for-jobs
+
+          kubectl -n neo4j rollout status statefulset/neo4j --timeout=900s
+          kubectl -n neo4j get svc
           EOSSH
 
       # - name: Install/upgrade Elasticsearch + Kibana

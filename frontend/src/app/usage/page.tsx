@@ -176,7 +176,7 @@ export default function UsagePage() {
                 {formatUsd(data?.total_spend_usd ?? 0)}
               </p>
             </div>
-            <Badge variant="secondary">
+            <Badge variant="muted">
               {data ? `${data.from_date} → ${data.to_date}` : "—"}
             </Badge>
           </CardHeader>

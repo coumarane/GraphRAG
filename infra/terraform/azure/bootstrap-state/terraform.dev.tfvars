@@ -1,0 +1,6 @@
+azure_subscription_id      = "a555786b-b00c-4cea-946c-5c435d5e7100"
+azure_tenant_id            = "f387bed5-f1ed-4801-9df7-837a8905a354"
+azure_resource_group_name  = "rg-safranysAI-Dev"
+azure_storage_account_name = "terraformstate240775"
+state_container_name       = "tfstate-azure"
+state_blob_key             = "azure-rag-storage.tfstate"

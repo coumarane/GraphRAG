@@ -30,6 +30,26 @@ Last updated: 2026-08-15
 - Dedicated public ingress workflow created for OVH-friendly exposure of Envoy Gateway through HAProxy on `rag-master`
 - Harbor deployment workflow stabilized and Harbor access validated through `https://harbor.safranys.com/harbor/projects`
 - Harbor-backed smoke image push and Kubernetes pull path validated successfully through `https://chatwithdocs.org`
+- Real `chatwithdocs` API and web images built, pushed to Harbor, and deployed on the OVH Kubernetes cluster
+- Azure Key Vault env sync tooling created for application configuration secrets
+- Azure RBAC helper created to grant `Key Vault Secrets Officer` on app Key Vaults
+- Azure env sync documentation added for API and web app secret management
+- Azure Key Vault CSI-based secret mount pattern added for Kubernetes API and web deployments
+- Kubernetes add-ons workflow extended to install Secrets Store CSI Driver + Azure Key Vault provider
+- API and web deploy workflows extended to provision namespace-level CSI auth secret for Key Vault access
+- Dedicated PostgreSQL host deployment path moved back to `database.safranys.com` on `167.86.88.114`
+- PostgreSQL GitHub workflow updated to support destructive rebuild from scratch
+- PostgreSQL Ansible role refactored for rebuild support, lint-safe variable naming, and explicit restart handling
+- PostgreSQL bootstrap path migrated to direct `psql` commands for app database and role setup
+- Database migrations workflow fixed to target `database.safranys.com` by default
+- Database migrations executed successfully against the dedicated PostgreSQL host
+- Kubernetes add-ons workflow extended to install in-cluster data services for application dependencies:
+  - Redis
+  - Qdrant
+  - Neo4j
+- MinIO is intentionally deferred pending the final storage decision between Azure Storage and S3-compatible object storage
+- local-path provisioner added and validated for PVC-backed in-cluster services
+- Browser login path validated successfully through `https://chatwithdocs.org` with the bootstrap admin account
 
 ## Current infrastructure state
 
@@ -52,6 +72,13 @@ Kubernetes cluster:
   - `rag-worker-1`
   - `rag-worker-2`
 - kubeconfig restored locally on Mac and cluster access validated
+- application namespaces deployed:
+  - `chatwithdocs-api`
+  - `chatwithdocs-web`
+  - `chatwithdocs-smoke`
+  - `redis`
+  - `qdrant`
+  - `neo4j`
 
 Platform ingress and TLS:
 
@@ -65,6 +92,8 @@ Platform ingress and TLS:
 - public HTTPS validation currently uses `193.70.35.121` on `rag-master`
 - HAProxy on `rag-master` forwards public `443` to the Envoy Gateway NodePort
 - the OVH Additional IP `51.38.19.54` remains a later networking task and is not the active validated ingress path yet
+- production hostname `chatwithdocs.org` is now routed to the real web application
+- smoke route was moved off the production hostname to avoid `HTTPRoute` conflicts
 
 Cloudflare DNS state:
 
@@ -74,6 +103,7 @@ Cloudflare DNS state:
 - `argocd.chatwithdocs.org` -> `193.70.35.121` proxied
 - `prometheus.chatwithdocs.org` -> `193.70.35.121` proxied
 - `database.chatwithdocs.org` -> `167.86.88.114` DNS only
+- `database.safranys.com` -> `167.86.88.114` DNS only
 - `harbor.safranys.com` -> `62.84.180.181` DNS only
 
 Harbor state:
@@ -85,6 +115,81 @@ Harbor state:
 - Harbor robot account credentials are validated for Docker login
 - GitHub Actions can push the smoke image to Harbor
 - Kubernetes can pull the smoke image from Harbor using namespace secret `harbor-regcred`
+- GitHub Actions can also push the real `api` and `web` images to Harbor
+- Kubernetes can pull the real `api` and `web` images from Harbor using namespace secret `harbor-regcred`
+
+Application deployment state:
+
+- web application is deployed in namespace `chatwithdocs-web`
+- API application is deployed in namespace `chatwithdocs-api`
+- API deployment rollout is healthy after successful schema migration
+- web deployment rollout is healthy after loading mounted runtime env before Next.js startup
+- API Kubernetes health probes were corrected to the mounted FastAPI paths:
+  - `/api/v1/health/live`
+  - `/api/v1/health/ready`
+- authentication bootstrap is configured and validated
+- bootstrap admin login validated with:
+  - `AUTH_BOOTSTRAP_EMAIL=admin@chatwithdocs.com`
+  - `AUTH_BOOTSTRAP_PASSWORD` from synced production secrets
+- API and web redeploy are now intended to target the dedicated PostgreSQL host instead of any in-cluster database path
+- in-cluster dependency services are now deployed before the next API/web redeploy:
+  - Redis for cache/session-style needs
+  - Qdrant for vector search
+  - Neo4j for graph storage
+- these three services are deployed as internal-only `ClusterIP` services
+- public DNS names for those backends should not be exposed unless there is a later explicit operational need
+- current internal service endpoints prepared for the API env:
+  - Redis: `redis://redis-master.redis.svc.cluster.local:6379/0`
+  - Qdrant: `http://qdrant.qdrant.svc.cluster.local:6333`
+  - Neo4j: `bolt://neo4j.neo4j.svc.cluster.local:7687`
+
+Dedicated PostgreSQL state:
+
+- dedicated PostgreSQL host target: `database.safranys.com`
+- resolved server IP: `167.86.88.114`
+- PostgreSQL is intentionally kept outside the OVH Kubernetes cluster
+- workflow `.github/workflows/run-postgresql-deploy.yml` now supports:
+  - `target_host=database.safranys.com`
+  - `postgres_version=18`
+  - `postgres_rebuild=true` for destructive reinstall
+- pgAdmin is now disabled by default and must be explicitly enabled with credentials
+- PostgreSQL stabilization fixes applied on Saturday, August 15, 2026:
+  - destructive rebuild option
+  - default target host switch to `database.safranys.com`
+  - database migrations workflow host switch to `database.safranys.com`
+  - role variable prefix cleanup for ansible-lint
+  - missing PostgreSQL restart handler
+  - explicit `psql` bootstrap path using `argv`
+- current status:
+  - host connectivity and package installation are working
+  - schema migration path is validated through `.github/workflows/run-database-migrations.yml`
+  - API startup now succeeds against the migrated database schema
+
+Azure application secrets state:
+
+- dedicated Key Vault created for API app secrets:
+  - `graphrag-kv-api`
+- dedicated Key Vault created for web app secrets:
+  - `graphrag-kv-web`
+- production env source files prepared locally:
+  - `.env.production`
+  - `frontend/.env.production`
+- generic dotenv-to-Key Vault sync script is ready:
+  - `infra/azure/manage_keyvault_app_env.py`
+- Key Vault RBAC assignment helper is ready:
+  - `infra/azure/assign_keyvault_role.py`
+- current blocker:
+  - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-api`
+  - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-web`
+  - env sync cannot run successfully until RBAC is granted and propagated
+- Kubernetes runtime secret consumption design is now prepared:
+  - Azure Key Vault secrets mounted into pods through Secrets Store CSI Driver
+  - `initContainer` generates `/app/.env` into a shared `emptyDir`
+  - main container starts only after `.env` exists
+- additional current blocker for runtime secret mount:
+  - the Azure identity used by the CSI provider still needs Key Vault read access on `graphrag-kv-api`
+  - the Azure identity used by the CSI provider still needs Key Vault read access on `graphrag-kv-web`
+  - the cluster still needs the CSI add-on workflow to be executed after these repo changes
 
 ## Important implementation decisions
 
@@ -109,6 +214,30 @@ Harbor state:
   - GitHub Actions push to Harbor
   - Kubernetes pull from Harbor
   - public HTTPS routing on `chatwithdocs.org`
+- the real application deployment path is now Harbor-backed and validates:
+  - GitHub Actions push for `api` and `web`
+  - Kubernetes pull for `api` and `web`
+  - public routing of `chatwithdocs.org` to the real web service
+  - public routing of `api.chatwithdocs.org` to the real API service
+- the web server-side auth proxy now explicitly sources `/app/.env` before starting Next.js so `RAG_API_URL` is honored at runtime
+- stateful in-cluster application dependencies now use:
+  - Rancher `local-path-provisioner`
+  - explicit `local-path` PVC binding in Redis, Qdrant, and Neo4j Helm values
+- application runtime secrets are no longer intended to be modeled through hardcoded per-app JSON examples
+- application secrets source of truth is now the local production dotenv files synced to Azure Key Vault
+- PostgreSQL remains a dedicated-host service for this environment:
+  - easier lifecycle separation from the Kubernetes cluster
+  - simpler future host migration via DNS update
+  - avoids treating PostgreSQL as a temporary in-cluster workload
+- Azure Key Vault env sync supports:
+  - sync from any dotenv file to any Key Vault
+  - optional scoped cleanup of managed secrets with `--delete-missing`
+  - explicit RBAC assignment helper for `Key Vault Secrets Officer`
+- Kubernetes app runtime secret delivery now targets:
+  - Secrets Store CSI Driver
+  - Azure Key Vault provider
+  - `SecretProviderClass` per namespace
+  - `initContainer`-rendered `.env` files instead of ConfigMap-based app config
 
 ## Relevant files
 
@@ -128,13 +257,29 @@ Harbor state:
 - [.github/workflows/run-harbor-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-harbor-deploy.yml)
 - [.github/workflows/build-and-push-smoke-web-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-smoke-web-image.yml)
 - [.github/workflows/run-smoke-web-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-smoke-web-deploy.yml)
+- [.github/workflows/build-and-push-api-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-api-image.yml)
+- [.github/workflows/build-and-push-web-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-web-image.yml)
+- [.github/workflows/run-api-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-api-kubernetes-deploy.yml)
+- [.github/workflows/run-web-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-web-kubernetes-deploy.yml)
+- [.github/workflows/run-postgresql-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-postgresql-deploy.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
+- [infra/azure/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/README.md)
+- [infra/azure/manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
+- [infra/azure/assign_keyvault_role.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_role.py)
+- [infra/k8s/api/secretproviderclass.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/api/secretproviderclass.yaml)
+- [infra/k8s/web/secretproviderclass.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/web/secretproviderclass.yaml)
 - [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
 - [infra/ansible/kubernetes/public_ingress_playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/kubernetes/public_ingress_playbook.yml)
 - [infra/k8s/gateway/envoyproxy-public-gateway.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/gateway/envoyproxy-public-gateway.yaml)
 - [infra/k8s/smoke-web/kustomization.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/smoke-web/kustomization.yaml)
+- [infra/k8s/api/deployment.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/api/deployment.yaml)
+- [infra/k8s/web/deployment.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/web/deployment.yaml)
+- [.github/workflows/run-k8s-addons-bootstrap.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-k8s-addons-bootstrap.yml)
 
 ## Next step
 
-Build and deploy the real `chatwithdocs` application images from Harbor, then validate application behavior and route management on the same ingress path already proven with the Harbor-backed smoke deployment.
+Prepare the next application services and operational capabilities on top of the now-working platform baseline:
+- worker deployment and background processing validation
+- remaining app infrastructure dependencies such as object storage decision
+- Argo CD application management for non-smoke workloads

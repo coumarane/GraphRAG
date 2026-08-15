@@ -8,12 +8,12 @@ commonLabels:
 
 resources:
 - namespace.yaml
-- configmap.yaml
+- secretproviderclass.yaml
 - deployment.yaml
 - service.yaml
 - httproute.yaml
 
 images:
-- digest: sha256:6044eb091d7dbd417292058c70b890684faf411a521031fc642a109f2a41999b
+- digest: sha256:8177405456961b2983767cefb4aa9939f7f5d3d5f0a2f8ddc7437917bdf28d32
   name: harbor.safranys.com/chatwithdocs/web
   newName: harbor.safranys.com/chatwithdocs/web

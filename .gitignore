@@ -64,6 +64,9 @@ infra/keycloak_sample
 .github/actions-config.dev.json
 infra/github/actions-config.dev.json
 infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars
+infra/terraform/azure/terraform.local.tfvars
+infra/azure/*.local.json
+infra/azure/*.generated.json
 
 .terraform/
 NOTE.md
