@@ -37,6 +37,15 @@ Last updated: 2026-08-15
 - Azure Key Vault CSI-based secret mount pattern added for Kubernetes API and web deployments
 - Kubernetes add-ons workflow extended to install Secrets Store CSI Driver + Azure Key Vault provider
 - API and web deploy workflows extended to provision namespace-level CSI auth secret for Key Vault access
+- Dedicated PostgreSQL host deployment path moved back to `database.safranys.com` on `167.86.88.114`
+- PostgreSQL GitHub workflow updated to support destructive rebuild from scratch
+- PostgreSQL Ansible role refactored for rebuild support, lint-safe variable naming, and explicit restart handling
+- PostgreSQL bootstrap path migrated to direct `psql` commands for app database and role setup
+- Kubernetes add-ons workflow prepared to install in-cluster data services for application dependencies:
+  - Redis
+  - Qdrant
+  - Neo4j
+- MinIO is intentionally deferred pending the final storage decision between Azure Storage and S3-compatible object storage
 
 ## Current infrastructure state
 
@@ -87,6 +96,7 @@ Cloudflare DNS state:
 - `argocd.chatwithdocs.org` -> `193.70.35.121` proxied
 - `prometheus.chatwithdocs.org` -> `193.70.35.121` proxied
 - `database.chatwithdocs.org` -> `167.86.88.114` DNS only
+- `database.safranys.com` -> `167.86.88.114` DNS only
 - `harbor.safranys.com` -> `62.84.180.181` DNS only
 
 Harbor state:
@@ -109,6 +119,33 @@ Application deployment state:
   - `/api/v1/health/live`
   - `/api/v1/health/ready`
 - authentication bootstrap is not configured yet, so no initial application admin account exists at this stage
+- API and web redeploy are now intended to target the dedicated PostgreSQL host instead of any in-cluster database path
+- next in-cluster dependency targets prepared before the next API/web redeploy:
+  - Redis for cache/session-style needs
+  - Qdrant for vector search
+  - Neo4j for graph storage
+- these three services are intended to stay internal to Kubernetes through `ClusterIP` services only
+- public DNS names for those backends should not be exposed unless there is a later explicit operational need
+
+Dedicated PostgreSQL state:
+
+- dedicated PostgreSQL host target: `database.safranys.com`
+- resolved server IP: `167.86.88.114`
+- PostgreSQL is intentionally kept outside the OVH Kubernetes cluster
+- workflow `.github/workflows/run-postgresql-deploy.yml` now supports:
+  - `target_host=database.safranys.com`
+  - `postgres_version=18`
+  - `postgres_rebuild=true` for destructive reinstall
+- pgAdmin is now disabled by default and must be explicitly enabled with credentials
+- PostgreSQL stabilization fixes applied on Saturday, August 15, 2026:
+  - destructive rebuild option
+  - default target host switch to `database.safranys.com`
+  - role variable prefix cleanup for ansible-lint
+  - missing PostgreSQL restart handler
+  - explicit `psql` bootstrap path using `argv`
+- current status:
+  - host connectivity and package installation are working
+  - PostgreSQL bootstrap is still being stabilized in the application DB / role creation path
 
 Azure application secrets state:
 
@@ -166,6 +203,10 @@ Azure application secrets state:
   - public routing of `api.chatwithdocs.org` to the real API service
 - application runtime secrets are no longer intended to be modeled through hardcoded per-app JSON examples
 - application secrets source of truth is now the local production dotenv files synced to Azure Key Vault
+- PostgreSQL remains a dedicated-host service for this environment:
+  - easier lifecycle separation from the Kubernetes cluster
+  - simpler future host migration via DNS update
+  - avoids treating PostgreSQL as a temporary in-cluster workload
 - Azure Key Vault env sync supports:
   - sync from any dotenv file to any Key Vault
   - optional scoped cleanup of managed secrets with `--delete-missing`
@@ -198,6 +239,7 @@ Azure application secrets state:
 - [.github/workflows/build-and-push-web-image.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/build-and-push-web-image.yml)
 - [.github/workflows/run-api-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-api-kubernetes-deploy.yml)
 - [.github/workflows/run-web-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-web-kubernetes-deploy.yml)
+- [.github/workflows/run-postgresql-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-postgresql-deploy.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
 - [infra/azure/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/README.md)
@@ -215,4 +257,4 @@ Azure application secrets state:
 
 ## Next step
 
-Grant the required Key Vault RBAC to both the local operator and the CSI runtime identity, sync `.env.production` and `frontend/.env.production` into Azure Key Vault, run the CSI add-on bootstrap, then validate API and web startup from Azure-mounted secrets and finish authentication bootstrap validation.
+Finish stabilizing the dedicated PostgreSQL rebuild on `database.safranys.com`, update API production env values to the rebuilt database endpoint and real credentials, sync `.env.production` and `frontend/.env.production` into Azure Key Vault, then redeploy and validate the real API and web applications from Kubernetes.

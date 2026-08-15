@@ -162,6 +162,27 @@
       "description": "Optional Argo CD OIDC client secret if external OIDC login is enabled later."
     },
     {
+      "name": "REDIS_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Redis password for the in-cluster Redis Helm deployment."
+    },
+    {
+      "name": "QDRANT_API_KEY",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Qdrant API key for the in-cluster Qdrant Helm deployment."
+    },
+    {
+      "name": "NEO4J_PASSWORD",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Neo4j initial password for the in-cluster Neo4j Helm deployment."
+    },
+    {
       "name": "HARBOR_REGISTRY_USERNAME",
       "scope": "env-secret",
       "environment": "dev",

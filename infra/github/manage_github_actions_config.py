@@ -105,6 +105,27 @@ WORKFLOW_ENTRIES: tuple[ConfigEntry, ...] = (
         required_by=("run-k8s-addons-bootstrap.yml",),
     ),
     ConfigEntry(
+        name="REDIS_PASSWORD",
+        scope="env-secret",
+        environment="dev",
+        description="Redis password for the in-cluster Redis Helm deployment.",
+        required_by=("run-k8s-addons-bootstrap.yml",),
+    ),
+    ConfigEntry(
+        name="QDRANT_API_KEY",
+        scope="env-secret",
+        environment="dev",
+        description="Qdrant API key for the in-cluster Qdrant Helm deployment.",
+        required_by=("run-k8s-addons-bootstrap.yml",),
+    ),
+    ConfigEntry(
+        name="NEO4J_PASSWORD",
+        scope="env-secret",
+        environment="dev",
+        description="Neo4j initial password for the in-cluster Neo4j Helm deployment.",
+        required_by=("run-k8s-addons-bootstrap.yml",),
+    ),
+    ConfigEntry(
         name="CONTABO_ROOT_PASSWORD",
         scope="env-secret",
         environment="dev",
