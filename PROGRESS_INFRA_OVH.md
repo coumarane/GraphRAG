@@ -31,6 +31,9 @@ Last updated: 2026-08-15
 - Harbor deployment workflow stabilized and Harbor access validated through `https://harbor.safranys.com/harbor/projects`
 - Harbor-backed smoke image push and Kubernetes pull path validated successfully through `https://chatwithdocs.org`
 - Real `chatwithdocs` API and web images built, pushed to Harbor, and deployed on the OVH Kubernetes cluster
+- Azure Key Vault env sync tooling created for application configuration secrets
+- Azure RBAC helper created to grant `Key Vault Secrets Officer` on app Key Vaults
+- Azure env sync documentation added for API and web app secret management
 
 ## Current infrastructure state
 
@@ -104,6 +107,24 @@ Application deployment state:
   - `/api/v1/health/ready`
 - authentication bootstrap is not configured yet, so no initial application admin account exists at this stage
 
+Azure application secrets state:
+
+- dedicated Key Vault created for API app secrets:
+  - `graphrag-kv-api`
+- dedicated Key Vault created for web app secrets:
+  - `graphrag-kv-web`
+- production env source files prepared locally:
+  - `.env.production`
+  - `frontend/.env.production`
+- generic dotenv-to-Key Vault sync script is ready:
+  - `infra/azure/manage_keyvault_app_env.py`
+- Key Vault RBAC assignment helper is ready:
+  - `infra/azure/assign_keyvault_secrets_officer.py`
+- current blocker:
+  - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-api`
+  - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-web`
+  - env sync cannot run successfully until RBAC is granted and propagated
+
 ## Important implementation decisions
 
 - GitHub workflow uses tracked file `infra/terraform/ovh-dedicated-reinstall/terraform.dev.tfvars`
@@ -132,6 +153,12 @@ Application deployment state:
   - Kubernetes pull for `api` and `web`
   - public routing of `chatwithdocs.org` to the real web service
   - public routing of `api.chatwithdocs.org` to the real API service
+- application runtime secrets are no longer intended to be modeled through hardcoded per-app JSON examples
+- application secrets source of truth is now the local production dotenv files synced to Azure Key Vault
+- Azure Key Vault env sync supports:
+  - sync from any dotenv file to any Key Vault
+  - optional scoped cleanup of managed secrets with `--delete-missing`
+  - explicit RBAC assignment helper for `Key Vault Secrets Officer`
 
 ## Relevant files
 
@@ -157,6 +184,9 @@ Application deployment state:
 - [.github/workflows/run-web-kubernetes-deploy.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/.github/workflows/run-web-kubernetes-deploy.yml)
 - [infra/cloudfare/CLOUDFARE_README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/CLOUDFARE_README.md)
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
+- [infra/azure/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/README.md)
+- [infra/azure/manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
+- [infra/azure/assign_keyvault_secrets_officer.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_secrets_officer.py)
 - [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
 - [infra/ansible/kubernetes/public_ingress_playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/kubernetes/public_ingress_playbook.yml)
 - [infra/k8s/gateway/envoyproxy-public-gateway.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/gateway/envoyproxy-public-gateway.yaml)
@@ -166,4 +196,4 @@ Application deployment state:
 
 ## Next step
 
-Configure authentication bootstrap for the first application admin account, store the related secrets securely, then validate end-user login on the deployed `chatwithdocs` web application.
+Grant Key Vault RBAC on `graphrag-kv-api` and `graphrag-kv-web`, sync `.env.production` and `frontend/.env.production` into Azure Key Vault, then wire the deployed applications to consume those secrets and finish authentication bootstrap validation.
