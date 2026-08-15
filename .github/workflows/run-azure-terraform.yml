@@ -1,0 +1,48 @@
+name: Run Azure Terraform
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Terraform operation to run
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+      environment_name:
+        description: GitHub environment name
+        required: true
+        default: dev
+        type: string
+      tfvars_file:
+        description: Terraform tfvars file path relative to the repository root
+        required: true
+        default: infra/terraform/azure/terraform.dev.tfvars
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-terraform-${{ github.event.inputs.environment_name }}
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    uses: ./.github/workflows/reusable-azure-terraform.yml
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      terraform_working_directory: infra/terraform/azure
+      tfvars_file: ${{ inputs.tfvars_file }}
+      operation: ${{ inputs.operation }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_resource_group_name: ${{ vars.AZURE_RESOURCE_GROUP_NAME }}
+      azure_storage_account_name: ${{ vars.AZURE_STORAGE_ACCOUNT_NAME }}
+      azure_storage_container_name: ${{ vars.AZURE_TERRAFORM_STATE_CONTAINER_NAME }}
+      azure_storage_state_key: ${{ vars.AZURE_APP_TERRAFORM_STATE_KEY || 'azure-rag-storage.tfstate' }}
+    secrets:
+      azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}

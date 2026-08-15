@@ -1,0 +1,191 @@
+name: Reusable Azure Terraform
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        description: GitHub environment name
+        required: false
+        default: dev
+        type: string
+      terraform_working_directory:
+        description: Terraform working directory
+        required: false
+        default: infra/terraform/azure
+        type: string
+      tfvars_file:
+        description: Terraform tfvars file path relative to the repository root
+        required: false
+        default: infra/terraform/azure/terraform.dev.tfvars
+        type: string
+      terraform_version:
+        description: Terraform CLI version
+        required: false
+        default: 1.12.2
+        type: string
+      operation:
+        description: Terraform operation to run
+        required: true
+        type: string
+      azure_subscription_id:
+        description: Azure subscription used by the backend and provider
+        required: true
+        type: string
+      azure_tenant_id:
+        description: Azure tenant used by the backend and provider
+        required: true
+        type: string
+      azure_resource_group_name:
+        description: Resource group containing the Terraform state storage account
+        required: true
+        type: string
+      azure_storage_account_name:
+        description: Storage account containing the Terraform state container
+        required: true
+        type: string
+      azure_storage_container_name:
+        description: Blob container that stores the Terraform state
+        required: true
+        type: string
+      azure_storage_state_key:
+        description: Blob name used for the Terraform state file
+        required: false
+        default: azure-rag-storage.tfstate
+        type: string
+    secrets:
+      azure_client_id:
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.operation }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Resolve workflow configuration
+        id: resolve
+        shell: bash
+        env:
+          EFFECTIVE_AZURE_CLIENT_ID: ${{ secrets.azure_client_id }}
+          EFFECTIVE_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+          EFFECTIVE_AZURE_TENANT_ID: ${{ inputs.azure_tenant_id }}
+          EFFECTIVE_AZURE_RESOURCE_GROUP_NAME: ${{ inputs.azure_resource_group_name }}
+          EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME: ${{ inputs.azure_storage_account_name }}
+          EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME: ${{ inputs.azure_storage_container_name }}
+          EFFECTIVE_AZURE_STORAGE_STATE_KEY: ${{ inputs.azure_storage_state_key }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for var_name in \
+            EFFECTIVE_AZURE_CLIENT_ID \
+            EFFECTIVE_AZURE_SUBSCRIPTION_ID \
+            EFFECTIVE_AZURE_TENANT_ID \
+            EFFECTIVE_AZURE_RESOURCE_GROUP_NAME \
+            EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME \
+            EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME; do
+            if [ -z "${!var_name:-}" ]; then
+              missing+=("${var_name#EFFECTIVE_}")
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required workflow settings: ${missing[*]}"
+            echo "Expected GitHub settings in the '${{ inputs.environment_name }}' environment or repository scope."
+            exit 1
+          fi
+
+          {
+            echo "azure_client_id=${EFFECTIVE_AZURE_CLIENT_ID}"
+            echo "azure_subscription_id=${EFFECTIVE_AZURE_SUBSCRIPTION_ID}"
+            echo "azure_tenant_id=${EFFECTIVE_AZURE_TENANT_ID}"
+            echo "azure_resource_group_name=${EFFECTIVE_AZURE_RESOURCE_GROUP_NAME}"
+            echo "azure_storage_account_name=${EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME}"
+            echo "azure_storage_container_name=${EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME}"
+            echo "azure_storage_state_key=${EFFECTIVE_AZURE_STORAGE_STATE_KEY}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Terraform tfvars file
+        id: tfvars
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested_path="${GITHUB_WORKSPACE}/${{ inputs.tfvars_file }}"
+          default_path="${GITHUB_WORKSPACE}/infra/terraform/azure/terraform.dev.tfvars"
+
+          if [ -n "${{ inputs.tfvars_file }}" ] && [ -f "${requested_path}" ]; then
+            echo "Using requested tfvars file: ${{ inputs.tfvars_file }}"
+            echo "plan_args=-var-file=${requested_path}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -f "${default_path}" ]; then
+            echo "Requested tfvars file not found. Falling back to tracked dev tfvars file."
+            echo "plan_args=-var-file=${default_path}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "No tfvars file found. Terraform will rely on variable defaults only."
+          echo "plan_args=" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ steps.resolve.outputs.azure_client_id }}
+          tenant-id: ${{ steps.resolve.outputs.azure_tenant_id }}
+          subscription-id: ${{ steps.resolve.outputs.azure_subscription_id }}
+
+      - name: Write backend config
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "${{ inputs.terraform_working_directory }}/backend.hcl" <<EOF
+          resource_group_name  = "${{ steps.resolve.outputs.azure_resource_group_name }}"
+          storage_account_name = "${{ steps.resolve.outputs.azure_storage_account_name }}"
+          container_name       = "${{ steps.resolve.outputs.azure_storage_container_name }}"
+          key                  = "${{ steps.resolve.outputs.azure_storage_state_key }}"
+          tenant_id            = "${{ steps.resolve.outputs.azure_tenant_id }}"
+          subscription_id      = "${{ steps.resolve.outputs.azure_subscription_id }}"
+          use_azuread_auth     = true
+          use_cli              = true
+          EOF
+
+      - name: Terraform init
+        working-directory: ${{ inputs.terraform_working_directory }}
+        run: terraform init -reconfigure -backend-config=backend.hcl
+
+      - name: Terraform validate
+        working-directory: ${{ inputs.terraform_working_directory }}
+        run: terraform validate
+
+      - name: Terraform plan
+        if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}
+        working-directory: ${{ inputs.terraform_working_directory }}
+        run: terraform plan -input=false ${{ steps.tfvars.outputs.plan_args }} -out=tfplan
+
+      - name: Upload Terraform plan
+        if: ${{ inputs.operation == 'plan' || inputs.operation == 'apply' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-${{ inputs.environment_name }}-tfplan
+          path: ${{ inputs.terraform_working_directory }}/tfplan
+          retention-days: 7
+
+      - name: Terraform apply
+        if: ${{ inputs.operation == 'apply' }}
+        working-directory: ${{ inputs.terraform_working_directory }}
+        run: terraform apply -input=false -auto-approve tfplan
