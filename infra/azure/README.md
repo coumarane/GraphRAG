@@ -2,7 +2,7 @@
 
 This folder contains two helpers:
 
-- [assign_keyvault_secrets_officer.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_secrets_officer.py)
+- [assign_keyvault_role.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_role.py)
   Grants, removes, or lists an Azure RBAC role on a Key Vault.
 - [manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
   Syncs any dotenv file to Azure Key Vault.
@@ -37,7 +37,7 @@ Operator access for syncing `.env` into Key Vault:
 Grant `Key Vault Secrets Officer` to your current signed-in Azure user on the API Key Vault:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets Officer"
@@ -46,7 +46,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 Grant `Key Vault Secrets Officer` to your current signed-in Azure user on the web Key Vault:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-web \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets Officer"
@@ -57,7 +57,7 @@ CSI runtime access for Kubernetes pods:
 Grant `Key Vault Secrets User` to the service principal used by the CSI provider on the API Key Vault:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets User" \
@@ -68,7 +68,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 Grant `Key Vault Secrets User` to the service principal used by the CSI provider on the web Key Vault:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-web \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets User" \
@@ -81,7 +81,7 @@ Useful variants:
 - Preview only:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets Officer" \
@@ -91,7 +91,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 - Check current assignment:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets Officer" \
@@ -101,7 +101,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 - Remove the assignment:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets Officer" \
@@ -111,7 +111,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 - Grant to a specific user:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets Officer" \
@@ -122,7 +122,7 @@ python3 infra/azure/assign_keyvault_secrets_officer.py \
 - Grant to a service principal:
 
 ```bash
-python3 infra/azure/assign_keyvault_secrets_officer.py \
+python3 infra/azure/assign_keyvault_role.py \
   --vault-name graphrag-kv-api \
   --resource-group rg-safranysAI-Dev \
   --role-name "Key Vault Secrets User" \

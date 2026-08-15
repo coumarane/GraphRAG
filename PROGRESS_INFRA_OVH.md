@@ -122,7 +122,7 @@ Azure application secrets state:
 - generic dotenv-to-Key Vault sync script is ready:
   - `infra/azure/manage_keyvault_app_env.py`
 - Key Vault RBAC assignment helper is ready:
-  - `infra/azure/assign_keyvault_secrets_officer.py`
+  - `infra/azure/assign_keyvault_role.py`
 - current blocker:
   - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-api`
   - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-web`
@@ -202,7 +202,7 @@ Azure application secrets state:
 - [infra/cloudfare/dns_records.json](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/cloudfare/dns_records.json)
 - [infra/azure/README.md](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/README.md)
 - [infra/azure/manage_keyvault_app_env.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/manage_keyvault_app_env.py)
-- [infra/azure/assign_keyvault_secrets_officer.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_secrets_officer.py)
+- [infra/azure/assign_keyvault_role.py](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/azure/assign_keyvault_role.py)
 - [infra/k8s/api/secretproviderclass.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/api/secretproviderclass.yaml)
 - [infra/k8s/web/secretproviderclass.yaml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/k8s/web/secretproviderclass.yaml)
 - [infra/ansible/harbor/playbook.yml](/Users/coumaranecouppane/Dev/ProjetRag/GraphRAG/infra/ansible/harbor/playbook.yml)
