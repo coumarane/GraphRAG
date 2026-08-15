@@ -22,6 +22,20 @@
       "description": "Azure tenant ID used by the OVH Terraform workflow backend and provider."
     },
     {
+      "name": "AZURE_KEYVAULT_CSI_CLIENT_ID",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure Key Vault CSI driver client ID used by the OVH Terraform workflow."
+    },
+    {
+      "name": "AZURE_KEYVAULT_CSI_CLIENT_SECRET",
+      "scope": "env-secret",
+      "environment": "dev",
+      "value": "",
+      "description": "Azure Key Vault CSI driver client secret used by the OVH Terraform workflow."
+    },
+    {
       "name": "OVH_APPLICATION_KEY",
       "scope": "env-secret",
       "environment": "dev",
