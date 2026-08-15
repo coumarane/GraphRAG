@@ -67,3 +67,4 @@ infra/terraform/ovh-dedicated-reinstall/terraform.local.tfvars
 
 .terraform/
 NOTE.md
+infra/harbor/robot$github-actions-chatwithdocs.json
