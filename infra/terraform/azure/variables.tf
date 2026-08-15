@@ -47,7 +47,7 @@ variable "account_tier" {
 variable "account_replication_type" {
   description = "Azure Storage replication type."
   type        = string
-  default     = "ZRS"
+  default     = "LRS"
 }
 
 variable "access_tier" {

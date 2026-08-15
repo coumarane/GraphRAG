@@ -108,6 +108,24 @@ class MinioSettings(BaseModel):
     bucket: str = "enterprise-rag"
 
 
+class AzureBlobSettings(BaseModel):
+    """Azure Blob object-store settings."""
+
+    account_name: str = ""
+    account_url: str = ""
+    container: str = "documents"
+    access_key: SecretStr | None = None
+    tenant_id: str = ""
+    client_id: str = ""
+    client_secret: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def default_account_url(self) -> Self:
+        if not self.account_url and self.account_name:
+            self.account_url = f"https://{self.account_name}.blob.core.windows.net/"
+        return self
+
+
 class QdrantSettings(BaseModel):
     """Qdrant vector-store settings."""
 
@@ -343,6 +361,7 @@ class Settings(BaseSettings):
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     minio: MinioSettings = Field(default_factory=MinioSettings)
+    azure_blob: AzureBlobSettings = Field(default_factory=AzureBlobSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     neo4j: Neo4jSettings = Field(default_factory=Neo4jSettings)
     models: ModelSettings = Field(default_factory=ModelSettings)
@@ -491,6 +510,21 @@ def _apply_flat_store_env(init_data: dict[str, Any]) -> None:
             minio[field] = value
     if minio:
         init_data["minio"] = minio
+
+    azure_blob = dict(init_data.get("azure_blob") or {})
+    for field, env_name in (
+        ("account_name", "AZURE_BLOB_ACCOUNT_NAME"),
+        ("account_url", "AZURE_BLOB_ACCOUNT_URL"),
+        ("container", "AZURE_BLOB_CONTAINER"),
+        ("access_key", "AZURE_BLOB_ACCESS_KEY"),
+        ("tenant_id", "AZURE_BLOB_TENANT_ID"),
+        ("client_id", "AZURE_BLOB_CLIENT_ID"),
+        ("client_secret", "AZURE_BLOB_CLIENT_SECRET"),
+    ):
+        if os.environ.get(env_name) is not None and os.environ.get(env_name) != "":
+            azure_blob[field] = os.environ[env_name]
+    if azure_blob:
+        init_data["azure_blob"] = azure_blob
 
     qdrant = dict(init_data.get("qdrant") or {})
     if os.environ.get("QDRANT_URL"):

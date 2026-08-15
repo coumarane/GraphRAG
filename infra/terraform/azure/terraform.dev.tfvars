@@ -1,7 +1,7 @@
 azure_resource_group_name   = "rg-safranysAI-Dev"
 environment                 = "dev"
 storage_account_name_prefix = "graphragdocs"
-account_replication_type    = "ZRS"
+account_replication_type    = "LRS"
 
 storage_containers = [
   "documents",

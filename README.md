@@ -14,7 +14,7 @@ uv run pytest tests/unit
 # API (in-memory object store by default)
 uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
 
-# Persist uploads to MinIO (requires MinIO running)
+# Persist uploads to MinIO locally (requires MinIO running)
 # OBJECT_STORE_BACKEND=minio uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
 
 # CLI against local container
@@ -28,6 +28,8 @@ cd frontend && npm install && npm run dev
 ## Docker Compose
 
 Starts PostgreSQL, Redis, MinIO, Qdrant, Neo4j, API, worker, frontend, and a one-shot migration job. Compose sets `OBJECT_STORE_BACKEND=minio`, `VECTOR_STORE_BACKEND=qdrant`, and `GRAPH_STORE_BACKEND=neo4j`. For a local `uvicorn` process, set the same vars in `.env` (requires those containers healthy and enough Docker disk).
+
+For the OVH Kubernetes cluster, production can use Azure Blob Storage instead of MinIO by setting `OBJECT_STORE_BACKEND=azure_blob` and providing the `AZURE_BLOB_*` variables in `.env.production` / Azure Key Vault.
 
 ```bash
 cp .env.example .env

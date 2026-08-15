@@ -19,7 +19,7 @@ from enterprise_rag.infrastructure.persistence.minio import MinioObjectStore
 
 
 def object_store_backend() -> str:
-    """Return configured object-store backend name (``memory`` or ``minio``)."""
+    """Return configured object-store backend name (``memory``, ``minio``, or ``azure_blob``)."""
     return os.environ.get("OBJECT_STORE_BACKEND", "memory").strip().lower() or "memory"
 
 
@@ -42,7 +42,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     """Build the process container for uvicorn / compose.
 
     Backends (env):
-    - ``OBJECT_STORE_BACKEND``: memory | minio
+    - ``OBJECT_STORE_BACKEND``: memory | minio | azure_blob
     - ``VECTOR_STORE_BACKEND``: memory | qdrant
     - ``GRAPH_STORE_BACKEND``: memory | neo4j
     - ``METADATA_STORE_BACKEND``: memory | postgres
@@ -54,9 +54,13 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     obj_backend = object_store_backend()
     if obj_backend == "minio":
         object_store = MinioObjectStore(resolved.minio)
+    elif obj_backend in {"azure_blob", "azure", "blob"}:
+        from enterprise_rag.infrastructure.persistence.azure_blob import AzureBlobObjectStore
+
+        object_store = AzureBlobObjectStore(resolved.azure_blob)
     elif obj_backend not in {"memory", "inmemory", "local"}:
         raise ValueError(
-            f"Unsupported OBJECT_STORE_BACKEND={obj_backend!r}; use 'memory' or 'minio'"
+            f"Unsupported OBJECT_STORE_BACKEND={obj_backend!r}; use 'memory', 'minio', or 'azure_blob'"
         )
 
     vector_store = None

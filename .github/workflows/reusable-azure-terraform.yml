@@ -29,23 +29,28 @@ on:
         type: string
       azure_subscription_id:
         description: Azure subscription used by the backend and provider
-        required: true
+        required: false
+        default: ""
         type: string
       azure_tenant_id:
         description: Azure tenant used by the backend and provider
-        required: true
+        required: false
+        default: ""
         type: string
       azure_resource_group_name:
         description: Resource group containing the Terraform state storage account
-        required: true
+        required: false
+        default: ""
         type: string
       azure_storage_account_name:
         description: Storage account containing the Terraform state container
-        required: true
+        required: false
+        default: ""
         type: string
       azure_storage_container_name:
         description: Blob container that stores the Terraform state
-        required: true
+        required: false
+        default: ""
         type: string
       azure_storage_state_key:
         description: Blob name used for the Terraform state file
@@ -82,12 +87,12 @@ jobs:
         shell: bash
         env:
           EFFECTIVE_AZURE_CLIENT_ID: ${{ secrets.azure_client_id }}
-          EFFECTIVE_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
-          EFFECTIVE_AZURE_TENANT_ID: ${{ inputs.azure_tenant_id }}
-          EFFECTIVE_AZURE_RESOURCE_GROUP_NAME: ${{ inputs.azure_resource_group_name }}
-          EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME: ${{ inputs.azure_storage_account_name }}
-          EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME: ${{ inputs.azure_storage_container_name }}
-          EFFECTIVE_AZURE_STORAGE_STATE_KEY: ${{ inputs.azure_storage_state_key }}
+          EFFECTIVE_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id || vars.AZURE_SUBSCRIPTION_ID }}
+          EFFECTIVE_AZURE_TENANT_ID: ${{ inputs.azure_tenant_id || vars.AZURE_TENANT_ID }}
+          EFFECTIVE_AZURE_RESOURCE_GROUP_NAME: ${{ inputs.azure_resource_group_name || vars.AZURE_RESOURCE_GROUP_NAME }}
+          EFFECTIVE_AZURE_STORAGE_ACCOUNT_NAME: ${{ inputs.azure_storage_account_name || vars.AZURE_STORAGE_ACCOUNT_NAME }}
+          EFFECTIVE_AZURE_STORAGE_CONTAINER_NAME: ${{ inputs.azure_storage_container_name || vars.AZURE_TERRAFORM_STATE_CONTAINER_NAME }}
+          EFFECTIVE_AZURE_STORAGE_STATE_KEY: ${{ inputs.azure_storage_state_key || vars.AZURE_APP_TERRAFORM_STATE_KEY || 'azure-rag-storage.tfstate' }}
         run: |
           set -euo pipefail
           missing=()
