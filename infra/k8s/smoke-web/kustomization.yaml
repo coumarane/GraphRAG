@@ -11,3 +11,8 @@ resources:
   - deployment.yaml
   - service.yaml
   - httproute.yaml
+
+images:
+  - name: harbor.safranys.com/chatwithdocs/smoke-web
+    newName: harbor.safranys.com/chatwithdocs/smoke-web
+    newTag: latest

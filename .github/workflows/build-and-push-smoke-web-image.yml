@@ -1,0 +1,54 @@
+name: Build And Push Smoke Web Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag (defaults to commit SHA)"
+        required: false
+        default: ""
+
+env:
+  REGISTRY_HOST: harbor.safranys.com
+  HARBOR_PROJECT: chatwithdocs
+  IMAGE_NAME: smoke-web
+  SOURCE_IMAGE: nginxdemos/hello:plain-text
+
+permissions:
+  contents: read
+
+jobs:
+  mirror-and-push:
+    name: Mirror Smoke Web Image To Harbor
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Login to Harbor
+        uses: ./.github/actions/login-harbor
+        with:
+          registry-host: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          password: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+
+      - name: Pull source smoke image
+        run: docker pull ${{ env.SOURCE_IMAGE }}
+
+      - name: Tag and push smoke image to Harbor
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-${GITHUB_SHA}}"
+          IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}"
+
+          docker tag "${SOURCE_IMAGE}" "${IMAGE_REF}:${TAG}"
+          docker tag "${SOURCE_IMAGE}" "${IMAGE_REF}:latest"
+          docker push "${IMAGE_REF}:${TAG}"
+          docker push "${IMAGE_REF}:latest"
+
+          echo "Pushed: ${IMAGE_REF}:${TAG}"
+          echo "Updated: ${IMAGE_REF}:latest"
+
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}

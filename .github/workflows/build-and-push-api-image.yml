@@ -20,7 +20,7 @@ on:
         default: ""
 
 env:
-  REGISTRY_HOST: harbor.chatwithdocs.org
+  REGISTRY_HOST: harbor.safranys.com
   HARBOR_PROJECT: chatwithdocs
   IMAGE_NAME: api
   DOCKERFILE_PATH: Dockerfile
@@ -113,7 +113,7 @@ jobs:
         uses: ./.github/actions/update-kustomize-image
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          image-name: harbor.chatwithdocs.org/chatwithdocs/api
+          image-name: harbor.safranys.com/chatwithdocs/api
           image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           digest: ${{ steps.build.outputs.digest }}
           kustomization-dir: infra/k8s/api
