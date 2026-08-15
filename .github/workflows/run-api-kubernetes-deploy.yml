@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRY_HOST: harbor.chatwithdocs.org
+  REGISTRY_HOST: harbor.safranys.com
   HARBOR_PROJECT: chatwithdocs
   IMAGE_NAME: api
   K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
@@ -117,7 +117,7 @@ jobs:
             --docker-server="\${REGISTRY_HOST}" \\
             --docker-username="\${HARBOR_USERNAME}" \\
             --docker-password="\${HARBOR_PASSWORD}" \\
-            --docker-email=admin@chatwithdocs.org \\
+            --docker-email=admin@safranys.com \\
             --dry-run=client -o yaml | kubectl apply -f -
 
           kubectl apply -k /tmp/chatwithdocs-api

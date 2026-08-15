@@ -29,7 +29,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: api
-          image: harbor.chatwithdocs.net/chatwithdocs/api:latest
+          image: harbor.safranys.com/chatwithdocs/api:latest
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

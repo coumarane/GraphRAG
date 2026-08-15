@@ -15,5 +15,5 @@ resources:
 
 images:
 - digest: sha256:46d26ed95bfb1db574af2de4e0cf0e525295cef39409de492e2ee787bd988ae3
-  name: harbor.chatwithdocs.org/chatwithdocs/api
-  newName: harbor.chatwithdocs.org/chatwithdocs/api
+  name: harbor.safranys.com/chatwithdocs/api
+  newName: harbor.safranys.com/chatwithdocs/api

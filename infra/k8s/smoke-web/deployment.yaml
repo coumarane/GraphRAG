@@ -18,6 +18,8 @@ spec:
         app.kubernetes.io/name: chatwithdocs-smoke
         app.kubernetes.io/part-of: chatwithdocs
     spec:
+      imagePullSecrets:
+        - name: harbor-regcred
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Exists"
@@ -27,7 +29,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: smoke-web
-          image: nginxdemos/hello:plain-text
+          image: harbor.safranys.com/chatwithdocs/smoke-web:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
