@@ -5,6 +5,7 @@ service:
 
 persistence:
   enabled: true
+  storageClassName: local-path
   size: 50Gi
 
 resources:

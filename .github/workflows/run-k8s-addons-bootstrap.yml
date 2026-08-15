@@ -28,6 +28,11 @@ on:
         required: true
         default: true
         type: boolean
+      install_local_path_provisioner:
+        description: "Install/upgrade local-path provisioner for PVC-backed in-cluster services"
+        required: true
+        default: true
+        type: boolean
       install_redis:
         description: "Install/upgrade Redis (internal ClusterIP only)"
         required: true
@@ -313,6 +318,20 @@ jobs:
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
           kubectl -n kube-system wait --for=condition=ready pod -l app=secrets-store-csi-driver --timeout=600s
           kubectl -n kube-system wait --for=condition=ready pod -l app=csi-secrets-store-provider-azure --timeout=600s
+          EOSSH
+
+      - name: Install/upgrade local-path provisioner
+        if: inputs.install_local_path_provisioner == true
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" bash -s <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+
+          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
+
+          kubectl -n local-path-storage wait --for=condition=Available deployment/local-path-provisioner --timeout=600s
+          kubectl get storageclass local-path
           EOSSH
 
       - name: Install/upgrade Redis

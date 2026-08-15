@@ -13,7 +13,13 @@ config:
 
 volumes:
   data:
-    mode: defaultStorageClass
+    mode: dynamic
+    dynamic:
+      storageClassName: local-path
+      accessModes:
+        - ReadWriteOnce
+      requests:
+        storage: 20Gi
 
 services:
   neo4j:

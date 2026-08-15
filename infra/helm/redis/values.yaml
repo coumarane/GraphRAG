@@ -10,6 +10,7 @@ master:
     type: ClusterIP
   persistence:
     enabled: true
+    storageClass: local-path
     size: 8Gi
   resources:
     requests:
