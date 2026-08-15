@@ -41,11 +41,12 @@ Last updated: 2026-08-15
 - PostgreSQL GitHub workflow updated to support destructive rebuild from scratch
 - PostgreSQL Ansible role refactored for rebuild support, lint-safe variable naming, and explicit restart handling
 - PostgreSQL bootstrap path migrated to direct `psql` commands for app database and role setup
-- Kubernetes add-ons workflow prepared to install in-cluster data services for application dependencies:
+- Kubernetes add-ons workflow extended to install in-cluster data services for application dependencies:
   - Redis
   - Qdrant
   - Neo4j
 - MinIO is intentionally deferred pending the final storage decision between Azure Storage and S3-compatible object storage
+- local-path provisioner added and validated for PVC-backed in-cluster services
 
 ## Current infrastructure state
 
@@ -72,6 +73,9 @@ Kubernetes cluster:
   - `chatwithdocs-api`
   - `chatwithdocs-web`
   - `chatwithdocs-smoke`
+  - `redis`
+  - `qdrant`
+  - `neo4j`
 
 Platform ingress and TLS:
 
@@ -120,12 +124,16 @@ Application deployment state:
   - `/api/v1/health/ready`
 - authentication bootstrap is not configured yet, so no initial application admin account exists at this stage
 - API and web redeploy are now intended to target the dedicated PostgreSQL host instead of any in-cluster database path
-- next in-cluster dependency targets prepared before the next API/web redeploy:
+- in-cluster dependency services are now deployed before the next API/web redeploy:
   - Redis for cache/session-style needs
   - Qdrant for vector search
   - Neo4j for graph storage
-- these three services are intended to stay internal to Kubernetes through `ClusterIP` services only
+- these three services are deployed as internal-only `ClusterIP` services
 - public DNS names for those backends should not be exposed unless there is a later explicit operational need
+- current internal service endpoints prepared for the API env:
+  - Redis: `redis://redis-master.redis.svc.cluster.local:6379/0`
+  - Qdrant: `http://qdrant.qdrant.svc.cluster.local:6333`
+  - Neo4j: `bolt://neo4j.neo4j.svc.cluster.local:7687`
 
 Dedicated PostgreSQL state:
 
@@ -201,6 +209,9 @@ Azure application secrets state:
   - Kubernetes pull for `api` and `web`
   - public routing of `chatwithdocs.org` to the real web service
   - public routing of `api.chatwithdocs.org` to the real API service
+- stateful in-cluster application dependencies now use:
+  - Rancher `local-path-provisioner`
+  - explicit `local-path` PVC binding in Redis, Qdrant, and Neo4j Helm values
 - application runtime secrets are no longer intended to be modeled through hardcoded per-app JSON examples
 - application secrets source of truth is now the local production dotenv files synced to Azure Key Vault
 - PostgreSQL remains a dedicated-host service for this environment:
