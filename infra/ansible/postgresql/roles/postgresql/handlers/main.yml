@@ -1,3 +1,9 @@
+- name: Restart PostgreSQL
+  ansible.builtin.systemd:
+    name: postgresql
+    state: restarted
+    enabled: true
+
 - name: Restart nginx
   ansible.builtin.systemd:
     name: nginx
