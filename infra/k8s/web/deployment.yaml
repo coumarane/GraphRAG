@@ -55,6 +55,15 @@ spec:
         - name: web
           image: harbor.safranys.com/chatwithdocs/web:digest
           imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              set -a
+              . /app/.env
+              set +a
+              exec node server.js
           ports:
             - name: http
               containerPort: 3000
