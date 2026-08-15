@@ -37,6 +37,7 @@ spec:
                 printf '%s=%s\n' "$name" "$value" >> /work/.env
               done
               test -s /work/.env
+              chmod 0444 /work/.env
           volumeMounts:
             - name: azure-keyvault-secrets
               mountPath: /mnt/azure-keyvault
