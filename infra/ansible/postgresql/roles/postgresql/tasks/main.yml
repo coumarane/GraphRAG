@@ -177,9 +177,12 @@
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d postgres -tAc
-      SELECT 1 FROM pg_database WHERE datname='{{ postgresql_app_db }}'
+    argv:
+      - psql
+      - -d
+      - postgres
+      - -tAc
+      - "SELECT 1 FROM pg_database WHERE datname='{{ postgresql_app_db }}'"
   register: postgresql_app_db_exists
   changed_when: false
 
@@ -187,9 +190,12 @@
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d postgres -tAc
-      SELECT 1 FROM pg_roles WHERE rolname='{{ postgresql_app_user }}'
+    argv:
+      - psql
+      - -d
+      - postgres
+      - -tAc
+      - "SELECT 1 FROM pg_roles WHERE rolname='{{ postgresql_app_user }}'"
   register: postgresql_app_role_exists
   changed_when: false
 
@@ -197,9 +203,14 @@
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d postgres -c
-      CREATE DATABASE "{{ postgresql_app_db }}";
+    argv:
+      - psql
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - postgres
+      - -c
+      - 'CREATE DATABASE "{{ postgresql_app_db }}";'
   when: postgresql_app_db_exists.stdout.strip() != "1"
   changed_when: true
 
@@ -207,10 +218,16 @@
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d postgres -c
-      CREATE ROLE "{{ postgresql_app_user }}"
-      LOGIN PASSWORD '{{ postgresql_app_password | replace(\"'\", \"''\") }}';
+    argv:
+      - psql
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - postgres
+      - -c
+      - >-
+        CREATE ROLE "{{ postgresql_app_user }}"
+        LOGIN PASSWORD '{{ postgresql_app_password | replace("'", "''") }}';
   when: postgresql_app_role_exists.stdout.strip() != "1"
   changed_when: true
 
@@ -218,30 +235,48 @@
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d postgres -c
-      ALTER ROLE "{{ postgresql_app_user }}"
-      WITH LOGIN PASSWORD '{{ postgresql_app_password | replace(\"'\", \"''\") }}';
+    argv:
+      - psql
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - postgres
+      - -c
+      - >-
+        ALTER ROLE "{{ postgresql_app_user }}"
+        WITH LOGIN PASSWORD '{{ postgresql_app_password | replace("'", "''") }}';
   changed_when: true
 
 - name: Grant privileges to application role
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d postgres -c
-      GRANT ALL PRIVILEGES ON DATABASE "{{ postgresql_app_db }}"
-      TO "{{ postgresql_app_user }}";
+    argv:
+      - psql
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - postgres
+      - -c
+      - >-
+        GRANT ALL PRIVILEGES ON DATABASE "{{ postgresql_app_db }}"
+        TO "{{ postgresql_app_user }}";
   changed_when: true
 
 - name: Grant usage/create on public schema to application role
   become: true
   become_user: postgres
   ansible.builtin.command:
-    cmd: >-
-      psql -d "{{ postgresql_app_db }}" -c
-      GRANT USAGE, CREATE ON SCHEMA public
-      TO "{{ postgresql_app_user }}";
+    argv:
+      - psql
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - "{{ postgresql_app_db }}"
+      - -c
+      - >-
+        GRANT USAGE, CREATE ON SCHEMA public
+        TO "{{ postgresql_app_user }}";
   changed_when: true
 
 - name: Download pgAdmin apt signing key (ASCII)
