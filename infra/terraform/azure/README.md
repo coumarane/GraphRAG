@@ -117,6 +117,8 @@ Key fields:
 - `account_replication_type`
 - `blob_data_contributor_principal_ids`
 
+The tracked dev configuration uses `account_replication_type = "LRS"` because the current Azure subscription policy rejects at least `ZRS` for storage accounts in `rg-safranysAI-Dev`.
+
 Use a local override file for machine-specific changes:
 
 - `infra/terraform/azure/terraform.local.tfvars`
