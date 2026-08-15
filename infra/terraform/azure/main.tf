@@ -12,11 +12,7 @@ resource "random_string" "storage_suffix" {
 
 locals {
   storage_account_name = substr(
-    regexreplace(
-      lower("${var.storage_account_name_prefix}${var.environment}${random_string.storage_suffix.result}"),
-      "[^a-z0-9]",
-      ""
-    ),
+    join("", regexall("[a-z0-9]", lower("${var.storage_account_name_prefix}${var.environment}${random_string.storage_suffix.result}"))),
     0,
     24
   )
