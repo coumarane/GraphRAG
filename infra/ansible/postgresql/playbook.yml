@@ -2,13 +2,43 @@
   hosts: postgresql
   become: true
   vars:
-    postgresql_version: "{{ postgres_version | default(postgresql_version, true) }}"
-    postgresql_rebuild: "{{ postgres_rebuild | default(postgresql_rebuild, true) }}"
-    postgresql_admin_password: "{{ postgres_admin_password | default(postgresql_admin_password, true) }}"
-    postgresql_app_db: "{{ postgres_app_db | default(postgresql_app_db, true) }}"
-    postgresql_app_user: "{{ postgres_app_user | default(postgresql_app_user, true) }}"
-    postgresql_app_password: "{{ postgres_app_password | default(postgresql_app_password, true) }}"
-    postgresql_pgadmin_email: "{{ pgadmin_email | default(postgresql_pgadmin_email, true) }}"
-    postgresql_pgadmin_password: "{{ pgadmin_password | default(postgresql_pgadmin_password, true) }}"
+    postgresql_version: "{{ postgres_version if (postgres_version is defined) else '18' }}"
+    postgresql_rebuild: "{{ postgres_rebuild if (postgres_rebuild is defined) else false }}"
+    postgresql_admin_password: >-
+      {{
+        postgres_admin_password
+        if (postgres_admin_password is defined)
+        else lookup('env', 'POSTGRES_ADMIN_PASSWORD') | default('', true)
+      }}
+    postgresql_app_db: >-
+      {{
+        postgres_app_db
+        if (postgres_app_db is defined)
+        else lookup('env', 'POSTGRES_APP_DB') | default('', true)
+      }}
+    postgresql_app_user: >-
+      {{
+        postgres_app_user
+        if (postgres_app_user is defined)
+        else lookup('env', 'POSTGRES_APP_USER') | default('', true)
+      }}
+    postgresql_app_password: >-
+      {{
+        postgres_app_password
+        if (postgres_app_password is defined)
+        else lookup('env', 'POSTGRES_APP_PASSWORD') | default('', true)
+      }}
+    postgresql_pgadmin_email: >-
+      {{
+        pgadmin_email
+        if (pgadmin_email is defined)
+        else lookup('env', 'PGADMIN_EMAIL') | default('', true)
+      }}
+    postgresql_pgadmin_password: >-
+      {{
+        pgadmin_password
+        if (pgadmin_password is defined)
+        else lookup('env', 'PGADMIN_PASSWORD') | default('', true)
+      }}
   roles:
     - postgresql
