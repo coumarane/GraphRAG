@@ -232,6 +232,20 @@ Azure application secrets state:
   - `https://github.com/coumarane/GraphRAG.git`
   - branch `dev`
 - when GitHub App credentials are not configured, Argo CD now intentionally uses direct access to the public repository instead of creating an invalid repository secret
+- if this repository becomes private in the future, Argo CD will need GitHub App credentials exposed to `.github/workflows/run-k8s-addons-bootstrap.yml`:
+  - `ARGOCD_GITHUB_APP_ID`
+  - `ARGOCD_GITHUB_APP_INSTALLATION_ID`
+  - `ARGOCD_GITHUB_APP_PRIVATE_KEY`
+- private-repository GitHub App setup path:
+  - create a GitHub App with repository read access to `Contents` and `Metadata`
+  - install that GitHub App on repository `coumarane/GraphRAG`
+  - copy the App ID into GitHub secret `ARGOCD_GITHUB_APP_ID`
+  - copy the installation ID into GitHub secret `ARGOCD_GITHUB_APP_INSTALLATION_ID`
+  - generate a private key for the GitHub App and store the PEM contents in GitHub secret `ARGOCD_GITHUB_APP_PRIVATE_KEY`
+- workflow behavior for a private repository:
+  - rerun `.github/workflows/run-k8s-addons-bootstrap.yml` with `install_argocd=true`
+  - that workflow will create or update Argo CD repository secret `repo-github-chatwithdocs`
+  - Argo CD repo-server will then authenticate to GitHub through the GitHub App and continue syncing `dev`
 - the initial MetalLB-based public ingress design was not suitable for the OVH Additional IP `/32` validation path
 - the validated public ingress path now uses:
   - Envoy Gateway inside Kubernetes
