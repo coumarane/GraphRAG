@@ -962,14 +962,6 @@ function ChatWorkspace() {
     void sendMessage(draft);
   }
 
-  if (!hydrated || !activeThread) {
-    return <p className="text-sm text-muted">Loading chats…</p>;
-  }
-
-  const uploaderName = tenantKey.trim()
-    ? tenantKey.trim().charAt(0).toUpperCase() + tenantKey.trim().slice(1)
-    : "Workspace";
-
   useEffect(() => {
     if (!historyOpen) return;
     function onKey(event: KeyboardEvent) {
@@ -978,6 +970,14 @@ function ChatWorkspace() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [historyOpen]);
+
+  if (!hydrated || !activeThread) {
+    return <p className="text-sm text-muted">Loading chats…</p>;
+  }
+
+  const uploaderName = tenantKey.trim()
+    ? tenantKey.trim().charAt(0).toUpperCase() + tenantKey.trim().slice(1)
+    : "Workspace";
 
   const historySidebarProps = {
     threads,
@@ -1200,8 +1200,8 @@ function ChatWorkspace() {
               })
             )}
             {busy ? (
-              <div className="flex items-start gap-3">
-                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <div className="mt-1 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent sm:flex">
                   <Sparkles className="h-4 w-4 animate-pulse" aria-hidden />
                 </div>
                 <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted">
