@@ -193,7 +193,7 @@ export default function UploadPage() {
   return (
     <section className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Upload</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Upload</h1>
         <p className="mt-1 text-sm text-muted">
           Browse or drag and drop a document. Parsing and indexing continue in
           the background.

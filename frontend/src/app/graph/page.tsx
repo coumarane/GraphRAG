@@ -82,7 +82,7 @@ export default function GraphPage() {
 
       <form
         onSubmit={onSubmit}
-        className="space-y-4 rounded-lg border border-border bg-surface p-6 shadow-sm"
+        className="space-y-4 rounded-lg border border-border bg-surface p-4 shadow-sm sm:p-6"
       >
         <label className="block text-sm">
           <span className="text-muted">Entity names (comma-separated)</span>
