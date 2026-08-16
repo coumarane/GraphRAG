@@ -59,6 +59,13 @@ Last updated: 2026-08-16
 - Azure Blob upload path fixed for production by switching to Azure-safe blob metadata keys
 - runtime image build path fixed so LLM/OpenAI dependencies are installed for ingestion processing
 - end-to-end document upload and processing validated successfully on the OVH cluster
+- Argo CD application delivery path prepared for `api` and `web`
+- one-time bootstrap workflow added for application namespaces and required bootstrap secrets
+- Argo CD is now the primary deployment mechanism for `api` and `web`
+- Argo CD repository bootstrap fixed so a public repository does not get a malformed empty GitHub App secret
+- Argo CD application sync validated successfully for:
+  - `chatwithdocs-api`
+  - `chatwithdocs-web`
 
 ## Current infrastructure state
 
@@ -88,6 +95,9 @@ Kubernetes cluster:
   - `redis`
   - `qdrant`
   - `neo4j`
+- Argo CD application state:
+  - `chatwithdocs-api` -> `Synced`, `Healthy`
+  - `chatwithdocs-web` -> `Synced`, `Healthy`
 
 Platform ingress and TLS:
 
@@ -217,6 +227,11 @@ Azure application secrets state:
 - Grafana bootstrap no longer requires OIDC and defaults to login form + admin password
 - Argo CD bootstrap no longer requires OIDC and uses core install separately from application registration
 - Argo CD `Application` objects are now deployed through dedicated workflow `.github/workflows/run-argocd-apps-bootstrap.yml`
+- Argo CD application bootstrap now depends on dedicated one-time namespace/secret bootstrap workflow `.github/workflows/run-app-namespaces-secrets-bootstrap.yml`
+- Argo CD now reconciles this repository directly:
+  - `https://github.com/coumarane/GraphRAG.git`
+  - branch `dev`
+- when GitHub App credentials are not configured, Argo CD now intentionally uses direct access to the public repository instead of creating an invalid repository secret
 - the initial MetalLB-based public ingress design was not suitable for the OVH Additional IP `/32` validation path
 - the validated public ingress path now uses:
   - Envoy Gateway inside Kubernetes
@@ -254,6 +269,11 @@ Azure application secrets state:
   - OVH cluster production targets Azure Blob Storage
 - Azure Blob support was added in application runtime code instead of trying to force MinIO semantics into production infrastructure
 - Harbor/Kubernetes deploy workflows now protect the GitOps path by requiring committed digests when no manual tag is provided and by refusing `latest`
+- API and web SSH-based Kubernetes deploy workflows are now treated as emergency/manual bypass workflows, not the normal deploy path
+- build-and-push image workflows are now the normal application delivery trigger:
+  - build image
+  - commit immutable digest into `infra/k8s/api` or `infra/k8s/web`
+  - let Argo CD reconcile that Git change
 - Kubernetes app runtime secret delivery now targets:
   - Secrets Store CSI Driver
   - Azure Key Vault provider
