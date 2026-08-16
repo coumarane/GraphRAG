@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { AtSign, Check, Copy, Paperclip, Send, Sparkles } from "lucide-react";
+import { AtSign, Check, Copy, History, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { readTenantKey } from "@/components/AppShell";
 import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
 import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswer";
@@ -448,21 +448,21 @@ function MessageBubble({
 
   if (isUser) {
     return (
-      <div className="group flex items-end justify-end gap-2.5">
+      <div className="group flex items-end justify-end gap-2 sm:gap-2.5">
         <div className="flex max-w-[min(100%,36rem)] items-center gap-1">
           <CopyMessageButton
             text={message.content}
             label="Copy"
             className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
           />
-          <div className="rounded-2xl bg-surface-elevated px-4 py-3 text-foreground shadow-sm">
-            <p className="select-text whitespace-pre-wrap text-[15px] leading-7">
+          <div className="rounded-2xl bg-surface-elevated px-3 py-2.5 text-foreground shadow-sm sm:px-4 sm:py-3">
+            <p className="select-text whitespace-pre-wrap break-words text-[15px] leading-7">
               {message.content}
             </p>
           </div>
         </div>
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white"
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white sm:flex"
           aria-hidden
         >
           {initials}
@@ -472,11 +472,11 @@ function MessageBubble({
   }
 
   return (
-    <div className="group flex items-start gap-3">
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+    <div className="group flex items-start gap-2 sm:gap-3">
+      <div className="mt-1 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent sm:flex">
         <Sparkles className="h-4 w-4" aria-hidden />
       </div>
-      <div className="relative min-w-0 flex-1 max-w-[min(100%,48rem)] rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm">
+      <div className="relative min-w-0 flex-1 max-w-[min(100%,48rem)] rounded-2xl border border-border bg-surface px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
         <div className="absolute right-2 top-2 z-10 opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           <CopyMessageButton text={message.content} label="Copy" />
         </div>
@@ -573,6 +573,7 @@ function ChatWorkspace() {
   const [hydrated, setHydrated] = useState(false);
   const [showInspect, setShowInspect] = useState(false);
   const [showChangeContext, setShowChangeContext] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const initials = useMemo(() => userInitials(), [hydrated, tenantKey]);
@@ -969,62 +970,118 @@ function ChatWorkspace() {
     ? tenantKey.trim().charAt(0).toUpperCase() + tenantKey.trim().slice(1)
     : "Workspace";
 
+  useEffect(() => {
+    if (!historyOpen) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setHistoryOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [historyOpen]);
+
+  const historySidebarProps = {
+    threads,
+    projects,
+    activeId: activeThread.id,
+    selectedProjectId,
+    onSelectThread: setActiveId,
+    onSelectProject: setSelectedProjectId,
+    onNewChat: startNewChat,
+    onRenameThread: (threadId: string, title: string) =>
+      patchThread(threadId, { title }),
+    onTogglePinThread: (threadId: string) => {
+      const thread = threads.find((item) => item.id === threadId);
+      if (!thread) return;
+      patchThread(threadId, { pinned: !thread.pinned });
+    },
+    onArchiveThread: (threadId: string) =>
+      patchThread(threadId, { archived: true, pinned: false }),
+    onDeleteThread: deleteChat,
+    onMoveThread: (threadId: string, projectId: string | null) =>
+      patchThread(threadId, { projectId }),
+    onTogglePinProject: (projectId: string) => {
+      setProjects((prev) => {
+        const project = prev.find((item) => item.id === projectId);
+        if (!project) return prev;
+        return upsertProject(prev, {
+          ...project,
+          pinned: !project.pinned,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+    },
+    onCreateProject: handleCreateProject,
+    onRenameProject: (projectId: string, name: string) => {
+      setProjects((prev) => {
+        const project = prev.find((item) => item.id === projectId);
+        if (!project) return prev;
+        return upsertProject(prev, {
+          ...project,
+          name,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+    },
+  };
+
   return (
-    <div className="-mx-6 -my-6 grid h-[calc(100vh-3.5rem)] min-h-[28rem] overflow-hidden lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <ChatHistorySidebar
-        threads={threads}
-        projects={projects}
-        activeId={activeThread.id}
-        selectedProjectId={selectedProjectId}
-        onSelectThread={setActiveId}
-        onSelectProject={setSelectedProjectId}
-        onNewChat={startNewChat}
-        onRenameThread={(threadId, title) => patchThread(threadId, { title })}
-        onTogglePinThread={(threadId) => {
-          const thread = threads.find((item) => item.id === threadId);
-          if (!thread) return;
-          patchThread(threadId, { pinned: !thread.pinned });
-        }}
-        onArchiveThread={(threadId) =>
-          patchThread(threadId, { archived: true, pinned: false })
-        }
-        onDeleteThread={deleteChat}
-        onMoveThread={(threadId, projectId) =>
-          patchThread(threadId, { projectId })
-        }
-        onTogglePinProject={(projectId) => {
-          setProjects((prev) => {
-            const project = prev.find((item) => item.id === projectId);
-            if (!project) return prev;
-            return upsertProject(prev, {
-              ...project,
-              pinned: !project.pinned,
-              updatedAt: new Date().toISOString(),
-            });
-          });
-        }}
-        onCreateProject={handleCreateProject}
-        onRenameProject={(projectId, name) => {
-          setProjects((prev) => {
-            const project = prev.find((item) => item.id === projectId);
-            if (!project) return prev;
-            return upsertProject(prev, {
-              ...project,
-              name,
-              updatedAt: new Date().toISOString(),
-            });
-          });
-        }}
-      />
+    <div className="-mx-3 -my-4 grid h-[calc(100dvh-3.5rem)] min-h-[24rem] overflow-hidden sm:-mx-6 sm:-my-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <ChatHistorySidebar className="hidden lg:flex" {...historySidebarProps} />
+
+      {historyOpen ? (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Chat history"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/55 backdrop-blur-[1px]"
+            aria-label="Close chat history"
+            onClick={() => setHistoryOpen(false)}
+          />
+          <div className="absolute inset-y-0 left-0 flex w-[min(18rem,90vw)] flex-col bg-sidebar shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <p className="text-sm font-medium">Chats</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Close chat history"
+                onClick={() => setHistoryOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <ChatHistorySidebar
+              className="min-h-0 flex-1 border-r-0"
+              onNavigate={() => setHistoryOpen(false)}
+              {...historySidebarProps}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <section className="flex min-h-0 min-w-0 flex-col bg-background">
-        <div className="shrink-0 border-b border-border px-4 py-2.5">
+        <div className="shrink-0 border-b border-border px-3 py-2.5 sm:px-4">
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="lg:hidden"
+              aria-expanded={historyOpen}
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History className="h-4 w-4" />
+              Chats
+            </Button>
             <span className="text-xs font-medium text-muted">Context:</span>
-            <Badge variant="default" className="max-w-[18rem] truncate">
+            <Badge variant="default" className="max-w-[min(18rem,55vw)] truncate">
               {contextLabel}
             </Badge>
-            <span className="text-xs text-muted">
+            <span className="hidden text-xs text-muted sm:inline">
               {hasScopedContext
                 ? "Conversation is scoped to this document"
                 : "Searching the open corpus"}
@@ -1039,7 +1096,8 @@ function ChatWorkspace() {
                   setShowChangeContext(false);
                 }}
               >
-                Inspect retrieval
+                <span className="sm:hidden">Inspect</span>
+                <span className="hidden sm:inline">Inspect retrieval</span>
               </Button>
               <Button
                 type="button"
@@ -1050,7 +1108,8 @@ function ChatWorkspace() {
                   setShowInspect(false);
                 }}
               >
-                Change context
+                <span className="sm:hidden">Context</span>
+                <span className="hidden sm:inline">Change context</span>
               </Button>
             </div>
           </div>
@@ -1108,10 +1167,10 @@ function ChatWorkspace() {
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
             {activeThread.messages.length === 0 ? (
-              <div className="py-16 text-center">
+              <div className="px-1 py-10 text-center sm:py-16">
                 <h3 className="text-lg font-semibold tracking-tight">
                   Grounded document chat
                 </h3>
@@ -1160,8 +1219,8 @@ function ChatWorkspace() {
           </p>
         ) : null}
 
-        <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
-          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <form onSubmit={onSubmit} className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
+          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-2.5 shadow-sm sm:p-3">
             <textarea
               ref={textareaRef}
               value={draft}
@@ -1173,7 +1232,7 @@ function ChatWorkspace() {
                 }
               }}
               rows={3}
-              placeholder={`Ask about ${contextLabel}… (Enter to send, Shift+Enter for new line)`}
+              placeholder={`Ask about ${contextLabel}…`}
               className="max-h-40 min-h-[4.5rem] w-full resize-y bg-transparent px-1 py-1 text-[15px] outline-none placeholder:text-muted"
               disabled={busy}
             />
@@ -1186,7 +1245,7 @@ function ChatWorkspace() {
                 disabled={busy}
               >
                 <AtSign className="h-4 w-4" />
-                Mention KB
+                <span className="hidden sm:inline">Mention KB</span>
               </Button>
               <Button
                 type="button"
@@ -1196,7 +1255,7 @@ function ChatWorkspace() {
                 title="Coming soon"
               >
                 <Paperclip className="h-4 w-4" />
-                Attach
+                <span className="hidden sm:inline">Attach</span>
               </Button>
               <Button
                 type="submit"

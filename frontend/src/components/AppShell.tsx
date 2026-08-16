@@ -9,6 +9,7 @@ import {
   Files,
   LayoutDashboard,
   LogOut,
+  Menu,
   MessageSquare,
   Network,
   Search,
@@ -16,6 +17,7 @@ import {
   Upload,
   AlertTriangle,
   CircleDollarSign,
+  X,
 } from "lucide-react";
 import {
   AuthSession,
@@ -112,11 +114,105 @@ function navItemActive(
   return true;
 }
 
+function SidebarNav({
+  pathname,
+  searchParams,
+  workspace,
+  displayName,
+  session,
+  onNavigate,
+  onLogout,
+}: {
+  pathname: string | null;
+  searchParams: URLSearchParams;
+  workspace: string;
+  displayName: string;
+  session: AuthSession | null;
+  onNavigate?: () => void;
+  onLogout: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-3 px-5 py-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
+          G
+        </div>
+        <div>
+          <p className="text-sm font-semibold tracking-tight">GraphRAG</p>
+          <p className="text-[11px] text-muted">Enterprise platform</p>
+        </div>
+      </div>
+      <div className="px-4 pb-3">
+        <div className="rounded-lg border border-border bg-surface px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted">
+            Workspace
+          </p>
+          <p className="truncate text-sm font-medium">{workspace}</p>
+        </div>
+      </div>
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = navItemActive(item.href, pathname, searchParams);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                      active
+                        ? "bg-accent-soft text-foreground"
+                        : "text-muted hover:bg-surface hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+      <Separator />
+      <div className="flex items-center gap-3 px-4 py-4">
+        <Avatar>
+          <AvatarFallback>
+            {initials(session?.user.display_name, session?.user.email || "U")}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{displayName}</p>
+          <p className="truncate text-xs text-muted">
+            {session?.user.role || "member"}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Sign out"
+          onClick={onLogout}
+        >
+          <LogOut className="h-4 w-4" />
+        </Button>
+      </div>
+    </>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
   const isLogin = pathname === "/login";
   const isBareSource = Boolean(
     pathname && /\/documents\/[^/]+\/source\/?$/.test(pathname),
@@ -126,6 +222,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setSession(readCachedSession());
     void fetchSession().then(setSession).catch(() => setSession(null));
   }, [pathname]);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname, searchParams]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setNavOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [navOpen]);
 
   const crumbs = useMemo(() => {
     if (!pathname || pathname === "/") return ["Dashboard"];
@@ -150,87 +264,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   }
 
+  const sidebarProps = {
+    pathname,
+    searchParams,
+    workspace,
+    displayName,
+    session,
+    onLogout: () => void onLogout(),
+  };
+
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar">
-        <div className="flex items-center gap-3 px-5 py-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
-            G
-          </div>
-          <div>
-            <p className="text-sm font-semibold tracking-tight">GraphRAG</p>
-            <p className="text-[11px] text-muted">Enterprise platform</p>
-          </div>
-        </div>
-        <div className="px-4 pb-3">
-          <div className="rounded-lg border border-border bg-surface px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted">
-              Workspace
-            </p>
-            <p className="truncate text-sm font-medium">{workspace}</p>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-                {group.label}
-              </p>
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = navItemActive(item.href, pathname, searchParams);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                        active
-                          ? "bg-accent-soft text-foreground"
-                          : "text-muted hover:bg-surface hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar lg:flex">
+        <SidebarNav {...sidebarProps} />
+      </aside>
+
+      {navOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/55 backdrop-blur-[1px]"
+            aria-label="Close navigation"
+            onClick={() => setNavOpen(false)}
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,88vw)] flex-col border-r border-border bg-sidebar shadow-2xl">
+            <div className="flex items-center justify-end px-3 pt-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close navigation"
+                onClick={() => setNavOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          ))}
-        </nav>
-        <Separator />
-        <div className="flex items-center gap-3 px-4 py-4">
-          <Avatar>
-            <AvatarFallback>
-              {initials(session?.user.display_name, session?.user.email || "U")}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{displayName}</p>
-            <p className="truncate text-xs text-muted">
-              {session?.user.role || "member"}
-            </p>
-          </div>
+            <SidebarNav {...sidebarProps} onNavigate={() => setNavOpen(false)} />
+          </aside>
+        </div>
+      ) : null}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-background/90 px-3 backdrop-blur sm:gap-4 sm:px-6">
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Sign out"
-            onClick={() => void onLogout()}
+            className="shrink-0 lg:hidden"
+            aria-label="Open navigation"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(true)}
           >
-            <LogOut className="h-4 w-4" />
+            <Menu className="h-5 w-5" />
           </Button>
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-border bg-background/90 px-6 backdrop-blur">
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <BookOpen className="h-4 w-4" />
-            <span>{workspace}</span>
-            <span>/</span>
-            <span className="text-foreground">{crumbs.join(" / ")}</span>
+          <div className="flex min-w-0 items-center gap-2 text-sm text-muted">
+            <BookOpen className="hidden h-4 w-4 shrink-0 sm:block" />
+            <span className="hidden truncate sm:inline">{workspace}</span>
+            <span className="hidden sm:inline">/</span>
+            <span className="truncate text-foreground">{crumbs.join(" / ")}</span>
           </div>
           <div className="mx-auto hidden w-full max-w-md md:block">
             <div className="relative">
@@ -245,21 +334,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </kbd>
             </div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Button asChild size="sm">
               <Link href="/upload">
                 <Upload className="h-4 w-4" />
-                Upload
+                <span className="hidden sm:inline">Upload</span>
               </Link>
             </Button>
-            <Avatar className="h-8 w-8">
+            <Avatar className="hidden h-8 w-8 sm:flex">
               <AvatarFallback>
                 {initials(session?.user.display_name, session?.user.email || "U")}
               </AvatarFallback>
             </Avatar>
           </div>
         </header>
-        <main className="flex-1 px-6 py-6">{children}</main>
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6">{children}</main>
       </div>
     </div>
   );

@@ -41,7 +41,7 @@ export default function OpsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Observability</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Observability</h1>
         <p className="text-sm text-muted">
           Live readiness and tenant operational snapshot
         </p>

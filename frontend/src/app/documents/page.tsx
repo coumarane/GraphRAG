@@ -161,7 +161,7 @@ function DocumentsPageContent() {
     <section className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{pageTitle}</h1>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             {statusFilter === "failed" ? (
               pageHint
