@@ -32,6 +32,8 @@ type ChatHistorySidebarProps = {
   onTogglePinProject: (projectId: string) => void;
   onCreateProject: (name: string) => string;
   onRenameProject: (projectId: string, name: string) => void;
+  className?: string;
+  onNavigate?: () => void;
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -187,6 +189,8 @@ export function ChatHistorySidebar({
   onTogglePinProject,
   onCreateProject,
   onRenameProject,
+  className,
+  onNavigate,
 }: ChatHistorySidebarProps) {
   const [menuThreadId, setMenuThreadId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -243,10 +247,28 @@ export function ChatHistorySidebar({
     setMenuThreadId(null);
   }
 
+  function selectThread(threadId: string) {
+    onSelectThread(threadId);
+    onNavigate?.();
+  }
+
   return (
-    <aside className="flex min-h-0 flex-col border-r border-border bg-sidebar">
+    <aside
+      className={cn(
+        "flex min-h-0 flex-col border-r border-border bg-sidebar",
+        className,
+      )}
+    >
       <div className="border-b border-border p-3">
-        <Button type="button" onClick={onNewChat} className="w-full" size="sm">
+        <Button
+          type="button"
+          onClick={() => {
+            onNewChat();
+            onNavigate?.();
+          }}
+          className="w-full"
+          size="sm"
+        >
           <Plus className="h-4 w-4" />
           New chat
         </Button>
@@ -291,7 +313,7 @@ export function ChatHistorySidebar({
                   renaming={renamingId === thread.id}
                   renameValue={renameValue}
                   showPin
-                  onSelect={() => onSelectThread(thread.id)}
+                  onSelect={() => selectThread(thread.id)}
                   onOpenMenu={() =>
                     setMenuThreadId((id) =>
                       id === thread.id ? null : thread.id,
@@ -424,7 +446,7 @@ export function ChatHistorySidebar({
                 renaming={renamingId === thread.id}
                 renameValue={renameValue}
                 showPin={Boolean(thread.pinned)}
-                onSelect={() => onSelectThread(thread.id)}
+                onSelect={() => selectThread(thread.id)}
                 onOpenMenu={() =>
                   setMenuThreadId((id) => (id === thread.id ? null : thread.id))
                 }
