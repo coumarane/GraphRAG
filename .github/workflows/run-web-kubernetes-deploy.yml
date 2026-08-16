@@ -7,6 +7,11 @@ on:
 
   workflow_dispatch:
     inputs:
+      acknowledge_argocd_bypass:
+        description: "Emergency only. Set to true to bypass the Argo CD primary deploy path."
+        required: false
+        default: false
+        type: boolean
       image_tag:
         description: "Optional Harbor image tag to deploy. Leave empty to use the committed digest. Do not use 'latest'."
         required: false
@@ -29,7 +34,7 @@ env:
 
 jobs:
   deploy:
-    name: Deploy Web App
+    name: Emergency deploy Web App
     runs-on: ubuntu-latest
     environment: dev
     # if: >
@@ -40,6 +45,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Confirm manual bypass of Argo CD
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.acknowledge_argocd_bypass }}" != "true" ]; then
+            echo "Argo CD is now the primary deploy mechanism for Web."
+            echo "Normal path:"
+            echo "1. Build And Push Web Image"
+            echo "2. Argo CD syncs the committed digest from infra/k8s/web"
+            echo
+            echo "Use this workflow only for emergency/manual recovery with acknowledge_argocd_bypass=true."
+            exit 1
+          fi
 
       - name: Validate deploy image selection
         shell: bash
