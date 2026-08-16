@@ -151,11 +151,42 @@ class QdrantChunkVectorStore:
                     match=qm.MatchAny(any=[str(item) for item in request.document_ids]),
                 )
             )
+        else:
+            # Fail closed: never search the whole tenant without an authorized document scope.
+            return []
         if request.modalities:
             must.append(
                 qm.FieldCondition(
                     key="modality",
                     match=qm.MatchAny(any=[item.value for item in request.modalities]),
+                )
+            )
+        if request.security_labels:
+            must.append(
+                qm.FieldCondition(
+                    key="security_labels",
+                    match=qm.MatchAny(any=list(request.security_labels)),
+                )
+            )
+        if request.countries:
+            must.append(
+                qm.FieldCondition(
+                    key="country",
+                    match=qm.MatchAny(any=list(request.countries)),
+                )
+            )
+        if request.departments:
+            must.append(
+                qm.FieldCondition(
+                    key="department",
+                    match=qm.MatchAny(any=list(request.departments)),
+                )
+            )
+        if request.max_clearance is not None:
+            must.append(
+                qm.FieldCondition(
+                    key="required_clearance",
+                    range=qm.Range(lte=request.max_clearance),
                 )
             )
         try:
@@ -287,6 +318,12 @@ def _payload_dict(payload: ChunkVectorPayload) -> dict[str, Any]:
         "language": payload.language,
         "parser": payload.parser,
         "security_labels": list(payload.security_labels),
+        "department": payload.department,
+        "country": payload.country,
+        "business_unit": payload.business_unit,
+        "classification": payload.classification,
+        "required_clearance": payload.required_clearance,
+        "allowed_groups": list(payload.allowed_groups),
         "metadata": payload.metadata,
     }
 
@@ -310,5 +347,15 @@ def _payload_from_dict(data: dict[str, Any]) -> ChunkVectorPayload:
         language=str(data["language"]) if data.get("language") else None,
         parser=str(data["parser"]) if data.get("parser") else None,
         security_labels=[str(item) for item in data.get("security_labels", [])],
+        department=str(data["department"]) if data.get("department") else None,
+        country=str(data["country"]) if data.get("country") else None,
+        business_unit=str(data["business_unit"]) if data.get("business_unit") else None,
+        classification=str(data["classification"]) if data.get("classification") else None,
+        required_clearance=(
+            int(data["required_clearance"])
+            if data.get("required_clearance") is not None
+            else None
+        ),
+        allowed_groups=[str(item) for item in data.get("allowed_groups", [])],
         metadata=dict(data.get("metadata") or {}),
     )

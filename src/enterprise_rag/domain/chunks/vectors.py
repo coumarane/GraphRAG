@@ -32,6 +32,12 @@ class ChunkVectorPayload(BaseModel):
     language: str | None = None
     parser: str | None = None
     security_labels: list[str] = Field(default_factory=list)
+    department: str | None = None
+    country: str | None = None
+    business_unit: str | None = None
+    classification: str | None = None
+    required_clearance: int | None = None
+    allowed_groups: list[str] = Field(default_factory=list)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
@@ -68,6 +74,12 @@ class VectorSearchRequest(BaseModel):
     document_ids: list[UUID] = Field(default_factory=list)
     modalities: list[Modality] = Field(default_factory=list)
     vector_name: str = "content"
+    # ABAC / security payload filters (subject-derived; never from client alone).
+    max_clearance: int | None = None
+    countries: list[str] = Field(default_factory=list)
+    departments: list[str] = Field(default_factory=list)
+    groups: list[str] = Field(default_factory=list)
+    security_labels: list[str] = Field(default_factory=list)
 
 
 class ChunkingResult(BaseModel):

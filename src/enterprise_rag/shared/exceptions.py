@@ -96,6 +96,13 @@ class TenantError(PermanentError):
     http_status = 403
 
 
+class QuotaExceededError(PermanentError):
+    """Caller exceeded a quota limit (maps to HTTP 429)."""
+
+    code = "quota_exceeded"
+    http_status = 429
+
+
 class NotFoundError(PermanentError):
     """Requested resource does not exist in the authorized scope."""
 

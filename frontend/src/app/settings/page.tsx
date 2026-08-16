@@ -11,12 +11,38 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+type QuotaRow = {
+  metric: string;
+  period: string;
+  limit: number;
+  used: number;
+  remaining: number;
+  reset_at: string;
+};
+
 export default function SettingsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<AuthSession | null>(readCachedSession());
+  // Start null so SSR and the first client render match (avoid hydration mismatch).
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [quotas, setQuotas] = useState<QuotaRow[]>([]);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
 
   useEffect(() => {
+    setSession(readCachedSession());
     void fetchSession().then(setSession);
+    void (async () => {
+      try {
+        const res = await fetch("/api/users/me/quotas", { credentials: "include" });
+        if (!res.ok) {
+          setQuotaError(`Unable to load quotas (${res.status})`);
+          return;
+        }
+        const data = (await res.json()) as { items?: QuotaRow[] };
+        setQuotas(data.items || []);
+      } catch {
+        setQuotaError("Unable to load quotas");
+      }
+    })();
   }, []);
 
   async function onLogout() {
@@ -28,7 +54,7 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configuration</h1>
-        <p className="text-sm text-muted">Profile and workspace identity</p>
+        <p className="text-sm text-muted">Profile, workspace identity, and quotas</p>
       </div>
       <Card>
         <CardHeader>
@@ -47,6 +73,33 @@ export default function SettingsPage() {
             <span className="text-muted">Role: </span>
             {session?.user.role || "—"}
           </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>My quotas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {quotaError ? <p className="text-muted">{quotaError}</p> : null}
+          {!quotaError && quotas.length === 0 ? (
+            <p className="text-muted">No quota assignments yet.</p>
+          ) : null}
+          {quotas.map((row) => (
+            <div
+              key={`${row.metric}-${row.period}`}
+              className="flex items-center justify-between border-b border-border/40 py-2 last:border-0"
+            >
+              <div>
+                <p className="font-medium">
+                  {row.metric} / {row.period}
+                </p>
+                <p className="text-xs text-muted">Resets {row.reset_at}</p>
+              </div>
+              <p className="font-mono text-xs">
+                {row.used} / {row.limit} ({row.remaining} left)
+              </p>
+            </div>
+          ))}
         </CardContent>
       </Card>
       <Card>

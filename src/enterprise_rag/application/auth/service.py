@@ -72,11 +72,15 @@ class AuthService:
         actor: TenantContext,
         request: CreateUserRequest,
     ) -> AuthUserView:
-        if "admin" not in actor.roles:
+        is_admin = "admin" in actor.roles or actor.attributes.get("admin") is True
+        if not is_admin:
             raise AuthorizationError("Admin role required to create users")
         role = (request.role or "member").strip().casefold()
         if role not in {"admin", "member"}:
             raise ValidationError("role must be admin or member", details={"role": role})
+        attrs = dict(request.attributes)
+        if role == "admin":
+            attrs.setdefault("admin", True)
         record = UserRecord(
             user_id=new_id(),
             tenant_id=actor.tenant_id,
@@ -85,6 +89,7 @@ class AuthService:
             display_name=request.display_name,
             role=role,
             is_active=True,
+            attributes=attrs,
         )
         created = await self.users.create(record)
         return self._user_view(created)
@@ -122,6 +127,7 @@ class AuthService:
             display_name=os.environ.get("AUTH_BOOTSTRAP_DISPLAY_NAME", "Admin"),
             role="admin",
             is_active=True,
+            attributes={"admin": True, "can_ingest": True, "clearance_level": 100},
         )
         await self.users.create(user)
         logger.info(
@@ -154,4 +160,6 @@ class AuthService:
             display_name=user.display_name,
             role=user.role,
             tenant_id=user.tenant_id,
+            status=user.status,
+            attributes=dict(user.attributes),
         )

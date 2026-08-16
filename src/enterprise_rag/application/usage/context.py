@@ -22,6 +22,7 @@ class UsageContext:
     ingestion_run_id: UUID | None = None
     query_id: UUID | None = None
     correlation_id: str | None = None
+    user_id: UUID | None = None
 
 
 def get_usage_context() -> UsageContext | None:
@@ -44,6 +45,7 @@ def usage_context(
     ingestion_run_id: UUID | None = None,
     query_id: UUID | None = None,
     correlation_id: str | None = None,
+    user_id: UUID | None = None,
 ) -> Iterator[UsageContext]:
     """Bind usage context for the current task/request."""
     ctx = UsageContext(
@@ -52,6 +54,7 @@ def usage_context(
         ingestion_run_id=ingestion_run_id,
         query_id=query_id,
         correlation_id=correlation_id,
+        user_id=user_id,
     )
     token = set_usage_context(ctx)
     try:

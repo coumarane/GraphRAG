@@ -38,8 +38,18 @@ def problem_details(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    async def _rollback_if_possible(request: Request) -> None:
+        container = getattr(request.app.state, "container", None)
+        rollback = getattr(container, "rollback_db", None)
+        if callable(rollback):
+            try:
+                await rollback()
+            except Exception:  # noqa: BLE001
+                pass
+
     @app.exception_handler(EnterpriseRagError)
     async def _enterprise_error(request: Request, exc: EnterpriseRagError) -> JSONResponse:
+        await _rollback_if_possible(request)
         correlation = request.headers.get("X-Correlation-ID")
         body = problem_details(
             status=exc.http_status,
@@ -54,6 +64,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        await _rollback_if_possible(request)
         correlation = request.headers.get("X-Correlation-ID")
         body = problem_details(
             status=422,
@@ -65,6 +76,21 @@ def register_exception_handlers(app: FastAPI) -> None:
             metadata={"errors": exc.errors()},
         )
         return JSONResponse(status_code=422, content=body)
+
+    @app.exception_handler(Exception)
+    async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+        await _rollback_if_possible(request)
+        correlation = request.headers.get("X-Correlation-ID")
+        body = problem_details(
+            status=500,
+            title="Internal Server Error",
+            detail="An unexpected error occurred",
+            code="internal_error",
+            instance=str(request.url.path),
+            correlation_id=correlation,
+            metadata={"error_type": type(exc).__name__},
+        )
+        return JSONResponse(status_code=500, content=body)
 
 
 def parse_uuid(value: str, *, field_name: str) -> UUID:

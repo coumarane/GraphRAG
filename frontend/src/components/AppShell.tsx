@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BookOpen,
+  CircleDollarSign,
   Files,
   LayoutDashboard,
   LogOut,
@@ -15,7 +16,7 @@ import {
   Settings,
   Upload,
   AlertTriangle,
-  CircleDollarSign,
+  Users,
 } from "lucide-react";
 import {
   AuthSession,
@@ -33,6 +34,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
 };
 
 type NavGroup = {
@@ -68,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/ops", label: "Observability", icon: Activity },
       { href: "/usage", label: "Usage", icon: CircleDollarSign },
+      { href: "/users", label: "Users", icon: Users, adminOnly: true },
       { href: "/settings", label: "Configuration", icon: Settings },
     ],
   },
@@ -171,13 +174,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
-          {NAV_GROUPS.map((group) => (
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter(
+              (item) => !item.adminOnly || session?.user.role === "admin",
+            );
+            if (items.length === 0) return null;
+            return (
             <div key={group.label}>
               <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                 {group.label}
               </p>
               <div className="space-y-0.5">
-                {group.items.map((item) => {
+                {items.map((item) => {
                   const Icon = item.icon;
                   const active = navItemActive(item.href, pathname, searchParams);
                   return (
@@ -198,7 +206,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </nav>
         <Separator />
         <div className="flex items-center gap-3 px-4 py-4">

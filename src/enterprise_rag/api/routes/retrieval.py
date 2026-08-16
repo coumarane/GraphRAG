@@ -13,8 +13,11 @@ from enterprise_rag.api.schemas import (
     RetrievalSearchRequest,
     RetrievalSearchResponse,
 )
+from enterprise_rag.application.authorization.gate import require_action, reserve_quota
 from enterprise_rag.application.usage.context import usage_context
+from enterprise_rag.domain.authorization.models import Action
 from enterprise_rag.domain.ids import new_id
+from enterprise_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
 from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters, RetrievalRequest
 from enterprise_rag.shared.exceptions import ConfigurationError
 
@@ -27,25 +30,45 @@ async def retrieval_search(
     tenant: TenantDep,
     container: ContainerDep,
 ) -> RetrievalSearchResponse:
+    require_action(container.require_authorization(), tenant, Action.QUERY_EXECUTE)
+    reservation = reserve_quota(
+        container.require_quotas(),
+        tenant,
+        metric=QuotaMetric.QUERIES,
+        quantity=1,
+        period=QuotaPeriod.DAY,
+    )
     service = container.require_retrieve()
-    with usage_context(tenant_id=tenant.tenant_id, query_id=new_id()):
-        outcome = await service.retrieve(
-            tenant,
-            RetrievalRequest(
-                question=body.question,
-                mode=body.mode,
-                filters=RetrievalFilters(
-                    document_ids=list(body.document_ids),
-                    modalities=list(body.modalities),
-                    tags=list(body.tags),
-                    security_labels=list(body.security_labels),
+    try:
+        with usage_context(
+            tenant_id=tenant.tenant_id,
+            query_id=new_id(),
+            user_id=tenant.user_id,
+        ):
+            outcome = await service.retrieve(
+                tenant,
+                RetrievalRequest(
+                    question=body.question,
+                    mode=body.mode,
+                    filters=RetrievalFilters(
+                        document_ids=list(body.document_ids),
+                        modalities=list(body.modalities),
+                        tags=list(body.tags),
+                        security_labels=list(body.security_labels),
+                    ),
+                    top_k=body.top_k,
+                    graph_depth=body.graph_depth,
+                    include_graph_paths=body.include_graph_paths,
+                    rerank=body.rerank,
                 ),
-                top_k=body.top_k,
-                graph_depth=body.graph_depth,
-                include_graph_paths=body.include_graph_paths,
-                rerank=body.rerank,
-            ),
+            )
+        container.require_quotas().commit(
+            reservation_id=reservation.reservation_id,
+            actual_quantity=1,
         )
+    except Exception:
+        container.require_quotas().release(reservation_id=reservation.reservation_id)
+        raise
     await container.commit_db()
     result = outcome.result
     return RetrievalSearchResponse(
@@ -63,28 +86,48 @@ async def query_documents(
     tenant: TenantDep,
     container: ContainerDep,
 ) -> QueryApiResponse:
+    require_action(container.require_authorization(), tenant, Action.QUERY_EXECUTE)
+    reservation = reserve_quota(
+        container.require_quotas(),
+        tenant,
+        metric=QuotaMetric.QUERIES,
+        quantity=1,
+        period=QuotaPeriod.DAY,
+    )
     service = container.require_query()
-    with usage_context(tenant_id=tenant.tenant_id, query_id=new_id()):
-        outcome = await service.query(
-            tenant,
-            QueryRequest(
-                question=body.question,
-                mode=body.mode,
-                filters=RetrievalFilters(
-                    document_ids=list(body.document_ids),
-                    modalities=list(body.modalities),
-                    tags=list(body.tags),
-                    security_labels=list(body.security_labels),
+    try:
+        with usage_context(
+            tenant_id=tenant.tenant_id,
+            query_id=new_id(),
+            user_id=tenant.user_id,
+        ):
+            outcome = await service.query(
+                tenant,
+                QueryRequest(
+                    question=body.question,
+                    mode=body.mode,
+                    filters=RetrievalFilters(
+                        document_ids=list(body.document_ids),
+                        modalities=list(body.modalities),
+                        tags=list(body.tags),
+                        security_labels=list(body.security_labels),
+                    ),
+                    top_k=body.top_k,
+                    graph_depth=body.graph_depth,
+                    include_graph_paths=body.include_graph_paths,
+                    rerank=body.rerank,
+                    answer_model_override=body.answer_model_override,
+                    conversation_history=list(body.conversation_history),
+                    expand_document_scope=body.expand_document_scope,
                 ),
-                top_k=body.top_k,
-                graph_depth=body.graph_depth,
-                include_graph_paths=body.include_graph_paths,
-                rerank=body.rerank,
-                answer_model_override=body.answer_model_override,
-                conversation_history=list(body.conversation_history),
-                expand_document_scope=body.expand_document_scope,
-            ),
+            )
+        container.require_quotas().commit(
+            reservation_id=reservation.reservation_id,
+            actual_quantity=1,
         )
+    except Exception:
+        container.require_quotas().release(reservation_id=reservation.reservation_id)
+        raise
     await container.commit_db()
     return outcome.response
 
@@ -95,9 +138,23 @@ async def graph_search(
     tenant: TenantDep,
     container: ContainerDep,
 ) -> GraphSearchResponse:
+    require_action(container.require_authorization(), tenant, Action.GRAPH_QUERY)
     graph = container.graph_store
     if graph is None:
         raise ConfigurationError("Graph store is not configured")
+
+    from enterprise_rag.application.authorization.gate import authorized_document_ids
+    from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
+
+    docs, _ = await container.require_document_repo().list_documents(
+        tenant, offset=0, limit=500
+    )
+    allowed_ids = authorized_document_ids(
+        container.require_authorization(),
+        tenant,
+        [d for d in docs if d.status is DocumentLifecycleStatus.READY],
+    )
+
     entities = await graph.resolve_entities(tenant, names=body.names, limit=body.limit)
     entity_ids = [item.entity_id for item in entities]
     neighbors = (
@@ -110,11 +167,24 @@ async def graph_search(
         if entity_ids
         else []
     )
-    claims = (
-        await graph.find_claims(tenant, entity_ids=entity_ids or None, limit=body.limit)
-        if body.include_claims
-        else []
-    )
+    find_claims = graph.find_claims
+    try:
+        claims = (
+            await find_claims(
+                tenant,
+                entity_ids=entity_ids or None,
+                document_ids=allowed_ids,
+                limit=body.limit,
+            )
+            if body.include_claims
+            else []
+        )
+    except TypeError:
+        claims = (
+            await find_claims(tenant, entity_ids=entity_ids or None, limit=body.limit)
+            if body.include_claims
+            else []
+        )
     topics = (
         await graph.find_topics(
             tenant,

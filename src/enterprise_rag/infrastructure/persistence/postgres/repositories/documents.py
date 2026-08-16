@@ -96,6 +96,13 @@ class SqlAlchemyDocumentRepository:
             current_version_id=document.current_version_id,
             tags=list(document.tags),
             security_labels=list(document.security_labels),
+            owner_user_id=document.owner_user_id,
+            department=document.department,
+            country=document.country,
+            business_unit=document.business_unit,
+            classification=document.classification,
+            required_clearance=document.required_clearance,
+            allowed_groups=list(document.allowed_groups),
             metadata_json=dict(document.metadata),
         )
         self._session.add(model)
@@ -165,6 +172,13 @@ class SqlAlchemyDocumentRepository:
         model.current_version_id = document.current_version_id
         model.tags = list(document.tags)
         model.security_labels = list(document.security_labels)
+        model.owner_user_id = document.owner_user_id
+        model.department = document.department
+        model.country = document.country
+        model.business_unit = document.business_unit
+        model.classification = document.classification
+        model.required_clearance = document.required_clearance
+        model.allowed_groups = list(document.allowed_groups)
         model.metadata_json = dict(document.metadata)
         await self._session.flush()
         return document_to_record(model)

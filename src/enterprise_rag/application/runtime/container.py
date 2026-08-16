@@ -95,6 +95,25 @@ class ServiceContainer:
     on_commit: Any | None = None
     user_repo: Any | None = None
     auth_service: Any | None = None
+    authorization: Any | None = None
+    quotas: Any | None = None
+
+    def require_authorization(self) -> Any:
+        if self.authorization is None:
+            from enterprise_rag.application.authorization.service import (
+                PolicyAuthorizationService,
+            )
+
+            self.authorization = PolicyAuthorizationService()
+        return self.authorization
+
+    def require_quotas(self) -> Any:
+        if self.quotas is None:
+            from enterprise_rag.application.quotas.service import InMemoryQuotaService
+
+            self.quotas = InMemoryQuotaService()
+            self.quotas.ensure_default_plan()
+        return self.quotas
 
     async def commit_db(self) -> None:
         """Commit the metadata DB session when Postgres is wired."""
@@ -106,6 +125,16 @@ class ServiceContainer:
         session = self.db_session
         if session is not None:
             await session.commit()
+
+    async def rollback_db(self) -> None:
+        """Clear a failed transaction so the shared session can continue."""
+        session = self.db_session
+        if session is None:
+            return
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            pass
 
     def require_register_source(self) -> RegisterSourceService:
         if self.register_source is None:

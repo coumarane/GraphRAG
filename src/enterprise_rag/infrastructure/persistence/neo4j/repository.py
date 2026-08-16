@@ -231,12 +231,16 @@ class Neo4jGraphStore:
         tenant: TenantContext,
         *,
         entity_ids: list[UUID] | None = None,
+        document_ids: list[UUID] | None = None,
         limit: int = 20,
     ) -> list[GraphClaimHit]:
         _ = entity_ids  # subject filtering left to application when needed
         query = (
             "MATCH (c:Claim {tenant_id: $tenant_id}) "
             "OPTIONAL MATCH (c)-[:DERIVED_FROM]->(chunk:Chunk) "
+            "WHERE size($document_ids) = 0 "
+            "OR c.document_id IN $document_ids "
+            "OR chunk.document_id IN $document_ids "
             "RETURN c.node_id AS claim_id, c.statement AS statement, c.subject AS subject, "
             "c.predicate AS predicate, c.object AS object, c.confidence AS confidence, "
             "chunk.node_id AS source_chunk_id "
@@ -245,6 +249,7 @@ class Neo4jGraphStore:
         params: dict[str, object] = {
             "tenant_id": str(tenant.tenant_id),
             "limit": limit,
+            "document_ids": [str(item) for item in (document_ids or [])],
         }
         require_tenant_param(params)
         rows = self._run(query, params)

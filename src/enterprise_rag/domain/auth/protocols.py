@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from enterprise_rag.domain.auth.models import UserRecord
+from enterprise_rag.domain.auth.models import TenantMembershipRecord, UserRecord
 
 
 class UserRepository(Protocol):
@@ -18,3 +18,14 @@ class UserRepository(Protocol):
     async def count_users(self) -> int: ...
 
     async def create(self, user: UserRecord) -> UserRecord: ...
+
+    async def update(self, user: UserRecord) -> UserRecord: ...
+
+    async def list_by_tenant(self, tenant_id: UUID) -> list[UserRecord]: ...
+
+    async def get_membership(
+        self,
+        *,
+        user_id: UUID,
+        tenant_id: UUID,
+    ) -> TenantMembershipRecord | None: ...
