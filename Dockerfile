@@ -26,8 +26,12 @@ COPY config ./config
 
 RUN uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
       --extra observability \
     && uv pip install --python .venv/bin/python \
+      "openai>=1.60,<2" \
+      "langchain-openai>=0.3,<1" \
+      "langchain-core>=0.3,<1" \
       "azure-storage-blob>=12.26,<13" \
       "azure-identity>=1.23,<2"
 
