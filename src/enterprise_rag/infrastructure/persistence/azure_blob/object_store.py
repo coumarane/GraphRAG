@@ -91,8 +91,8 @@ class AzureBlobObjectStore:
                 overwrite=True,
                 content_settings=ContentSettings(content_type=content_type),
                 metadata={
-                    "content-sha256": content_hash,
-                    "tenant-id": str(tenant.tenant_id),
+                    "content_sha256": content_hash,
+                    "tenant_id": str(tenant.tenant_id),
                 },
             )
             return getattr(result, "etag", None)
