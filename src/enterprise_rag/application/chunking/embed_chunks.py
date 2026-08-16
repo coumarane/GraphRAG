@@ -40,6 +40,13 @@ class EmbedChunksService:
         *,
         language: str | None = None,
         parser: str | None = None,
+        security_labels: list[str] | None = None,
+        department: str | None = None,
+        country: str | None = None,
+        business_unit: str | None = None,
+        classification: str | None = None,
+        required_clearance: int | None = None,
+        allowed_groups: list[str] | None = None,
     ) -> EmbedChunksResult:
         selected = [
             chunk
@@ -65,6 +72,8 @@ class EmbedChunksService:
                 for offset, index in enumerate(parent_indexes):
                     summary_vectors[index] = embedded[offset]
 
+        labels = list(security_labels or [])
+        groups = list(allowed_groups or [])
         records: list[ChunkVectorRecord] = []
         for index, chunk in enumerate(selected):
             preview = chunk.text[:8000]
@@ -89,6 +98,13 @@ class EmbedChunksService:
                         text_preview=preview,
                         language=language,
                         parser=parser,
+                        security_labels=labels,
+                        department=department,
+                        country=country,
+                        business_unit=business_unit,
+                        classification=classification,
+                        required_clearance=required_clearance,
+                        allowed_groups=groups,
                         metadata=dict(chunk.metadata),
                     ),
                 )

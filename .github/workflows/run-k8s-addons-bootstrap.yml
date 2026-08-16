@@ -539,6 +539,11 @@ jobs:
             crd/applicationsets.argoproj.io \
             crd/appprojects.argoproj.io
 
+          # Reload server settings (server.insecure + public URL) from ConfigMaps.
+          kubectl -n argocd rollout restart deployment/argocd-server
+          kubectl -n argocd rollout status deployment/argocd-server --timeout=600s
+          kubectl -n argocd get httproute argocd -o wide
+
           # Reconstruct PEM key exactly
           KEY_CONTENT="$(printf '%s' "$KEY_B64" | base64 -d)"
 

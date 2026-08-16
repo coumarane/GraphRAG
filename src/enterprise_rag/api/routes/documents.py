@@ -22,8 +22,11 @@ from enterprise_rag.api.schemas import (
     IngestAcceptedResponse,
     ReprocessAcceptedResponse,
 )
+from enterprise_rag.application.authorization.filters import filter_authorized_documents
+from enterprise_rag.application.authorization.gate import ensure_document_read, require_action
 from enterprise_rag.application.ingestion.register_source import RegisterSourceRequest
 from enterprise_rag.application.runtime.container import ServiceContainer
+from enterprise_rag.domain.authorization.models import Action
 from enterprise_rag.domain.deletion.stages import ReindexScope
 from enterprise_rag.domain.ingestion.records import DocumentRecord
 from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
@@ -167,10 +170,14 @@ async def list_documents(
     if limit < 1 or limit > 200:
         raise ValidationError("limit must be between 1 and 200")
     items, total = await container.require_document_repo().list_documents(
-        tenant, offset=offset, limit=limit
+        tenant, offset=0, limit=max(offset + limit, 200)
     )
+    authz = container.require_authorization()
+    allowed = filter_authorized_documents(authz, tenant, items)
+    total = len(allowed)
+    page = allowed[offset : offset + limit]
     return DocumentListResponse(
-        items=[_document_response(item) for item in items],
+        items=[_document_response(item) for item in page],
         total=total,
         offset=offset,
         limit=limit,
@@ -186,6 +193,7 @@ async def get_document(
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is None:
         raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    ensure_document_read(container.require_authorization(), tenant, document)
     return await _document_response_with_version(container, tenant, document)
 
 
@@ -210,6 +218,15 @@ async def reprocess_document(
             details={"scope": scope},
         ) from exc
 
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    require_action(
+        container.require_authorization(),
+        tenant,
+        Action.DOCUMENT_REINDEX,
+        document=document,
+    )
     result = await container.submit_reindex(
         tenant,
         document_id=document_id,
@@ -262,6 +279,7 @@ async def list_document_chunks(
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is None:
         raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    ensure_document_read(container.require_authorization(), tenant, document)
     chunks, total = await container.list_chunks(
         tenant,
         document_id,
@@ -434,6 +452,15 @@ async def delete_document(
     tenant: TenantDep,
     container: ContainerDep,
 ) -> DeletionAcceptedResponse:
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    require_action(
+        container.require_authorization(),
+        tenant,
+        Action.DOCUMENT_DELETE,
+        document=document,
+    )
     operation = await container.submit_deletion(tenant, document_id)
     result = operation.result
     return DeletionAcceptedResponse(

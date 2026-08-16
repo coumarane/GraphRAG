@@ -1,6 +1,6 @@
 # Infra Progress: OVH Cluster Bootstrap
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
 
 ## Scope completed
 
@@ -56,6 +56,9 @@ Last updated: 2026-08-15
 - MinIO is intentionally deferred pending the final storage decision between Azure Storage and S3-compatible object storage
 - local-path provisioner added and validated for PVC-backed in-cluster services
 - Browser login path validated successfully through `https://chatwithdocs.org` with the bootstrap admin account
+- Azure Blob upload path fixed for production by switching to Azure-safe blob metadata keys
+- runtime image build path fixed so LLM/OpenAI dependencies are installed for ingestion processing
+- end-to-end document upload and processing validated successfully on the OVH cluster
 
 ## Current infrastructure state
 
@@ -130,6 +133,8 @@ Application deployment state:
 - API application is deployed in namespace `chatwithdocs-api`
 - API deployment rollout is healthy after successful schema migration
 - web deployment rollout is healthy after loading mounted runtime env before Next.js startup
+- document upload to Azure Blob now succeeds in production
+- document ingestion processing now succeeds after runtime image dependency correction
 - API Kubernetes health probes were corrected to the mounted FastAPI paths:
   - `/api/v1/health/live`
   - `/api/v1/health/ready`
@@ -199,6 +204,8 @@ Azure application secrets state:
 - current operational note:
   - Azure Blob runtime rollout required API image rebuild and redeploy because the original image did not include the Azure SDK
   - the build/deploy workflow path is now corrected to avoid digest drift during redeploys
+  - ingestion processing currently runs inside the API deployment through FastAPI background tasks
+  - there is no separate Kubernetes worker deployment committed in this repository yet
 
 ## Important implementation decisions
 
@@ -252,6 +259,10 @@ Azure application secrets state:
   - Azure Key Vault provider
   - `SecretProviderClass` per namespace
   - `initContainer`-rendered `.env` files instead of ConfigMap-based app config
+- Azure Blob production support required two separate runtime fixes:
+  - Azure-safe blob metadata naming for upload
+  - explicit runtime installation of Azure SDK + LLM/OpenAI dependencies while the current `uv.lock` conflict remains unresolved
+- current ingestion execution model is in-process background execution from the API app, not a separately deployed Kubernetes worker
 
 ## Relevant files
 

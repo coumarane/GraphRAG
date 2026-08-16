@@ -1123,7 +1123,15 @@ class ProcessRegisteredDocumentService:
 
             audit.stage_started("EMBED", tool=str(embed_name), model_name=str(embed_name))
             embedded = await EmbedChunksService(self.embedding_model).embed(
-                all_chunks, parser=raw.parser_name
+                all_chunks,
+                parser=raw.parser_name,
+                security_labels=list(document.security_labels) if document else None,
+                department=document.department if document else None,
+                country=document.country if document else None,
+                business_unit=document.business_unit if document else None,
+                classification=document.classification if document else None,
+                required_clearance=document.required_clearance if document else None,
+                allowed_groups=list(document.allowed_groups) if document else None,
             )
             if not embedded.records:
                 raise ValidationError("No embeddings produced from document")

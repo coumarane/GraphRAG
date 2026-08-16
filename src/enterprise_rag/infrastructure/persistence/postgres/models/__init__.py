@@ -1,5 +1,15 @@
 """PostgreSQL ORM model package."""
 
+from enterprise_rag.infrastructure.persistence.postgres.models.abac import (
+    AuthorizationPolicyModel,
+    PolicyVersionModel,
+    QuotaAssignmentModel,
+    QuotaPlanModel,
+    QuotaReservationModel,
+    QuotaUsageEventModel,
+    TenantMembershipModel,
+    UsageCounterModel,
+)
 from enterprise_rag.infrastructure.persistence.postgres.models.documents import (
     DocumentModel,
     DocumentVersionModel,
@@ -23,6 +33,7 @@ from enterprise_rag.infrastructure.persistence.postgres.models.usage import Mode
 from enterprise_rag.infrastructure.persistence.postgres.models.users import UserModel
 
 __all__ = [
+    "AuthorizationPolicyModel",
     "ContentLossRecordModel",
     "DocumentModel",
     "DocumentParseReportModel",
@@ -34,8 +45,15 @@ __all__ = [
     "ModelUsageEventModel",
     "PageParseReportModel",
     "ParserAttemptModel",
+    "PolicyVersionModel",
     "ProcessingStageRunModel",
+    "QuotaAssignmentModel",
+    "QuotaPlanModel",
+    "QuotaReservationModel",
+    "QuotaUsageEventModel",
     "RoutingDecisionModel",
+    "TenantMembershipModel",
     "TenantModel",
+    "UsageCounterModel",
     "UserModel",
 ]

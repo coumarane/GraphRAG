@@ -67,3 +67,29 @@ Document content is data, not instructions. It may not:
 ## Secrets and logging
 
 Never log credentials, API keys, raw authorization tokens, presigned URLs or unrestricted document contents. Provide redaction filters.
+
+## Attribute-based access control (ABAC)
+
+Authorization is deny-by-default and evaluated by `AuthorizationService` from structured JSON policies (no executable user code).
+
+Subject attributes are loaded server-side from the user and `tenant_memberships` tables after JWT authentication. Client-supplied security headers are ignored.
+
+Document resources carry first-class security fields (`owner_user_id`, `department`, `country`, `business_unit`, `classification`, `required_clearance`, `allowed_groups`) in addition to `security_labels`.
+
+Store-level enforcement:
+
+- **PostgreSQL** — tenant RLS remains mandatory; document list/get is filtered by ABAC predicates.
+- **Qdrant** — payload includes security attributes; search must include tenant filter and is scoped to authorized `document_ids` (fail closed when scope is empty).
+- **Neo4j** — MATCH remains tenant-scoped; claim/graph lookups accept authorized `document_ids` constraints.
+- **MinIO** — prefix isolation remains; `document.read` must be authorized before get/presign.
+
+Unauthorized documents must not appear in counts, citations, traces, or graph paths.
+
+## Quotas
+
+Quotas are enforced server-side with atomic reserve → work → commit/release. Tenant assignments are a ceiling over user assignments.
+
+Default metrics: documents, pages, storage bytes, queries (day/month), OCR pages, vision calls, LLM tokens, embedding tokens.
+
+Exceeded quotas map to HTTP 429 (`quota_exceeded`) with `{quota,limit,used,remaining,reset_at}`. Authorization denials map to HTTP 403.
+

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BookOpen,
+  CircleDollarSign,
   Files,
   LayoutDashboard,
   LogOut,
@@ -16,7 +17,7 @@ import {
   Settings,
   Upload,
   AlertTriangle,
-  CircleDollarSign,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -35,6 +36,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
 };
 
 type NavGroup = {
@@ -70,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/ops", label: "Observability", icon: Activity },
       { href: "/usage", label: "Usage", icon: CircleDollarSign },
+      { href: "/users", label: "Users", icon: Users, adminOnly: true },
       { href: "/settings", label: "Configuration", icon: Settings },
     ],
   },
@@ -151,35 +154,41 @@ function SidebarNav({
         </div>
       </div>
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
-              {group.label}
-            </p>
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = navItemActive(item.href, pathname, searchParams);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={onNavigate}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                      active
-                        ? "bg-accent-soft text-foreground"
-                        : "text-muted hover:bg-surface hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    {item.label}
-                  </Link>
-                );
-              })}
+        {NAV_GROUPS.map((group) => {
+          const items = group.items.filter(
+            (item) => !item.adminOnly || session?.user.role === "admin",
+          );
+          if (items.length === 0) return null;
+          return (
+            <div key={group.label}>
+              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  const active = navItemActive(item.href, pathname, searchParams);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onNavigate}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                        active
+                          ? "bg-accent-soft text-foreground"
+                          : "text-muted hover:bg-surface hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
       <Separator />
       <div className="flex items-center gap-3 px-4 py-4">

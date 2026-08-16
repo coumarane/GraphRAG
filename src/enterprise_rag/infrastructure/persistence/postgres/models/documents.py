@@ -52,6 +52,16 @@ class DocumentModel(Base, TimestampMixin, TenantOwnedMixin):
     current_version_id: Mapped[UUID | None] = mapped_column(nullable=True)
     tags: Mapped[list[Any]] = mapped_column(nullable=False, default=list)
     security_labels: Mapped[list[Any]] = mapped_column(nullable=False, default=list)
+    owner_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    department: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    business_unit: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    classification: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    required_clearance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    allowed_groups: Mapped[list[Any]] = mapped_column(nullable=False, default=list)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         nullable=False,

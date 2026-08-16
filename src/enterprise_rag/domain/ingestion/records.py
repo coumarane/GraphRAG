@@ -43,6 +43,13 @@ class DocumentRecord(BaseModel):
     current_version_id: UUID | None = None
     tags: list[str] = Field(default_factory=list)
     security_labels: list[str] = Field(default_factory=list)
+    owner_user_id: UUID | None = None
+    department: str | None = None
+    country: str | None = None
+    business_unit: str | None = None
+    classification: str | None = None
+    required_clearance: int | None = None
+    allowed_groups: list[str] = Field(default_factory=list)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None

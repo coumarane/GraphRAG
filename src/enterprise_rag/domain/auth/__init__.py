@@ -6,7 +6,9 @@ from enterprise_rag.domain.auth.models import (
     CreateUserRequest,
     LoginRequest,
     SessionClaims,
+    TenantMembershipRecord,
     UserRecord,
+    UserStatus,
 )
 from enterprise_rag.domain.auth.passwords import (
     hash_password,
@@ -23,8 +25,10 @@ __all__ = [
     "CreateUserRequest",
     "LoginRequest",
     "SessionClaims",
+    "TenantMembershipRecord",
     "UserRecord",
     "UserRepository",
+    "UserStatus",
     "hash_password",
     "is_weak_jwt_secret",
     "issue_access_token",
