@@ -34,9 +34,15 @@ Last updated: 2026-08-15
 - Azure Key Vault env sync tooling created for application configuration secrets
 - Azure RBAC helper created to grant `Key Vault Secrets Officer` on app Key Vaults
 - Azure env sync documentation added for API and web app secret management
+- Azure Terraform stack created and executed for application object storage
+- dedicated Azure Storage account deployed successfully for application document storage
 - Azure Key Vault CSI-based secret mount pattern added for Kubernetes API and web deployments
 - Kubernetes add-ons workflow extended to install Secrets Store CSI Driver + Azure Key Vault provider
 - API and web deploy workflows extended to provision namespace-level CSI auth secret for Key Vault access
+- API runtime extended to support Azure Blob as an object-store backend while preserving MinIO for local development
+- Kubernetes API secret mount updated to project Azure Blob configuration from Key Vault
+- API and web deploy workflows hardened to prefer committed image digests and block unsafe `latest` overrides
+- Harbor image build path adjusted so Azure SDK dependencies are installed in runtime images despite the current `uv.lock` resolver conflict
 - Dedicated PostgreSQL host deployment path moved back to `database.safranys.com` on `167.86.88.114`
 - PostgreSQL GitHub workflow updated to support destructive rebuild from scratch
 - PostgreSQL Ansible role refactored for rebuild support, lint-safe variable naming, and explicit restart handling
@@ -178,18 +184,21 @@ Azure application secrets state:
   - `infra/azure/manage_keyvault_app_env.py`
 - Key Vault RBAC assignment helper is ready:
   - `infra/azure/assign_keyvault_role.py`
-- current blocker:
-  - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-api`
-  - local Azure user does not yet have `Key Vault Secrets Officer` on `graphrag-kv-web`
-  - env sync cannot run successfully until RBAC is granted and propagated
+- Azure application object storage state:
+  - dedicated Storage account deployed for GraphRAG documents
+  - current deployed account name: `graphragdocsdevbmo9`
+  - current intended primary container for the API: `documents`
+  - object-store backend split is now:
+    - local development -> MinIO
+    - OVH cluster production -> Azure Blob Storage
+- local env sync path is now working once the operator has the required Key Vault RBAC
 - Kubernetes runtime secret consumption design is now prepared:
   - Azure Key Vault secrets mounted into pods through Secrets Store CSI Driver
   - `initContainer` generates `/app/.env` into a shared `emptyDir`
   - main container starts only after `.env` exists
-- additional current blocker for runtime secret mount:
-  - the Azure identity used by the CSI provider still needs Key Vault read access on `graphrag-kv-api`
-  - the Azure identity used by the CSI provider still needs Key Vault read access on `graphrag-kv-web`
-  - the cluster still needs the CSI add-on workflow to be executed after these repo changes
+- current operational note:
+  - Azure Blob runtime rollout required API image rebuild and redeploy because the original image did not include the Azure SDK
+  - the build/deploy workflow path is now corrected to avoid digest drift during redeploys
 
 ## Important implementation decisions
 
@@ -233,6 +242,11 @@ Azure application secrets state:
   - sync from any dotenv file to any Key Vault
   - optional scoped cleanup of managed secrets with `--delete-missing`
   - explicit RBAC assignment helper for `Key Vault Secrets Officer`
+- application object storage strategy is now intentionally split by environment:
+  - local development keeps MinIO for fast iterative work
+  - OVH cluster production targets Azure Blob Storage
+- Azure Blob support was added in application runtime code instead of trying to force MinIO semantics into production infrastructure
+- Harbor/Kubernetes deploy workflows now protect the GitOps path by requiring committed digests when no manual tag is provided and by refusing `latest`
 - Kubernetes app runtime secret delivery now targets:
   - Secrets Store CSI Driver
   - Azure Key Vault provider
