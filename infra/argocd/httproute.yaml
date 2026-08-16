@@ -2,6 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: argocd
+  namespace: argocd
   labels:
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
@@ -18,5 +19,6 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
+        # Service port 80 → argocd-server HTTP (requires server.insecure=true)
         - name: argocd-server
           port: 80
