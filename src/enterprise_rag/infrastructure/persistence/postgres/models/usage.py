@@ -33,6 +33,7 @@ class ModelUsageEventModel(Base, TenantOwnedMixin):
     document_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     ingestion_run_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     query_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

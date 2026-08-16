@@ -40,6 +40,7 @@ class UsageEvent(BaseModel):
     ingestion_run_id: UUID | None = None
     query_id: UUID | None = None
     latency_ms: float | None = Field(default=None, ge=0.0)
+    user_id: UUID | None = None
 
 
 class DailySpendRow(BaseModel):

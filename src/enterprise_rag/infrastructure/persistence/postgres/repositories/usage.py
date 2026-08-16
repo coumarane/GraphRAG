@@ -39,6 +39,7 @@ class SqlAlchemyUsageRepository:
             document_id=event.document_id,
             ingestion_run_id=event.ingestion_run_id,
             query_id=event.query_id,
+            user_id=event.user_id,
             latency_ms=event.latency_ms,
             created_at=event.created_at,
         )
@@ -95,6 +96,7 @@ def _to_domain(row: ModelUsageEventModel) -> UsageEvent:
         ingestion_run_id=row.ingestion_run_id,
         query_id=row.query_id,
         latency_ms=row.latency_ms,
+        user_id=row.user_id,
     )
 
 

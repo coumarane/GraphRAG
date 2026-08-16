@@ -89,6 +89,8 @@ async def login(
     response: Response,
     container: ContainerDep,
 ) -> AuthResponse:
+    # Recover from a prior failed DB transaction on the shared session.
+    await container.rollback_db()
     _rate_limit_login(request)
     settings = get_settings()
     if not settings.security.auth_enabled:

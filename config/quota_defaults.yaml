@@ -1,0 +1,9 @@
+documents_per_month: 1000
+pages_per_month: 50000
+storage_bytes_per_month: 10000000000
+queries_per_day: 1000
+queries_per_month: 20000
+ocr_pages_per_month: 50000
+vision_calls_per_month: 5000
+llm_tokens_per_month: 5000000
+embedding_tokens_per_month: 20000000

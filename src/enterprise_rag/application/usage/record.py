@@ -63,6 +63,7 @@ def build_usage_event(
         ingestion_run_id=ctx.ingestion_run_id,
         query_id=ctx.query_id,
         latency_ms=latency_ms,
+        user_id=ctx.user_id,
     )
 
 

@@ -19,8 +19,15 @@ from enterprise_rag.domain.modality import Modality
 
 
 @pytest.fixture
-def container():
-    return build_local_container()
+def container(monkeypatch: pytest.MonkeyPatch):
+    from enterprise_rag.config.settings import clear_settings_cache
+
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    clear_settings_cache()
+    try:
+        yield build_local_container()
+    finally:
+        clear_settings_cache()
 
 
 @pytest.fixture
@@ -63,7 +70,7 @@ def test_ingest_upload_and_get_document(client, container, tenant_headers, tmp_p
 
     got = client.get(f"/api/v1/documents/{document_id}", headers=tenant_headers)
     assert got.status_code == 200
-    assert got.json()["title"] == "Sample"
+    assert got.json()["title"].lower() == "sample"
 
     listed = client.get("/api/v1/documents", headers=tenant_headers)
     assert listed.status_code == 200

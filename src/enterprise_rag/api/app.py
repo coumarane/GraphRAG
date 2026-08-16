@@ -18,6 +18,7 @@ from enterprise_rag.api.routes import (
     ops,
     parsing_audit,
     retrieval,
+    users,
 )
 from enterprise_rag.application.runtime.container import ServiceContainer
 from enterprise_rag.application.runtime.runtime import build_runtime_container
@@ -88,6 +89,8 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
     api.include_router(ingestion.router)
     api.include_router(retrieval.router)
     api.include_router(assets.router)
+    api.include_router(users.router)
+    api.include_router(users.admin_router)
     app.include_router(api)
 
     @app.get("/metrics")

@@ -20,9 +20,9 @@ from enterprise_rag.domain.ingestion.protocols import (
     IngestionRepository,
     TenantRepository,
 )
-from enterprise_rag.domain.parsing.audit_protocols import ParsingAuditRepository
 from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from enterprise_rag.domain.models.protocols import ChatModel, EmbeddingModel, StructuredExtractor
+from enterprise_rag.domain.parsing.audit_protocols import ParsingAuditRepository
 from enterprise_rag.domain.storage.protocols import ObjectStore
 from enterprise_rag.domain.tenant import TenantContext
 from enterprise_rag.domain.usage.protocols import UsageRepository
@@ -42,15 +42,15 @@ from enterprise_rag.infrastructure.persistence.chunks import (
 from enterprise_rag.infrastructure.persistence.chunks.lexical_qdrant import (
     QdrantHydratingLexicalStore,
 )
-from enterprise_rag.infrastructure.persistence.memory.parsing_audit import (
-    InMemoryParsingAuditRepository,
-)
 from enterprise_rag.infrastructure.persistence.memory import (
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
     InMemoryObjectStore,
     InMemoryTenantRepository,
     InMemoryUsageRepository,
+)
+from enterprise_rag.infrastructure.persistence.memory.parsing_audit import (
+    InMemoryParsingAuditRepository,
 )
 from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
 from enterprise_rag.infrastructure.persistence.qdrant import (
@@ -178,12 +178,21 @@ def build_local_container(
         max_upload_bytes=max_upload_bytes,
         malware_scanner=NoOpMalwareScanner(),
     )
+    from enterprise_rag.application.authorization.filters import filter_authorized_documents
+    from enterprise_rag.application.authorization.service import PolicyAuthorizationService
+    from enterprise_rag.application.quotas.service import InMemoryQuotaService
+
+    authorization = PolicyAuthorizationService()
+    quotas = InMemoryQuotaService()
+    quotas.ensure_default_plan()
     register = RegisterSourceService(
         tenant_repo=tenant_repo,
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
         object_store=object_store,
         source_loader=source_loader,
+        authorization=authorization,
+        quotas=quotas,
     )
     if use_live_models:
         embedder, chat = _resolve_models(
@@ -212,10 +221,14 @@ def build_local_container(
 
     async def active_document_ids(tenant: TenantContext) -> list[UUID]:
         items, _total = await document_repo.list_documents(tenant, offset=0, limit=500)
-        return [
-            item.document_id
+        ready = [
+            item
             for item in items
             if item.status is DocumentLifecycleStatus.READY
+        ]
+        return [
+            item.document_id
+            for item in filter_authorized_documents(authorization, tenant, ready)
         ]
 
     async def document_titles(tenant: TenantContext) -> dict[UUID, str]:
@@ -310,5 +323,10 @@ def build_local_container(
         auto_process_ingest=auto_process_ingest,
         ready_checks=[lambda: True],
     )
+    from enterprise_rag.application.authorization.service import PolicyAuthorizationService
+    from enterprise_rag.application.quotas.service import InMemoryQuotaService
+
+    container.authorization = authorization
+    container.quotas = quotas
     container.on_commit = on_commit
     return container
