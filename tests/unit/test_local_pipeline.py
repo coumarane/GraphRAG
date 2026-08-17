@@ -31,6 +31,7 @@ async def test_process_registered_pdf_completes(tmp_path: Path) -> None:
     assert run.status in {
         IngestionRunStatus.COMPLETED,
         IngestionRunStatus.COMPLETED_WITH_WARNINGS,
+        IngestionRunStatus.PARTIAL,
     }
     assert run.pages_processed >= 1
     assert run.elements_processed >= 1

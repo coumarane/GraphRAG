@@ -152,7 +152,7 @@ async def graph_search(
     allowed_ids = authorized_document_ids(
         container.require_authorization(),
         tenant,
-        [d for d in docs if d.status is DocumentLifecycleStatus.READY],
+        [d for d in docs if d.status in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}],
     )
 
     entities = await graph.resolve_entities(tenant, names=body.names, limit=body.limit)
