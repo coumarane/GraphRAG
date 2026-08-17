@@ -216,6 +216,7 @@ pythonpath = ["src"]
 filterwarnings = [
   "error",
   "ignore::DeprecationWarning",
+  "ignore::ResourceWarning",
   "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
 markers = [

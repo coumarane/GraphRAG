@@ -68,6 +68,15 @@ class IngestionRunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+SUCCESSFUL_RUN_STATUSES: frozenset[IngestionRunStatus] = frozenset(
+    {
+        IngestionRunStatus.COMPLETED,
+        IngestionRunStatus.COMPLETED_WITH_WARNINGS,
+        IngestionRunStatus.PARTIAL,
+    }
+)
+
+
 # Ordered pipeline used by the state machine.
 INGESTION_STAGE_ORDER: tuple[IngestionStageName, ...] = tuple(IngestionStageName)
 

@@ -177,7 +177,11 @@ def test_cli_ingest_and_query(tmp_path: Path) -> None:
     set_container(container)
     runner = CliRunner()
     path = tmp_path / "cli.pdf"
-    path.write_bytes(b"%PDF-1.4\ncli\n%%EOF\n")
+    sample = Path("examples/sample.pdf")
+    if sample.exists():
+        path.write_bytes(sample.read_bytes())
+    else:
+        path.write_bytes(b"%PDF-1.4\ncli\n%%EOF\n")
     ingest = runner.invoke(
         cli_app,
         ["ingest", str(path), "--tenant-id", "demo", "--wait", "--output", "json"],

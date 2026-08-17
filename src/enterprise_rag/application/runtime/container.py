@@ -86,6 +86,10 @@ class ServiceContainer:
     usage_repo: Any | None = None
     process_ingestion: Any | None = None
     auto_process_ingest: bool = False
+    ingest_queue: Any | None = None
+    outbox_store: Any | None = None
+    dead_letter_store: Any | None = None
+    outbox_publisher: Any | None = None
     elements: dict[tuple[UUID, UUID], list[ElementView]] = field(default_factory=dict)
     deletions: dict[UUID, DeletionOperation] = field(default_factory=dict)
     assets: dict[tuple[UUID, UUID], str] = field(default_factory=dict)

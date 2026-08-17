@@ -17,6 +17,14 @@ type IngestResult = {
   duplicate_version?: boolean;
 };
 
+type StageProgress = {
+  stage: string;
+  status: string;
+  attempt_count?: number;
+  warning?: string | null;
+  error_message?: string | null;
+};
+
 type RunStatus = {
   status: string;
   error_message?: string | null;
@@ -24,6 +32,10 @@ type RunStatus = {
   pages_processed?: number;
   elements_processed?: number;
   parser_used?: string | null;
+  current_stage?: string | null;
+  estimated_completion_percent?: number;
+  worker_id?: string | null;
+  stages?: StageProgress[];
 };
 
 const TERMINAL = new Set([
@@ -321,16 +333,35 @@ export default function UploadPage() {
               {result.ingestion_run_id}
             </p>
             {run ? (
-              <p className="border-t border-border pt-2">
-                <span className="text-muted">run</span> {run.status}
-                {run.parser_used ? ` · ${run.parser_used}` : ""}
-                {run.pages_processed ? ` · ${run.pages_processed} pages` : ""}
-                {run.elements_processed
-                  ? ` · ${run.elements_processed} elements`
-                  : ""}
-                {run.latest_warning ? ` — ${run.latest_warning}` : ""}
-                {run.error_message ? ` — ${run.error_message}` : ""}
-              </p>
+              <div className="space-y-2 border-t border-border pt-2">
+                <p>
+                  <span className="text-muted">run</span> {run.status}
+                  {typeof run.estimated_completion_percent === "number"
+                    ? ` · ${Math.round(run.estimated_completion_percent)}%`
+                    : ""}
+                  {run.current_stage ? ` · ${run.current_stage}` : ""}
+                  {run.parser_used ? ` · ${run.parser_used}` : ""}
+                  {run.pages_processed ? ` · ${run.pages_processed} pages` : ""}
+                  {run.elements_processed
+                    ? ` · ${run.elements_processed} elements`
+                    : ""}
+                  {run.latest_warning ? ` — ${run.latest_warning}` : ""}
+                  {run.error_message ? ` — ${run.error_message}` : ""}
+                </p>
+                {run.stages && run.stages.length > 0 ? (
+                  <ol className="max-h-56 space-y-1 overflow-auto text-xs">
+                    {run.stages.map((stage) => (
+                      <li key={stage.stage} className="flex justify-between gap-3">
+                        <span className="text-muted">{stage.stage}</span>
+                        <span>
+                          {stage.status}
+                          {stage.attempt_count ? ` ×${stage.attempt_count}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+              </div>
             ) : null}
           </CardContent>
         </Card>

@@ -143,6 +143,10 @@ class StageProgressItem(BaseModel):
     warning: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    worker_id: str | None = None
+    heartbeat_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class IngestionRunResponse(BaseModel):
@@ -161,6 +165,10 @@ class IngestionRunResponse(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     correlation_id: str | None = None
+    worker_id: str | None = None
+    heartbeat_at: datetime | None = None
+    current_stage: str | None = None
+    estimated_completion_percent: float = 0.0
     stages: list[StageProgressItem] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None

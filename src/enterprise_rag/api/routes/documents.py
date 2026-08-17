@@ -110,6 +110,23 @@ async def ingest_document(
             tenant,
             result.ingestion_run_id,
         )
+    elif (
+        container.outbox_store is not None
+        and not result.duplicate_version
+    ):
+        from enterprise_rag.application.ingestion.enqueue import enqueue_ingest_ids
+
+        run = await container.require_ingestion_repo().get_run(tenant, result.ingestion_run_id)
+        await enqueue_ingest_ids(
+            container.outbox_store,
+            tenant=tenant,
+            ingestion_run_id=result.ingestion_run_id,
+            document_id=result.document_id,
+            version_id=result.version_id,
+            content_hash=(run.content_hash if run is not None else ""),
+            config_fingerprint=(run.config_fingerprint if run is not None else ""),
+            correlation_id=run.correlation_id if run is not None else None,
+        )
 
     await container.commit_db()
     return IngestAcceptedResponse(
@@ -247,6 +264,24 @@ async def reprocess_document(
             container,
             tenant,
             result.ingestion_run_id,
+        )
+    elif (
+        container.outbox_store is not None
+        and result.ingestion_run_id is not None
+        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+    ):
+        from enterprise_rag.application.ingestion.enqueue import enqueue_ingest_ids
+
+        run = await container.require_ingestion_repo().get_run(tenant, result.ingestion_run_id)
+        await enqueue_ingest_ids(
+            container.outbox_store,
+            tenant=tenant,
+            ingestion_run_id=result.ingestion_run_id,
+            document_id=result.document_id,
+            version_id=result.version_id,
+            content_hash=(run.content_hash if run is not None else ""),
+            config_fingerprint=(run.config_fingerprint if run is not None else ""),
+            correlation_id=run.correlation_id if run is not None else None,
         )
 
     await container.commit_db()

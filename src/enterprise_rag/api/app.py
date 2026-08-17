@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import APIRouter, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,16 +51,44 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        import asyncio
+
         svc: ServiceContainer = app.state.container
         if svc.auth_service is not None:
             try:
                 created = await svc.auth_service.bootstrap_from_env()
                 if created:
                     await svc.commit_db()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error("auth_bootstrap_failed", error=str(exc))
                 raise
-        yield
+        publisher_task = None
+        if svc.outbox_publisher is not None and not svc.auto_process_ingest:
+            stop = asyncio.Event()
+
+            async def _publish_loop() -> None:
+                from enterprise_rag.config.settings import get_settings
+
+                interval = get_settings().worker.outbox_poll_seconds
+                while not stop.is_set():
+                    try:
+                        await svc.outbox_publisher.publish_once()
+                    except Exception:
+                        logger.exception("outbox_publisher_tick_failed")
+                    try:
+                        await asyncio.wait_for(stop.wait(), timeout=interval)
+                    except TimeoutError:
+                        continue
+
+            publisher_task = asyncio.create_task(_publish_loop())
+        try:
+            yield
+        finally:
+            if publisher_task is not None:
+                stop.set()
+                publisher_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await publisher_task
 
     app = FastAPI(
         title="Enterprise RAG-Anything",

@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: chatwithdocs-api
+
+commonLabels:
+  app.kubernetes.io/name: chatwithdocs-worker
+  app.kubernetes.io/part-of: chatwithdocs
+
+resources:
+- deployment.yaml
+
+images:
+- name: harbor.safranys.com/chatwithdocs/worker
+  newName: harbor.safranys.com/chatwithdocs/worker
+  newTag: latest

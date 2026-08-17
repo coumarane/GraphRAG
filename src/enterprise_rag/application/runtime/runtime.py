@@ -155,7 +155,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         ingestion_repo=ingestion_repo,
         parsing_audit_repo=parsing_audit_repo,
         usage_repo=usage_repo,
-        auto_process_ingest=True,
+        auto_process_ingest=os.environ.get("INGEST_EXECUTION", "worker").strip().lower()
+        in {"inline", "inprocess", "api"},
         use_live_models=True,
         max_pages=resolved.security.max_pages,
         on_commit=on_commit,
@@ -190,4 +191,77 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             jwt_secret=resolved.security.auth_jwt_secret,
             jwt_ttl_seconds=resolved.security.auth_jwt_ttl_seconds,
         )
+    _wire_ingest_queue(container, resolved, db_session=db_session, on_commit=on_commit)
     return container
+
+
+def _wire_ingest_queue(
+    container: ServiceContainer,
+    settings: Settings,
+    *,
+    db_session: AsyncSession | None,
+    on_commit: Callable[[], Awaitable[None]] | None,
+) -> None:
+    from enterprise_rag.application.ingestion.outbox_publisher import OutboxPublisher
+    from enterprise_rag.infrastructure.persistence.dead_letters import (
+        InMemoryDeadLetterStore,
+        SqlAlchemyDeadLetterStore,
+    )
+    from enterprise_rag.infrastructure.persistence.outbox import (
+        InMemoryOutboxStore,
+        SqlAlchemyOutboxStore,
+    )
+    from enterprise_rag.infrastructure.persistence.redis import InMemoryStreamIngestionQueue
+
+    if db_session is not None:
+        container.outbox_store = SqlAlchemyOutboxStore(db_session)
+        container.dead_letter_store = SqlAlchemyDeadLetterStore(db_session)
+    else:
+        container.outbox_store = InMemoryOutboxStore()
+        container.dead_letter_store = InMemoryDeadLetterStore()
+
+    queue_backend = os.environ.get("INGEST_QUEUE_BACKEND", "").strip().lower()
+    use_redis = queue_backend in {"redis", "streams"} or (
+        not queue_backend and db_session is not None
+    )
+    redis_client = None
+    if use_redis:
+        try:
+            import redis.asyncio as redis_async
+
+            redis_client = redis_async.from_url(
+                settings.redis.url.get_secret_value(),
+                decode_responses=False,
+            )
+        except Exception:
+            redis_client = None
+    if redis_client is not None:
+        from enterprise_rag.infrastructure.persistence.redis import RedisStreamIngestionQueue
+
+        container.ingest_queue = RedisStreamIngestionQueue(
+            redis_client,
+            stream_key=settings.worker.stream_key,
+            group_name=settings.worker.consumer_group,
+            consumer_name=settings.worker.consumer_name or "api-publisher",
+        )
+    else:
+        container.ingest_queue = InMemoryStreamIngestionQueue(
+            stream_key=settings.worker.stream_key,
+            group_name=settings.worker.consumer_group,
+            consumer_name=settings.worker.consumer_name or "api-publisher",
+        )
+
+    async def _load_run_status(tenant_id, run_id):
+        if container.ingestion_repo is None:
+            return None
+        from enterprise_rag.domain.tenant import TenantContext
+
+        run = await container.ingestion_repo.get_run(TenantContext(tenant_id=tenant_id), run_id)
+        return None if run is None else run.status
+
+    container.outbox_publisher = OutboxPublisher(
+        container.outbox_store,
+        container.ingest_queue,
+        on_commit=on_commit,
+        load_run_status=_load_run_status,
+    )
