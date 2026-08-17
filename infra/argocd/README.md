@@ -39,6 +39,7 @@ Run these workflows in order:
 
 - `chatwithdocs-api` -> `infra/k8s/api`
 - `chatwithdocs-web` -> `infra/k8s/web`
+- `chatwithdocs-worker` -> `infra/k8s/worker` (namespace `chatwithdocs-api`)
 
 The repository tracked by Argo CD is:
 
