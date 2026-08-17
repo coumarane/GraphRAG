@@ -224,7 +224,12 @@ class InMemoryIngestionRepository:
         attempt: ParserAttemptRecord,
     ) -> ParserAttemptRecord:
         key = (tenant.tenant_id, attempt.ingestion_run_id)
-        self.attempts.setdefault(key, []).append(attempt)
+        rows = self.attempts.setdefault(key, [])
+        for index, existing in enumerate(rows):
+            if existing.attempt_id == attempt.attempt_id:
+                rows[index] = attempt
+                return attempt
+        rows.append(attempt)
         return attempt
 
     async def list_parser_attempts(

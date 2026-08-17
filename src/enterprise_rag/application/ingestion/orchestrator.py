@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -32,10 +32,16 @@ from enterprise_rag.domain.ingestion.state_machine import (
     StageRecord,
 )
 from enterprise_rag.domain.tenant import TenantContext
+from enterprise_rag.infrastructure.observability.metrics import get_metrics
 from enterprise_rag.shared.exceptions import IngestionError
 from enterprise_rag.shared.logging import get_logger
 
 logger = get_logger(__name__)
+
+StagePersistFn = Callable[
+    [IngestionRunRecord, list[IngestionStageRecord], IngestionStageName],
+    Awaitable[None] | None,
+]
 
 
 @dataclass
@@ -60,10 +66,16 @@ class IngestionOrchestrator:
         *,
         retry_policy: RetryPolicy | None = None,
         sleep_fn: Any | None = None,
+        on_stage: StagePersistFn | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        worker_id: str | None = None,
     ) -> None:
         self._handlers = dict(handlers)
         self._retry_policy = retry_policy or RetryPolicy()
         self._sleep = sleep_fn or asyncio.sleep
+        self._on_stage = on_stage
+        self._should_stop = should_stop
+        self._worker_id = worker_id
 
     async def run(
         self,
@@ -80,6 +92,7 @@ class IngestionOrchestrator:
                 details={"ingestion_run_id": str(run.ingestion_run_id)},
             )
         machine = self._machine_from_records(stage_records, run_status=run.status)
+        machine.reset_stale_running()
         context = StageContext(
             tenant=tenant,
             ingestion_run_id=run.ingestion_run_id,
@@ -94,8 +107,12 @@ class IngestionOrchestrator:
         skipped: list[IngestionStageName] = []
         dead_letter: DeadLetterRecord | None = None
         failed_stage: IngestionStageName | None = None
+        stopped_early = False
 
         for stage in INGESTION_STAGE_ORDER:
+            if self._should_stop is not None and self._should_stop():
+                stopped_early = True
+                break
             idempotency_key = IngestionStateMachine.build_idempotency_key(
                 tenant_id=tenant.tenant_id,
                 version_id=run.version_id,
@@ -133,6 +150,8 @@ class IngestionOrchestrator:
                 context=context,
                 idempotency_key=idempotency_key,
                 config_fingerprint=run.config_fingerprint,
+                run=run,
+                stage_records=stage_records,
             )
             if outcome.status is StageOutcomeStatus.SKIPPED:
                 skipped.append(stage)
@@ -149,22 +168,30 @@ class IngestionOrchestrator:
                 failed_stage = stage
                 break
 
+            await self._persist_progress(run, stage_records, machine, stage)
             if stop_after is stage:
+                break
+            if self._should_stop is not None and self._should_stop():
+                stopped_early = True
                 break
 
         self._sync_records(stage_records, machine)
-        run.status = machine.run_status
+        if not stopped_early:
+            run.status = machine.run_status
+        else:
+            run.status = IngestionRunStatus.RUNNING
         progress = machine.progress()
         run.pages_processed = progress.pages_processed
         run.elements_processed = progress.elements_processed
         run.retry_count = progress.retry_count
         run.latest_warning = progress.latest_warning
+        run.worker_id = self._worker_id or run.worker_id
         if failed_stage is not None:
             record = machine.get_stage(failed_stage)
             run.error_code = record.error_code
             run.error_message = record.error_message
             run.completed_at = datetime.now(UTC)
-        elif machine.run_status in {
+        elif not stopped_early and machine.run_status in {
             IngestionRunStatus.COMPLETED,
             IngestionRunStatus.COMPLETED_WITH_WARNINGS,
         }:
@@ -191,14 +218,19 @@ class IngestionOrchestrator:
         context: StageContext,
         idempotency_key: str,
         config_fingerprint: str,
+        run: IngestionRunRecord,
+        stage_records: list[IngestionStageRecord],
     ) -> tuple[StageOutcome, DeadLetterRecord | None]:
+        metrics = get_metrics()
         while True:
             machine.mark_running(
                 stage,
                 idempotency_key=idempotency_key,
                 config_fingerprint=config_fingerprint,
             )
+            await self._persist_progress(run, stage_records, machine, stage)
             attempt = machine.get_stage(stage).attempt_count
+            started = datetime.now(UTC)
             try:
                 outcome = await handler.execute(context)
             except Exception as exc:
@@ -209,6 +241,11 @@ class IngestionOrchestrator:
                     error_message=str(exc),
                     retryable=retryable,
                 )
+            metrics.observe(
+                "ingest_stage_duration_seconds",
+                (datetime.now(UTC) - started).total_seconds(),
+                labels={"stage": stage.value},
+            )
 
             if outcome.status is StageOutcomeStatus.SKIPPED:
                 machine.mark_skipped(stage, reason=outcome.warning)
@@ -228,6 +265,7 @@ class IngestionOrchestrator:
                 retryable=outcome.retryable,
             ):
                 delay = self._retry_policy.delay_for(attempt)
+                metrics.incr("ingest_retries_total", labels={"stage": stage.value})
                 logger.warning(
                     "ingestion_stage_retry",
                     stage=stage.value,
@@ -240,6 +278,7 @@ class IngestionOrchestrator:
                     error_code=outcome.error_code or "stage_failed",
                     error_message=outcome.error_message or "stage failed",
                 )
+                await self._persist_progress(run, stage_records, machine, stage)
                 maybe_awaitable = self._sleep(delay)
                 if hasattr(maybe_awaitable, "__await__"):
                     await maybe_awaitable
@@ -250,6 +289,7 @@ class IngestionOrchestrator:
                 error_code=outcome.error_code or "stage_failed",
                 error_message=outcome.error_message or "stage failed",
             )
+            stream_id = context.artifacts.get("stream_message_id")
             dead = DeadLetterRecord(
                 tenant_id=context.tenant.tenant_id,
                 ingestion_run_id=context.ingestion_run_id,
@@ -257,14 +297,37 @@ class IngestionOrchestrator:
                 attempt_count=attempt,
                 error_code=outcome.error_code or "stage_failed",
                 error_message=outcome.error_message or "stage failed",
+                original_stream_id=str(stream_id) if stream_id else None,
+                correlation_id=context.correlation_id,
                 payload={
                     "document_id": str(context.document_id),
                     "version_id": str(context.version_id),
                     "content_hash": context.content_hash,
                     "config_fingerprint": context.config_fingerprint,
+                    "original_stream_id": str(stream_id) if stream_id else "",
+                    "correlation_id": context.correlation_id or "",
+                    "failed_stage": stage.value,
+                    "attempt_count": attempt,
                 },
             )
             return outcome, dead
+
+    async def _persist_progress(
+        self,
+        run: IngestionRunRecord,
+        stage_records: list[IngestionStageRecord],
+        machine: IngestionStateMachine,
+        stage: IngestionStageName,
+    ) -> None:
+        self._sync_records(stage_records, machine)
+        run.status = machine.run_status
+        run.worker_id = self._worker_id or run.worker_id
+        run.heartbeat_at = datetime.now(UTC)
+        if self._on_stage is None:
+            return
+        maybe = self._on_stage(run, stage_records, stage)
+        if hasattr(maybe, "__await__"):
+            await maybe
 
     @staticmethod
     def _machine_from_records(
@@ -289,12 +352,13 @@ class IngestionOrchestrator:
             run_status=run_status,
         )
 
-    @staticmethod
     def _sync_records(
+        self,
         stage_records: list[IngestionStageRecord],
         machine: IngestionStateMachine,
     ) -> None:
         by_stage = {record.stage: record for record in stage_records}
+        now = datetime.now(UTC)
         for stage, record in machine.stages.items():
             persisted = by_stage[stage]
             persisted.status = record.status
@@ -305,7 +369,10 @@ class IngestionOrchestrator:
             persisted.error_code = record.error_code
             persisted.error_message = record.error_message
             if record.status is StageStatus.RUNNING:
-                persisted.started_at = persisted.started_at or datetime.now(UTC)
+                persisted.started_at = persisted.started_at or now
+                persisted.completed_at = None
+                persisted.worker_id = self._worker_id
+                persisted.heartbeat_at = now
             if record.status in {
                 StageStatus.COMPLETED,
                 StageStatus.COMPLETED_WITH_WARNINGS,
@@ -313,4 +380,4 @@ class IngestionOrchestrator:
                 StageStatus.SKIPPED,
                 StageStatus.CANCELLED,
             }:
-                persisted.completed_at = datetime.now(UTC)
+                persisted.completed_at = persisted.completed_at or now

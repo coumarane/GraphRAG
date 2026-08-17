@@ -127,3 +127,10 @@ worker:
   retry_jitter: true
   poll_interval_seconds: 1.0
   lease_seconds: 60.0
+  stream_key: ingestion-jobs
+  dlq_stream_key: ingestion-dlq
+  consumer_group: ingestion-workers
+  heartbeat_seconds: 15.0
+  heartbeat_stale_seconds: 90.0
+  reclaim_idle_seconds: 120.0
+  outbox_poll_seconds: 1.0

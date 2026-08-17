@@ -1030,7 +1030,9 @@ class ProcessRegisteredDocumentService:
         return document
 
     async def execute(self, tenant: TenantContext, ingestion_run_id: UUID) -> None:
-        await self._execute_inner(tenant, ingestion_run_id)
+        from enterprise_rag.application.ingestion.stage_pipeline import run_document_pipeline
+
+        await run_document_pipeline(self, tenant, ingestion_run_id)
 
     async def _execute_inner(self, tenant: TenantContext, ingestion_run_id: UUID) -> None:
         run = await self.ingestion_repo.get_run(tenant, ingestion_run_id)

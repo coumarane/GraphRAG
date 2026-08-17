@@ -29,6 +29,7 @@ from enterprise_rag.domain.ingestion.retry import (
 from enterprise_rag.domain.ingestion.stages import (
     INGESTION_STAGE_ORDER,
     STAGE_WEIGHTS,
+    SUCCESSFUL_RUN_STATUSES,
     DocumentLifecycleStatus,
     IngestionRunStatus,
     IngestionStageName,
@@ -45,6 +46,7 @@ from enterprise_rag.domain.ingestion.state_machine import (
 __all__ = [
     "INGESTION_STAGE_ORDER",
     "STAGE_WEIGHTS",
+    "SUCCESSFUL_RUN_STATUSES",
     "DeadLetterRecord",
     "DeadLetterStore",
     "DocumentLifecycleStatus",

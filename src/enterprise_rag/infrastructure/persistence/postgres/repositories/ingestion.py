@@ -62,6 +62,8 @@ class SqlAlchemyIngestionRepository:
             error_code=run.error_code,
             error_message=run.error_message,
             correlation_id=run.correlation_id,
+            worker_id=run.worker_id,
+            heartbeat_at=run.heartbeat_at,
             metadata_json=dict(run.metadata),
             started_at=run.started_at,
             completed_at=run.completed_at,
@@ -82,6 +84,8 @@ class SqlAlchemyIngestionRepository:
                     warning=stage.warning,
                     error_code=stage.error_code,
                     error_message=stage.error_message,
+                    worker_id=stage.worker_id,
+                    heartbeat_at=stage.heartbeat_at,
                     started_at=stage.started_at,
                     completed_at=stage.completed_at,
                     metadata_json=dict(stage.metadata),
@@ -137,6 +141,8 @@ class SqlAlchemyIngestionRepository:
         model.error_code = run.error_code
         model.error_message = run.error_message
         model.correlation_id = run.correlation_id
+        model.worker_id = run.worker_id
+        model.heartbeat_at = run.heartbeat_at
         model.metadata_json = dict(run.metadata)
         model.started_at = run.started_at
         model.completed_at = run.completed_at
@@ -205,6 +211,8 @@ class SqlAlchemyIngestionRepository:
         model.warning = stage.warning
         model.error_code = stage.error_code
         model.error_message = stage.error_message
+        model.worker_id = stage.worker_id
+        model.heartbeat_at = stage.heartbeat_at
         model.started_at = stage.started_at
         model.completed_at = stage.completed_at
         model.metadata_json = dict(stage.metadata)
@@ -218,19 +226,35 @@ class SqlAlchemyIngestionRepository:
     ) -> ParserAttemptRecord:
         require_matching_tenant(tenant, attempt.tenant_id)
         await set_tenant_context(self._session, tenant)
-        model = ParserAttemptModel(
-            attempt_id=attempt.attempt_id,
-            tenant_id=attempt.tenant_id,
-            ingestion_run_id=attempt.ingestion_run_id,
-            parser_name=attempt.parser_name,
-            parser_version=attempt.parser_version,
-            success=attempt.success,
-            duration_ms=attempt.duration_ms,
-            failure_category=attempt.failure_category,
-            warnings=list(attempt.warnings),
-            metadata_json=dict(attempt.metadata),
+        result = await self._session.execute(
+            select(ParserAttemptModel).where(
+                ParserAttemptModel.attempt_id == attempt.attempt_id,
+                ParserAttemptModel.tenant_id == tenant.tenant_id,
+            )
         )
-        self._session.add(model)
+        model = result.scalar_one_or_none()
+        if model is None:
+            model = ParserAttemptModel(
+                attempt_id=attempt.attempt_id,
+                tenant_id=attempt.tenant_id,
+                ingestion_run_id=attempt.ingestion_run_id,
+                parser_name=attempt.parser_name,
+                parser_version=attempt.parser_version,
+                success=attempt.success,
+                duration_ms=attempt.duration_ms,
+                failure_category=attempt.failure_category,
+                warnings=list(attempt.warnings),
+                metadata_json=dict(attempt.metadata),
+            )
+            self._session.add(model)
+        else:
+            model.parser_name = attempt.parser_name
+            model.parser_version = attempt.parser_version
+            model.success = attempt.success
+            model.duration_ms = attempt.duration_ms
+            model.failure_category = attempt.failure_category
+            model.warnings = list(attempt.warnings)
+            model.metadata_json = dict(attempt.metadata)
         await self._session.flush()
         return parser_attempt_to_record(model)
 

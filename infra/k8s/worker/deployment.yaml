@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-worker
+  labels:
+    app.kubernetes.io/name: chatwithdocs-worker
+    app.kubernetes.io/part-of: chatwithdocs
+    app.kubernetes.io/component: ingestion-worker
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chatwithdocs-worker
+      app.kubernetes.io/part-of: chatwithdocs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chatwithdocs-worker
+        app.kubernetes.io/part-of: chatwithdocs
+        app.kubernetes.io/component: ingestion-worker
+    spec:
+      imagePullSecrets:
+        - name: harbor-regcred
+      initContainers:
+        - name: render-env-file
+          image: alpine:3.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              umask 077
+              : > /work/.env
+              for file in /mnt/azure-keyvault/*; do
+                [ -f "$file" ] || continue
+                name="$(basename "$file")"
+                value="$(cat "$file")"
+                printf '%s=%s\n' "$name" "$value" >> /work/.env
+              done
+              printf 'INGEST_EXECUTION=worker\n' >> /work/.env
+              printf 'INGEST_QUEUE_BACKEND=redis\n' >> /work/.env
+              test -s /work/.env
+              chmod 0444 /work/.env
+          volumeMounts:
+            - name: azure-keyvault-secrets
+              mountPath: /mnt/azure-keyvault
+              readOnly: true
+            - name: runtime-env
+              mountPath: /work
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: worker
+          image: harbor.safranys.com/chatwithdocs/worker:latest
+          imagePullPolicy: IfNotPresent
+          command: ["enterprise-rag", "worker", "--poll-interval", "1.0"]
+          volumeMounts:
+            - name: runtime-env
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+      volumes:
+        - name: azure-keyvault-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: api-azure-keyvault-env
+            nodePublishSecretRef:
+              name: secrets-store-creds
+        - name: runtime-env
+          emptyDir: {}
