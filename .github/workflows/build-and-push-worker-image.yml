@@ -96,6 +96,30 @@ jobs:
           kustomization-dir: infra/k8s/worker
           commit-message: "chore(dev): deploy worker @${{ steps.build.outputs.digest }}"
 
+      - name: Verify rendered worker image uses committed digest
+        if: github.ref == 'refs/heads/dev'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RENDERED_IMAGE="$(kubectl kustomize infra/k8s/worker | awk '/image: harbor.safranys.com\/chatwithdocs\/worker/ {print $2; exit}')"
+
+          if [ -z "${RENDERED_IMAGE}" ]; then
+            echo "Rendered worker manifest does not contain the Harbor worker image."
+            exit 1
+          fi
+
+          case "${RENDERED_IMAGE}" in
+            harbor.safranys.com/chatwithdocs/worker@sha256:*)
+              ;;
+            *)
+              echo "Rendered worker image is not pinned by digest: ${RENDERED_IMAGE}"
+              exit 1
+              ;;
+          esac
+
+          echo "Rendered worker image: ${RENDERED_IMAGE}"
+
       - name: Logout from Harbor
         if: always()
         run: docker logout ${{ env.REGISTRY_HOST }}
