@@ -582,6 +582,7 @@ async def _vision_enrich_pages(
     raw: RawParserResult,
     *,
     max_pages: int = 0,
+    on_progress: Any | None = None,
 ) -> tuple[list[RawElement], list[int], int, int]:
     """Interpret every visual crop with an LLM while keeping parser layout.
 
@@ -600,7 +601,20 @@ async def _vision_enrich_pages(
     enriched_pages: list[int] = []
     failed = 0
     order = start_order
-    for target in vision_targets:
+    logger.info(
+        "vision_enrichment_started",
+        target_count=len(vision_targets),
+        max_pages=max_pages,
+        kinds=sorted({item.kind for item in vision_targets}),
+    )
+    for index, target in enumerate(vision_targets, start=1):
+        logger.info(
+            "vision_element_enrichment_start",
+            index=index,
+            total=len(vision_targets),
+            page=target.page_number,
+            kind=target.kind,
+        )
         payload: dict[str, object] = {}
         for attempt in range(3):
             try:
@@ -643,6 +657,10 @@ async def _vision_enrich_pages(
                 else:
                     await asyncio.sleep(1.5 * (attempt + 1))
                     continue
+        if on_progress is not None and index % 3 == 0:
+            maybe = on_progress()
+            if asyncio.iscoroutine(maybe):
+                await maybe
         if not payload:
             failed += 1
             continue
@@ -981,6 +999,14 @@ class ProcessRegisteredDocumentService:
     semantic_graph: bool = True
     on_commit: object | None = None
 
+    async def _flush(self) -> None:
+        """Commit mid-ingest so an OOM/kill cannot leave the document stuck."""
+        if not callable(self.on_commit):
+            return
+        maybe = self.on_commit()
+        if asyncio.iscoroutine(maybe):
+            await maybe
+
     async def _set_document_status(
         self,
         tenant: TenantContext,
@@ -1054,6 +1080,7 @@ class ProcessRegisteredDocumentService:
             DocumentLifecycleStatus.INGESTING,
             updated_at=now,
         )
+        await self._flush()
 
         audit = ParsingAuditCollector(
             tenant_id=tenant.tenant_id,
@@ -1119,6 +1146,23 @@ class ProcessRegisteredDocumentService:
                 )
             primary = used_parser
             fallbacks = [name for name in attempted if name != used_parser]
+            run.parser_used = used_parser
+            run.latest_warning = (
+                f"selected={selected_parser}; used={used_parser}; {outcome.routing_reason}"
+            )
+            run.updated_at = datetime.now(UTC)
+            await self.ingestion_repo.update_run(tenant, run)
+            await self._flush()
+            logger.info(
+                "ingest_parse_selected",
+                ingestion_run_id=str(ingestion_run_id),
+                document_id=str(run.document_id),
+                selected_parser=selected_parser,
+                used_parser=used_parser,
+                attempted=attempted,
+                element_count=len(raw.elements),
+                page_count=raw.page_count,
+            )
             audit.record_routing(
                 RoutingReasonCode.PRIMARY_PARSER_SELECTED
                 if not run.parser_requested or run.parser_requested in {"auto", None}
@@ -1233,6 +1277,12 @@ class ProcessRegisteredDocumentService:
                         "kinds": sorted({item.kind for item in vision_needed}),
                     },
                 )
+
+                async def _heartbeat() -> None:
+                    run.updated_at = datetime.now(UTC)
+                    await self.ingestion_repo.update_run(tenant, run)
+                    await self._flush()
+
                 (
                     vision_elements,
                     enriched_pages,
@@ -1243,6 +1293,7 @@ class ProcessRegisteredDocumentService:
                     data,
                     raw,
                     max_pages=self.vision_max_pages,
+                    on_progress=_heartbeat,
                 )
                 if vision_elements:
                     raw.elements.extend(vision_elements)
@@ -1502,10 +1553,7 @@ class ProcessRegisteredDocumentService:
             if self.parsing_audit_repo is not None:
                 await self.parsing_audit_repo.save_snapshot(tenant, snapshot)
 
-            if callable(self.on_commit):
-                maybe = self.on_commit()
-                if asyncio.iscoroutine(maybe):
-                    await maybe
+            await self._flush()
 
             type_counts: dict[str, int] = {}
             for element in normalized.elements:
@@ -1556,10 +1604,7 @@ class ProcessRegisteredDocumentService:
                     ingestion_run_id=str(ingestion_run_id),
                     exc_info=True,
                 )
-            if callable(self.on_commit):
-                maybe = self.on_commit()
-                if asyncio.iscoroutine(maybe):
-                    await maybe
+            await self._flush()
             logger.exception(
                 "local_ingest_failed",
                 ingestion_run_id=str(ingestion_run_id),

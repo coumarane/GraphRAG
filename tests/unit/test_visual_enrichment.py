@@ -5,6 +5,7 @@ from __future__ import annotations
 from enterprise_rag.application.ingestion.visual_enrichment import (
     classify_visual_kind,
     collect_visual_targets,
+    fit_image_for_vision,
     recommended_tool,
 )
 from enterprise_rag.domain.elements.enums import ElementType
@@ -71,3 +72,13 @@ def test_collect_every_image_and_flat_chart_page() -> None:
     assert any(item.page_number == 4 and item.kind == "chart" for item in targets)
     assert any(item.page_number == 3 and item.kind == "scan" for item in targets)
     assert all(item.tool == "vision" for item in targets)
+
+
+def test_fit_image_for_vision_caps_long_edge() -> None:
+    from PIL import Image
+
+    image = Image.new("RGB", (4000, 2500), color=(12, 24, 36))
+    fitted = fit_image_for_vision(image, max_edge=1280)
+    assert max(fitted.size) == 1280
+    assert fitted.size[0] == 1280
+    assert fitted.size[1] == 800
