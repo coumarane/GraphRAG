@@ -300,12 +300,26 @@ def collect_visual_targets(raw: RawParserResult) -> list[VisualTarget]:
     return targets
 
 
+VISION_MAX_EDGE = 1280
+VISION_RENDER_SCALE = 1.0
+
+
+def fit_image_for_vision(image: object, *, max_edge: int = VISION_MAX_EDGE) -> object:
+    """Downscale a PIL image so vision crops cannot blow the API memory limit."""
+    width, height = image.size  # type: ignore[attr-defined]
+    longest = max(int(width), int(height))
+    if longest <= max_edge or max_edge <= 0:
+        return image
+    image.thumbnail((max_edge, max_edge))  # type: ignore[attr-defined]
+    return image
+
+
 def render_visual_png(
     data: bytes,
     page_number: int,
     bbox: BoundingBox | None,
     *,
-    scale: float = 2.0,
+    scale: float = VISION_RENDER_SCALE,
 ) -> bytes:
     """Render a page or normalized crop as PNG bytes."""
     import pypdfium2 as pdfium
@@ -315,7 +329,12 @@ def render_visual_png(
         page = document[page_number - 1]
         try:
             bitmap = page.render(scale=scale)
-            pil = bitmap.to_pil()
+            try:
+                pil = bitmap.to_pil()
+            finally:
+                close = getattr(bitmap, "close", None)
+                if callable(close):
+                    close()
             if bbox is not None:
                 width, height = pil.size
                 x0 = int(max(0.0, min(bbox.x0, 1.0)) * width)
@@ -334,6 +353,9 @@ def render_visual_png(
                             min(height, y1 + pad_y),
                         )
                     )
+            pil = fit_image_for_vision(pil)
+            if pil.mode not in {"RGB", "L"}:
+                pil = pil.convert("RGB")
             buffer = BytesIO()
             pil.save(buffer, format="PNG", optimize=True)
             return buffer.getvalue()
