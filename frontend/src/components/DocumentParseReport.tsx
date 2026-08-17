@@ -28,6 +28,7 @@ type DocumentReport = {
   extraction_completeness: number | null;
   normalization_completeness: number | null;
   element_processing_coverage: number | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type PageReport = {
@@ -326,7 +327,15 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
               ["Detected", String(doc.total_detected_elements)],
               ["Normalized", String(doc.total_normalized_elements)],
               ["Failed / skipped", `${doc.total_failed_elements} / ${doc.total_skipped_elements}`],
-              ["Parser", doc.primary_parser || "—"],
+              ["Parser used", doc.primary_parser || "—"],
+              [
+                "Parser selected",
+                String(
+                  (doc.metadata && doc.metadata.selected_parser) ||
+                    doc.primary_parser ||
+                    "—",
+                ),
+              ],
               ["Duration", ms(doc.duration_ms)],
               ["Completeness", pct(doc.normalization_completeness)],
               ["Coverage", pct(doc.element_processing_coverage)],
@@ -372,8 +381,10 @@ export function DocumentParseReport({ documentId }: { documentId: string }) {
               <div className="sm:col-span-2">
                 <dt className="text-xs text-muted">Image handling</dt>
                 <dd className="text-xs text-muted">
-                  Layout parser detects image/chart regions; vision LLM
-                  ({doc.vision_llm || "disabled"}) interprets those pages.
+                  Layout parser extracts every heading, text, table, and figure.
+                  GPT vision is used for charts, SEM/microscopy, photos, diagrams,
+                  and scan images. PaddleOCR is used for scanned text pages.
+                  Status is Ready only when every required visual region was processed.
                 </dd>
               </div>
               <div className="sm:col-span-2">

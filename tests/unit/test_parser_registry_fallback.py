@@ -8,10 +8,9 @@ from uuid import uuid4
 import pytest
 
 from enterprise_rag.application.ingestion.local_pipeline import _parse_document_raw
-from enterprise_rag.domain.parsing.types import ParserName
-from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
+from enterprise_rag.domain.parsing.types import ParseOptions, ParserName, ParseSource
 from enterprise_rag.infrastructure.parsers.pdfium import PdfiumParser
-from enterprise_rag.domain.parsing.types import ParseOptions, ParseSource
+from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
 
 
 @pytest.mark.asyncio
@@ -20,7 +19,7 @@ async def test_parse_document_raw_uses_registry_with_available_parser() -> None:
     if not sample.exists():
         pytest.skip("examples/sample.pdf missing")
     data = sample.read_bytes()
-    raw, attempted = await _parse_document_raw(
+    outcome = await _parse_document_raw(
         data=data,
         filename=sample.name,
         mime_type="application/pdf",
@@ -30,6 +29,10 @@ async def test_parse_document_raw_uses_registry_with_available_parser() -> None:
         parser_requested="auto",
         max_pages=5,
     )
+    raw, attempted = outcome.raw, outcome.attempted
+    assert outcome.attempts
+    assert outcome.selected_parser
+    assert outcome.used_parser == raw.parser_name
     assert raw.elements
     assert raw.page_count >= 1
     assert attempted

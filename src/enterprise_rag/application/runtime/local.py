@@ -224,7 +224,8 @@ def build_local_container(
         ready = [
             item
             for item in items
-            if item.status is DocumentLifecycleStatus.READY
+            if item.status
+            in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}
         ]
         return [
             item.document_id
@@ -268,7 +269,7 @@ def build_local_container(
         structured_extractor=extractor,
         parsing_audit_repo=parsing_audit_repo,
         max_pages=max_pages,
-        vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "28") or "28"),
+        vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "0") or "0"),
         semantic_graph=enable_semantic_graph,
         on_commit=on_commit,
     )

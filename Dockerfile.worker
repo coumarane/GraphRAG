@@ -26,15 +26,20 @@ COPY alembic ./alembic
 COPY alembic.ini ./
 COPY config ./config
 
-# Include optional parser extra when available; remain usable without CUDA.
+# Prefer the full parser fleet (Docling, PaddleOCR, MinerU, Marker). Fall back
+# to layout-only extras if a heavy SDK cannot resolve on this platform.
 RUN uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
       --extra llm \
-      --extra observability --extra parsers \
+      --extra observability --extra parsers-full \
     || uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
       --extra llm \
-      --extra observability
+      --extra observability --extra parsers-docling --extra parsers-ocr --extra parsers \
+    || uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers
 RUN uv pip install --python .venv/bin/python \
       "openai>=1.60,<2" \
       "langchain-openai>=0.3,<1" \
