@@ -1,6 +1,12 @@
 name: Run Database Migrations
 
 on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "alembic/**"
+      - ".github/workflows/run-database-migrations.yml"
   workflow_dispatch:
     inputs:
       target_host:
@@ -39,11 +45,13 @@ jobs:
     environment: dev
     env:
       DB_HOST: ${{ inputs.target_host || 'database.safranys.com' }}
-      DB_PORT: ${{ inputs.postgres_port }}
+      DB_PORT: ${{ inputs.postgres_port || '5432' }}
       DB_NAME: ${{ secrets.POSTGRES_APP_DB }}
       DB_USER: ${{ secrets.POSTGRES_APP_USER }}
       DB_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
-      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.safranys.com' }}:${{ inputs.postgres_port }}/${{ secrets.POSTGRES_APP_DB }}
+      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.safranys.com' }}:${{ inputs.postgres_port || '5432' }}/${{ secrets.POSTGRES_APP_DB }}
+      MIGRATION_DIRECTION: ${{ inputs.migration_direction || 'upgrade' }}
+      MIGRATION_REVISION: ${{ inputs.revision || 'head' }}
 
     steps:
       - name: Checkout repository
@@ -119,20 +127,20 @@ jobs:
           alembic -c alembic.prod.final.ini current || echo "No revision found (empty database)"
 
       - name: Show pending migrations
-        if: inputs.migration_direction == 'upgrade'
+        if: env.MIGRATION_DIRECTION == 'upgrade'
         run: |
           echo "Pending migrations:"
           alembic -c alembic.prod.final.ini history --verbose
 
-      - name: Run migrations (${{ inputs.migration_direction }} to ${{ inputs.revision }})
+      - name: Run migrations (${{ env.MIGRATION_DIRECTION }} to ${{ env.MIGRATION_REVISION }})
         run: |
-          TARGET_REV="${{ inputs.revision }}"
-          if [ "${{ inputs.migration_direction }}" = "downgrade" ] && [ "$TARGET_REV" = "head" ]; then
+          TARGET_REV="${MIGRATION_REVISION}"
+          if [ "${MIGRATION_DIRECTION}" = "downgrade" ] && [ "$TARGET_REV" = "head" ]; then
             TARGET_REV="-1"
           fi
 
-          echo "Running: alembic ${{ inputs.migration_direction }} $TARGET_REV"
-          alembic -c alembic.prod.final.ini ${{ inputs.migration_direction }} $TARGET_REV
+          echo "Running: alembic ${MIGRATION_DIRECTION} $TARGET_REV"
+          alembic -c alembic.prod.final.ini "${MIGRATION_DIRECTION}" $TARGET_REV
 
       - name: Verify final database revision
         run: |
