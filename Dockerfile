@@ -8,9 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
 
-RUN apt-get update \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --create-home --home-dir /app app
 
@@ -18,22 +19,32 @@ COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+# Install dependencies from the lockfile first so application-code edits
+# don't invalidate this layer and force a full reinstall every build.
+# openai/langchain/azure are already covered by uv.lock (llm extra + core
+# deps), so no separate unlocked `uv pip install` is needed.
 COPY pyproject.toml README.md uv.lock ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project \
+      --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability
+
 COPY src ./src
 COPY alembic ./alembic
 COPY alembic.ini ./
 COPY config ./config
 
-RUN uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+# Install the local project itself now that src/ is present. All
+# dependencies are already installed above, so this is fast even without
+# a cache hit.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
       --extra llm \
-      --extra observability \
-    && uv pip install --python .venv/bin/python \
-      "openai>=1.60,<2" \
-      "langchain-openai>=0.3,<1" \
-      "langchain-core>=0.3,<1" \
-      "azure-storage-blob>=12.26,<13" \
-      "azure-identity>=1.23,<2"
+      --extra observability
 
 USER app
 
