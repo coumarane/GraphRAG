@@ -214,6 +214,83 @@ async def test_duplicate_delivery_of_failed_run_is_acked_not_reprocessed() -> No
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_pipeline_completion_is_not_reverted_by_stale_reload() -> None:
+    """The real pipeline (run_document_pipeline) loads its own run/stages
+    copy internally and commits incrementally — it never mutates the
+    `run`/`stages` objects process_one() loaded before calling it. Simulate
+    that disconnect: the injected pipeline callback ignores the objects it's
+    handed and instead writes a fresh, separately-loaded copy straight to
+    the store, exactly like the real one does via its own repo calls.
+
+    Regression for process_one() persisting its stale pre-execution
+    snapshot afterward and silently reverting a just-completed run back to
+    its pending state.
+    """
+    tenant, run, stages = _bundle()
+    store = _store(run, stages)
+    queue = InMemoryStreamIngestionQueue()
+    dead = InMemoryDeadLetterStore()
+
+    async def pipeline(**kwargs):
+        # Deliberately ignore kwargs["run"]/kwargs["stages"] (the stale
+        # pre-execution objects) and replace the store's objects with brand
+        # new ones instead of mutating in place — a plain in-place mutation
+        # would still be visible through process_one()'s original reference
+        # even without the fix, since both point at the same object. This
+        # models what a real DB round-trip does: run_document_pipeline
+        # fetches its own freshly-deserialized copy, wholly disconnected
+        # from whatever process_one() loaded before calling it.
+        _ = kwargs
+        from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
+
+        fresh_run = store["run"].model_copy(update={"status": IngestionRunStatus.COMPLETED})
+        fresh_stages = [
+            stage.model_copy(update={"status": StageStatus.COMPLETED})
+            for stage in store["stages"]
+        ]
+        store.update(run=fresh_run, stages=fresh_stages)
+        return OrchestrationResult(
+            run_status=IngestionRunStatus.COMPLETED,
+            progress=IngestionProgress(
+                current_stage=None,
+                completed_stages=[],
+                pages_processed=0,
+                elements_processed=0,
+                estimated_completion_percent=100.0,
+                retry_count=0,
+            ),
+        )
+
+    worker = IngestionWorker(
+        queue=queue,
+        dead_letter_store=dead,
+        load_run=lambda _t, _id: (store["run"], store["stages"]),
+        persist_run=lambda _t, updated, rows: store.update(run=updated, stages=rows),
+        run_pipeline=pipeline,
+        worker_id="w1",
+    )
+    stream_id = await queue.enqueue(
+        IngestionTaskMessage(
+            tenant_id=tenant.tenant_id,
+            ingestion_run_id=run.ingestion_run_id,
+            document_id=run.document_id,
+            version_id=run.version_id,
+            content_hash=run.content_hash or "",
+            config_fingerprint=run.config_fingerprint or "",
+            correlation_id=run.correlation_id,
+        )
+    )
+
+    tick = await worker.process_one(timeout_seconds=0.1)
+
+    assert tick.processed
+    assert tick.acknowledged
+    assert not await queue.has_message(stream_id)
+    assert store["run"].status is IngestionRunStatus.COMPLETED
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_xautoclaim_requires_idle_and_stale_heartbeat() -> None:
     tenant, run, stages = _bundle()
     run.status = IngestionRunStatus.RUNNING

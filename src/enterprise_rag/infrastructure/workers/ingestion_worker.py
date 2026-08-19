@@ -169,6 +169,15 @@ class IngestionWorker:
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
 
+        # The production pipeline (run_document_pipeline) loads its own
+        # run/stages internally and commits incrementally as it goes; it
+        # never mutates the `run`/`stages` objects loaded above. Re-fetch
+        # before deciding ack/dead-letter, or these stale pre-execution
+        # objects get persisted below and silently revert whatever the
+        # pipeline already correctly wrote (including a terminal FAILED or
+        # COMPLETED status, undoing the run right after it finishes).
+        run, stages = await _maybe_await(self._load_run(tenant, message.ingestion_run_id))
+
         if result.dead_letter is not None:
             if result.dead_letter.original_stream_id is None:
                 result.dead_letter.original_stream_id = message.stream_message_id
