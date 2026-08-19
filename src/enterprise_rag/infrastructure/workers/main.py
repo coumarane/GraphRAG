@@ -95,13 +95,21 @@ async def run_worker(*, poll_interval_seconds: float | None = None) -> None:
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, _stop)
 
+    # The outbox publisher loop and the main pipeline both write through the
+    # single shared AsyncSession on `container`, which is not safe for
+    # concurrent use by multiple coroutines. Serialize access with a lock
+    # rather than let them race, which corrupts the session's state and
+    # crashes whichever side writes next.
+    db_lock = asyncio.Lock()
+
     async def _publish_loop() -> None:
         publisher = container.outbox_publisher
         if publisher is None:
             return
         while not stop.is_set():
             try:
-                await publisher.publish_once()
+                async with db_lock:
+                    await publisher.publish_once()
             except Exception:
                 logger.exception("worker_outbox_publish_failed")
             try:
@@ -118,7 +126,8 @@ async def run_worker(*, poll_interval_seconds: float | None = None) -> None:
     publisher_task = asyncio.create_task(_publish_loop())
     try:
         while not stop.is_set():
-            tick = await worker.process_one(timeout_seconds=interval)
+            async with db_lock:
+                tick = await worker.process_one(timeout_seconds=interval)
             if tick.processed:
                 continue
             try:
