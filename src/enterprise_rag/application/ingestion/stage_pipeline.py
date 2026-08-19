@@ -46,6 +46,7 @@ from enterprise_rag.domain.parsing.audit import (
     RoutingReasonCode,
     StageRunStatus,
 )
+from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
 from enterprise_rag.domain.parsing.normalize import normalize_parser_result
 from enterprise_rag.domain.parsing.types import ParserName, ParseSource, RawParserResult
 from enterprise_rag.domain.storage.protocols import version_prefix
@@ -836,7 +837,25 @@ async def run_document_pipeline(
                 updated_at=failed,
             )
             await service._flush()
-            raise
+            logger.exception(
+                "ingestion_pipeline_failed",
+                ingestion_run_id=str(ingestion_run_id),
+            )
+            # The failure is already durably persisted above (run + document
+            # status FAILED). Re-raising here would crash the whole worker
+            # process for what is a per-run failure, taking every other
+            # queued document down with it.
+            return OrchestrationResult(
+                run_status=IngestionRunStatus.FAILED,
+                progress=IngestionProgress(
+                    current_stage=None,
+                    completed_stages=[],
+                    pages_processed=0,
+                    elements_processed=0,
+                    estimated_completion_percent=0.0,
+                    retry_count=0,
+                ),
+            )
 
     await persist_stage_progress(
         service,
