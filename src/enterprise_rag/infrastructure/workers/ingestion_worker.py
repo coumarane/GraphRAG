@@ -16,6 +16,7 @@ from enterprise_rag.domain.ingestion.records import IngestionRunRecord, Ingestio
 from enterprise_rag.domain.ingestion.retry import IngestionTaskMessage
 from enterprise_rag.domain.ingestion.stages import (
     SUCCESSFUL_RUN_STATUSES,
+    TERMINAL_RUN_STATUSES,
     IngestionRunStatus,
 )
 from enterprise_rag.domain.tenant import TenantContext
@@ -135,7 +136,10 @@ class IngestionWorker:
         run.config_fingerprint = run.config_fingerprint or message.config_fingerprint
         run.correlation_id = run.correlation_id or message.correlation_id
 
-        if run.status in SUCCESSFUL_RUN_STATUSES:
+        if run.status in TERMINAL_RUN_STATUSES:
+            # Already done (success or failure) — a duplicate/orphan-republished
+            # delivery for this run must not re-enter the pipeline, or a failed
+            # run can loop forever: reprocess, fail again, get redelivered.
             await self._queue.acknowledge(_ack_token(message))
             return WorkerTickResult(
                 processed=True, task=message, acknowledged=True, reclaimed=reclaimed

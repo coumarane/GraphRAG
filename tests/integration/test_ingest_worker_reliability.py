@@ -162,6 +162,58 @@ async def test_worker_crash_mid_stage_leaves_message_unacked() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_duplicate_delivery_of_failed_run_is_acked_not_reprocessed() -> None:
+    """A redelivered message for an already-FAILED run must not re-enter the pipeline.
+
+    The outbox orphan-sweeper can republish a run's message after it's
+    already terminal (e.g. it raced the DLQ write). If the worker doesn't
+    recognize FAILED as terminal, it reprocesses the run, fails again, gets
+    redelivered again — an infinite loop. Regression for that bug.
+    """
+    tenant, run, stages = _bundle()
+    run.status = IngestionRunStatus.FAILED
+    run.error_code = "stage_failed"
+    run.error_message = "boom"
+    store = _store(run, stages)
+    queue = InMemoryStreamIngestionQueue()
+    dead = InMemoryDeadLetterStore()
+    started = {"count": 0}
+
+    async def pipeline(**kwargs):
+        started["count"] += 1
+        raise AssertionError("pipeline must not run for an already-terminal run")
+
+    worker = IngestionWorker(
+        queue=queue,
+        dead_letter_store=dead,
+        load_run=lambda _t, _id: (store["run"], store["stages"]),
+        persist_run=lambda _t, updated, rows: store.update(run=updated, stages=rows),
+        run_pipeline=pipeline,
+        worker_id="w1",
+    )
+    stream_id = await queue.enqueue(
+        IngestionTaskMessage(
+            tenant_id=tenant.tenant_id,
+            ingestion_run_id=run.ingestion_run_id,
+            document_id=run.document_id,
+            version_id=run.version_id,
+            content_hash=run.content_hash or "",
+            config_fingerprint=run.config_fingerprint or "",
+            correlation_id=run.correlation_id,
+        )
+    )
+
+    tick = await worker.process_one(timeout_seconds=0.1)
+
+    assert tick.processed
+    assert tick.acknowledged
+    assert started["count"] == 0
+    assert not await queue.has_message(stream_id)
+    assert store["run"].status is IngestionRunStatus.FAILED
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_xautoclaim_requires_idle_and_stale_heartbeat() -> None:
     tenant, run, stages = _bundle()
     run.status = IngestionRunStatus.RUNNING

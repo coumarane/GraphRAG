@@ -76,6 +76,16 @@ SUCCESSFUL_RUN_STATUSES: frozenset[IngestionRunStatus] = frozenset(
     }
 )
 
+# Runs that are done and should never be re-entered by the pipeline, whether
+# they ended well or not. Distinct from SUCCESSFUL_RUN_STATUSES, which is
+# about ack semantics for a normal completion, not "is this run over".
+TERMINAL_RUN_STATUSES: frozenset[IngestionRunStatus] = SUCCESSFUL_RUN_STATUSES | frozenset(
+    {
+        IngestionRunStatus.FAILED,
+        IngestionRunStatus.CANCELLED,
+    }
+)
+
 
 # Ordered pipeline used by the state machine.
 INGESTION_STAGE_ORDER: tuple[IngestionStageName, ...] = tuple(IngestionStageName)
