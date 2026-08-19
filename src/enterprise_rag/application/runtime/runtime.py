@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -97,7 +98,10 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
 
     meta_backend = metadata_store_backend()
     if meta_backend in {"postgres", "postgresql", "pg"}:
+        import asyncio
+
         from enterprise_rag.infrastructure.persistence.postgres import (
+            LockedAsyncProxy,
             SqlAlchemyDocumentRepository,
             SqlAlchemyIngestionRepository,
             SqlAlchemyTenantRepository,
@@ -114,13 +118,24 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
 
         engine = create_engine(resolved.postgres)
         session_factory = create_session_factory(engine)
-        db_session = session_factory()
-        tenant_repo = SqlAlchemyTenantRepository(db_session)
-        document_repo = SqlAlchemyDocumentRepository(db_session)
-        ingestion_repo = SqlAlchemyIngestionRepository(db_session)
-        parsing_audit_repo = SqlAlchemyParsingAuditRepository(db_session)
-        usage_repo = SqlAlchemyUsageRepository(db_session)
-        user_repo = SqlAlchemyUserRepository(db_session)
+        # This container lives for the whole process, but uvicorn (API) and
+        # the ingestion worker's background tasks touch its single session
+        # concurrently. AsyncSession isn't safe for that. Repositories are
+        # wrapped (not the raw session) so a whole repo method call — e.g.
+        # the sync `add()` followed by `await flush()` — is one atomic
+        # locked unit; repos are built on the *raw* session internally so
+        # they don't try to re-acquire the same lock their own call holds.
+        db_lock = asyncio.Lock()
+        raw_session = session_factory()
+        tenant_repo = LockedAsyncProxy(SqlAlchemyTenantRepository(raw_session), db_lock)
+        document_repo = LockedAsyncProxy(SqlAlchemyDocumentRepository(raw_session), db_lock)
+        ingestion_repo = LockedAsyncProxy(SqlAlchemyIngestionRepository(raw_session), db_lock)
+        parsing_audit_repo = LockedAsyncProxy(
+            SqlAlchemyParsingAuditRepository(raw_session), db_lock
+        )
+        usage_repo = LockedAsyncProxy(SqlAlchemyUsageRepository(raw_session), db_lock)
+        user_repo = LockedAsyncProxy(SqlAlchemyUserRepository(raw_session), db_lock)
+        db_session = LockedAsyncProxy(raw_session, db_lock)
 
         async def _commit() -> None:
             await db_session.commit()
@@ -191,7 +206,13 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             jwt_secret=resolved.security.auth_jwt_secret,
             jwt_ttl_seconds=resolved.security.auth_jwt_ttl_seconds,
         )
-    _wire_ingest_queue(container, resolved, db_session=db_session, on_commit=on_commit)
+    _wire_ingest_queue(
+        container,
+        resolved,
+        raw_session=raw_session if meta_backend in {"postgres", "postgresql", "pg"} else None,
+        db_lock=db_lock if meta_backend in {"postgres", "postgresql", "pg"} else None,
+        on_commit=on_commit,
+    )
     return container
 
 
@@ -199,7 +220,8 @@ def _wire_ingest_queue(
     container: ServiceContainer,
     settings: Settings,
     *,
-    db_session: AsyncSession | None,
+    raw_session: AsyncSession | None,
+    db_lock: Any | None,
     on_commit: Callable[[], Awaitable[None]] | None,
 ) -> None:
     from enterprise_rag.application.ingestion.outbox_publisher import OutboxPublisher
@@ -211,18 +233,21 @@ def _wire_ingest_queue(
         InMemoryOutboxStore,
         SqlAlchemyOutboxStore,
     )
+    from enterprise_rag.infrastructure.persistence.postgres import LockedAsyncProxy
     from enterprise_rag.infrastructure.persistence.redis import InMemoryStreamIngestionQueue
 
-    if db_session is not None:
-        container.outbox_store = SqlAlchemyOutboxStore(db_session)
-        container.dead_letter_store = SqlAlchemyDeadLetterStore(db_session)
+    if raw_session is not None and db_lock is not None:
+        container.outbox_store = LockedAsyncProxy(SqlAlchemyOutboxStore(raw_session), db_lock)
+        container.dead_letter_store = LockedAsyncProxy(
+            SqlAlchemyDeadLetterStore(raw_session), db_lock
+        )
     else:
         container.outbox_store = InMemoryOutboxStore()
         container.dead_letter_store = InMemoryDeadLetterStore()
 
     queue_backend = os.environ.get("INGEST_QUEUE_BACKEND", "").strip().lower()
     use_redis = queue_backend in {"redis", "streams"} or (
-        not queue_backend and db_session is not None
+        not queue_backend and raw_session is not None
     )
     redis_client = None
     if use_redis:

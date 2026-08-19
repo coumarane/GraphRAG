@@ -12,6 +12,7 @@ from enterprise_rag.infrastructure.persistence.postgres.rls import (
     set_tenant_context,
 )
 from enterprise_rag.infrastructure.persistence.postgres.session import (
+    LockedAsyncProxy,
     create_engine,
     create_engine_from_url,
     create_session_factory,
@@ -20,6 +21,7 @@ from enterprise_rag.infrastructure.persistence.postgres.session import (
 
 __all__ = [
     "Base",
+    "LockedAsyncProxy",
     "SqlAlchemyDocumentRepository",
     "SqlAlchemyIngestionRepository",
     "SqlAlchemyTenantRepository",
