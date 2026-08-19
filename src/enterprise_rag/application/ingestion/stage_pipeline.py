@@ -42,11 +42,11 @@ from enterprise_rag.domain.ingestion.stages import (
     IngestionRunStatus,
     IngestionStageName,
 )
+from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
 from enterprise_rag.domain.parsing.audit import (
     RoutingReasonCode,
     StageRunStatus,
 )
-from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
 from enterprise_rag.domain.parsing.normalize import normalize_parser_result
 from enterprise_rag.domain.parsing.types import ParserName, ParseSource, RawParserResult
 from enterprise_rag.domain.storage.protocols import version_prefix

@@ -290,16 +290,24 @@ class IngestionWorker:
         run: IngestionRunRecord,
         stages: list[IngestionStageRecord],
     ) -> None:
-        metrics = get_metrics()
+        # NOTE: intentionally does not persist to the DB here. This loop runs
+        # concurrently with the main pipeline execution, which shares the
+        # same non-concurrency-safe AsyncSession; a concurrent write here
+        # corrupts that session's state and breaks the pipeline's own next
+        # write, regardless of which write is at fault. Giving this loop its
+        # own dedicated session is the proper fix; until then this only
+        # updates the in-memory record, which is a safe no-op for the
+        # current single-worker-replica deployment (heartbeat staleness
+        # detection only matters for reclaiming work from a genuinely dead
+        # worker across multiple replicas).
+        _ = tenant, stages
         while not self._should_stop():
             await asyncio.sleep(self._heartbeat_seconds)
             run.heartbeat_at = datetime.now(UTC)
             run.worker_id = self.worker_id
-            metrics.set_gauge("ingest_worker_heartbeat_timestamp", run.heartbeat_at.timestamp())
-            try:
-                await _maybe_await(self._persist_run(tenant, run, stages))
-            except Exception:
-                logger.debug("heartbeat_persist_failed", exc_info=True)
+            get_metrics().set_gauge(
+                "ingest_worker_heartbeat_timestamp", run.heartbeat_at.timestamp()
+            )
 
     async def run_forever(self, *, poll_interval_seconds: float = 1.0) -> None:
         while not self._should_stop():
