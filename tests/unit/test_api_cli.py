@@ -98,6 +98,21 @@ def test_ingest_upload_and_get_document(client, container, tenant_headers, tmp_p
     assert run.json()["status"] == "pending"
     assert len(run.json()["stages"]) == 22
 
+    latest = client.get(
+        f"/api/v1/documents/{document_id}/ingestion-runs/latest",
+        headers=tenant_headers,
+    )
+    assert latest.status_code == 200
+    assert latest.json()["ingestion_run_id"] == reprocess.json()["ingestion_run_id"]
+
+
+def test_latest_ingestion_run_404_for_unknown_document(client, tenant_headers) -> None:
+    response = client.get(
+        f"/api/v1/documents/{new_id()}/ingestion-runs/latest",
+        headers=tenant_headers,
+    )
+    assert response.status_code == 404
+
 
 def test_query_and_retrieval_endpoints(client, tenant_headers) -> None:
     search = client.post(

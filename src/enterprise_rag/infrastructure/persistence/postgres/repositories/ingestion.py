@@ -110,6 +110,25 @@ class SqlAlchemyIngestionRepository:
         model = result.scalar_one_or_none()
         return run_to_record(model) if model is not None else None
 
+    async def get_latest_run_for_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> IngestionRunRecord | None:
+        tenant.ensure_authorized()
+        await set_tenant_context(self._session, tenant)
+        result = await self._session.execute(
+            select(IngestionRunModel)
+            .where(
+                IngestionRunModel.document_id == document_id,
+                IngestionRunModel.tenant_id == tenant.tenant_id,
+            )
+            .order_by(IngestionRunModel.created_at.desc())
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        return run_to_record(model) if model is not None else None
+
     async def update_run(
         self,
         tenant: TenantContext,

@@ -131,6 +131,14 @@ class IngestionRepository(Protocol):
         """Fetch a tenant-scoped ingestion run."""
         ...
 
+    async def get_latest_run_for_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> IngestionRunRecord | None:
+        """Fetch the most recently created run for a document, if any."""
+        ...
+
     async def update_run(
         self,
         tenant: TenantContext,

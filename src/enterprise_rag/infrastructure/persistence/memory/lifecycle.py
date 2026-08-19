@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from enterprise_rag.domain.ingestion.records import (
@@ -160,6 +161,17 @@ class InMemoryIngestionRepository:
     ) -> IngestionRunRecord:
         if run.tenant_id != tenant.tenant_id:
             raise AuthorizationError("Run tenant mismatch")
+        if run.created_at is None or run.updated_at is None:
+            # Mirror Postgres's server_default=func.now() so ordering by
+            # created_at (e.g. "latest run for document") behaves the same
+            # in-memory as it does against the real database.
+            now = datetime.now(UTC)
+            run = run.model_copy(
+                update={
+                    "created_at": run.created_at or now,
+                    "updated_at": run.updated_at or now,
+                }
+            )
         key = (tenant.tenant_id, run.ingestion_run_id)
         self.runs[key] = run
         self.stages[key] = list(stages)
@@ -172,6 +184,24 @@ class InMemoryIngestionRepository:
         ingestion_run_id: UUID,
     ) -> IngestionRunRecord | None:
         return self.runs.get((tenant.tenant_id, ingestion_run_id))
+
+    async def get_latest_run_for_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> IngestionRunRecord | None:
+        candidates = [
+            run
+            for (owner, _run_id), run in self.runs.items()
+            if owner == tenant.tenant_id and run.document_id == document_id
+        ]
+        if not candidates:
+            return None
+        epoch = datetime.min.replace(tzinfo=UTC)
+        return max(
+            candidates,
+            key=lambda run: run.created_at or run.started_at or run.updated_at or epoch,
+        )
 
     async def update_run(
         self,

@@ -20,6 +20,7 @@ from enterprise_rag.api.schemas import (
     ElementListResponse,
     GraphViewResponse,
     IngestAcceptedResponse,
+    IngestionRunResponse,
     ReprocessAcceptedResponse,
 )
 from enterprise_rag.application.authorization.filters import filter_authorized_documents
@@ -296,6 +297,31 @@ async def reprocess_document(
         graph_cleared=result.graph_cleared,
         warnings=list(result.warnings),
     )
+
+
+@router.get(
+    "/{document_id}/ingestion-runs/latest",
+    response_model=IngestionRunResponse,
+)
+async def get_latest_ingestion_run(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+) -> IngestionRunResponse:
+    """Most recent ingestion run for a document, for live progress polling."""
+    from enterprise_rag.api.routes.ingestion import _run_response
+
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    repo = container.require_ingestion_repo()
+    run = await repo.get_latest_run_for_document(tenant, document_id)
+    if run is None:
+        raise NotFoundError(
+            "No ingestion run found for document", details={"document_id": str(document_id)}
+        )
+    stages = await repo.list_stages(tenant, run.ingestion_run_id)
+    return _run_response(run, stages)
 
 
 @router.get("/{document_id}/chunks", response_model=ChunkListResponse)
