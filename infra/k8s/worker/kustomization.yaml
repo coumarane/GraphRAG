@@ -10,6 +10,6 @@ resources:
 - deployment.yaml
 
 images:
-- digest: sha256:444e1a9d6cae0f2fabbb7b5fba57eb44eb8a25ff12bd4d33b622e422a09f9d45
+- digest: sha256:8c786df094491c61533210380df2396591a2087a5bd94d3a4e0d32c80e89cf28
   name: harbor.safranys.com/chatwithdocs/worker
   newName: harbor.safranys.com/chatwithdocs/worker
