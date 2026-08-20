@@ -1,14 +1,11 @@
 name: Build And Push Worker Base Image
 
 on:
-  push:
-    branches:
-      - dev
-    paths:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "Dockerfile.worker-base"
-      - ".github/workflows/build-and-push-worker-base-image.yml"
+  # No push trigger: build-and-push-worker-image.yml has its own build-base
+  # job that auto-rebuilds this image (on the same file changes) before
+  # building the worker image on top of it. A push trigger here duplicated
+  # that ~40min ML-dependency compile on every push touching these paths.
+  # Use workflow_dispatch for a manual/standalone base rebuild.
   workflow_dispatch:
     inputs:
       image_tag:
