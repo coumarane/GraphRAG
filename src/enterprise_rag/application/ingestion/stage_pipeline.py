@@ -213,20 +213,31 @@ class DocumentPipeline:
                 w.fallbacks = list(stored.get("fallbacks") or [])
                 w.vision_failed = int(stored.get("vision_failed") or 0)
                 w.vision_target_count = int(stored.get("vision_target_count") or 0)
+                # parse_raw/normalized artifacts are cached by (tenant, document,
+                # version) only — not run_id — so a reprocess of an already-parsed
+                # version resumes from this cache and never re-enters stage_parse's
+                # own body. Without this, w.audit (fresh per run) would stay empty
+                # for every reprocess, which is the common case, not the exception.
+                w.audit.document.primary_parser = w.used_parser
+                w.audit.document.fallback_parsers = w.fallbacks
+                self._record_parse_audit(w.raw, primary=w.used_parser)
         if w.normalized is None:
             stored = await w.load_json("normalized")
             if stored:
                 w.normalized = NormalizedDocument.model_validate(stored)
+                self._reconcile_normalized_audit(w.normalized)
         if not w.chunks:
             stored = await w.load_json("chunks")
             if stored:
                 w.chunks = [ChunkBase.model_validate(item) for item in stored.get("chunks") or []]
+                w.audit.mark_downstream(chunking=True)
         if not w.embedded:
             stored = await w.load_json("embeddings")
             if stored:
                 w.embedded = [
                     ChunkVectorRecord.model_validate(item) for item in stored.get("records") or []
                 ]
+                w.audit.mark_downstream(vector_index=True)
 
     async def stage_preregistered(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)
@@ -703,6 +714,8 @@ class DocumentPipeline:
             w.graph_counts = {
                 str(key): int(value) for key, value in (stored.get("counts") or {}).items()
             }
+            assert w.audit is not None
+            w.audit.mark_downstream(graph_index=True)
             return StageOutcome(status=StageOutcomeStatus.COMPLETED)
         if w.service.graph_store is None or w.normalized is None:
             return StageOutcome(status=StageOutcomeStatus.SKIPPED, warning="graph store disabled")
