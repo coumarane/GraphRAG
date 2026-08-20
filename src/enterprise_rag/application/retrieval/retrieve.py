@@ -641,6 +641,26 @@ class RetrieveEvidenceService:
             resolved.append(item.model_copy(update={"document_name": title}))
         return resolved
 
+    @staticmethod
+    def _filter_to_requested_documents(
+        evidence: list[RetrievedEvidence],
+        request: RetrievalRequest,
+    ) -> list[RetrievedEvidence]:
+        """Drop evidence outside request.filters.document_ids, when set.
+
+        Graph traversal (entities/topics/claims) resolves nodes tenant-wide and
+        has no natural per-document boundary, unlike the dense/lexical branches
+        which pass document_ids straight into the vector/lexical store query. Left
+        unfiltered, a scoped request (e.g. pinned to one product's document) can
+        still surface chunks from a completely unrelated document that happens to
+        share a graph entity or topic — silently breaking the document scope the
+        rest of the pipeline (and the caller) believes is being honored.
+        """
+        allowed = set(request.filters.document_ids)
+        if not allowed:
+            return evidence
+        return [item for item in evidence if item.document_id in allowed]
+
     async def _run_mode(
         self,
         *,
@@ -809,6 +829,7 @@ class RetrieveEvidenceService:
             score=0.8,
             component="graph_local",
         )
+        evidence = self._filter_to_requested_documents(evidence, request)
         paths: list[GraphPath] = []
         if request.include_graph_paths and entities:
             paths.append(
@@ -844,20 +865,20 @@ class RetrieveEvidenceService:
                 node_ids=[topic.topic_id for topic in topics],
                 limit=request.top_k * 2,
             )
-            evidence.extend(
-                await self._chunks_to_evidence(
-                    tenant,
-                    topic_chunk_ids,
-                    score=0.7,
-                    component="graph_topic",
-                )
+            topic_evidence = await self._chunks_to_evidence(
+                tenant,
+                topic_chunk_ids,
+                score=0.7,
+                component="graph_topic",
             )
+            topic_evidence = self._filter_to_requested_documents(topic_evidence, request)
+            evidence.extend(topic_evidence)
             if request.include_graph_paths and topics:
                 paths.append(
                     GraphPath(
                         nodes=[topic.name for topic in topics[:8]],
                         relationships=[],
-                        supporting_citations=[str(cid) for cid in topic_chunk_ids[:8]],
+                        supporting_citations=[str(item.chunk_id) for item in topic_evidence[:8]],
                         metadata={
                             "topic_count": len(topics),
                             "path_kind": "topic_nodes",
