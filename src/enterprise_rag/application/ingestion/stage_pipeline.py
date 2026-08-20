@@ -578,6 +578,12 @@ class DocumentPipeline:
         await w.save_json(
             "embeddings", {"records": [item.model_dump(mode="json") for item in w.embedded]}
         )
+        if embedded.skipped_empty:
+            return StageOutcome(
+                status=StageOutcomeStatus.COMPLETED_WITH_WARNINGS,
+                elements_processed=len(w.embedded),
+                warning=f"skipped {embedded.skipped_empty} empty chunk(s) with no text to embed",
+            )
         return StageOutcome(status=StageOutcomeStatus.COMPLETED, elements_processed=len(w.embedded))
 
     async def stage_index_vector(self, context: StageContext) -> StageOutcome:

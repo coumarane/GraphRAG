@@ -8,6 +8,9 @@ from enterprise_rag.domain.chunks.models import ChunkBase, ChunkType
 from enterprise_rag.domain.chunks.vectors import ChunkVectorPayload, ChunkVectorRecord
 from enterprise_rag.domain.models.contracts import EmbeddingRequest
 from enterprise_rag.domain.models.protocols import EmbeddingModel
+from enterprise_rag.shared.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -16,6 +19,7 @@ class EmbedChunksResult:
 
     records: list[ChunkVectorRecord] = field(default_factory=list)
     model_name: str | None = None
+    skipped_empty: int = 0
 
 
 class EmbedChunksService:
@@ -48,13 +52,26 @@ class EmbedChunksService:
         required_clearance: int | None = None,
         allowed_groups: list[str] | None = None,
     ) -> EmbedChunksResult:
-        selected = [
+        candidates = [
             chunk
             for chunk in chunks
             if self._include_parents or chunk.parent_chunk_id is not None
         ]
+        selected = [chunk for chunk in candidates if chunk.text.strip()]
+        skipped_empty = len(candidates) - len(selected)
+        if skipped_empty:
+            # OpenAI's embeddings endpoint rejects an empty/whitespace-only
+            # input with a 400 for the whole batch — one blank chunk (a
+            # slide that's pure image with no extractable text, for
+            # example) would otherwise fail the entire document. There's
+            # nothing retrievable in an empty chunk anyway, so skip it.
+            logger.warning(
+                "embed_skipped_empty_chunks",
+                skipped_count=skipped_empty,
+                chunk_ids=[str(chunk.chunk_id) for chunk in candidates if not chunk.text.strip()],
+            )
         if not selected:
-            return EmbedChunksResult(records=[])
+            return EmbedChunksResult(records=[], skipped_empty=skipped_empty)
 
         content_vectors = await self._embed_texts([chunk.text for chunk in selected])
         summary_vectors: list[list[float] | None] = [None] * len(selected)
@@ -109,7 +126,7 @@ class EmbedChunksService:
                     ),
                 )
             )
-        return EmbedChunksResult(records=records)
+        return EmbedChunksResult(records=records, skipped_empty=skipped_empty)
 
     async def _embed_texts(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
