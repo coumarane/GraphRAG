@@ -49,13 +49,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
 
-# Runtime-only OS deps: no build-essential/g++/gcc here, so the compiler
-# toolchain used above never ships in the image that gets pulled/run.
+# g++ must stay in the runtime image: docling's layout stage uses
+# torch._inductor (torch.compile), which JIT-compiles C++ at run time, not
+# just at `uv sync` time. Without it every docling parse fails with
+# "InvalidCxxCompiler: No working C++ compiler found ... cxx: (None, 'g++')".
+# gcc/build-essential are still build-only and stay out of this stage.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends \
       curl ca-certificates \
+      g++ \
       libgl1 libglib2.0-0 \
     && groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --create-home --home-dir /app app
