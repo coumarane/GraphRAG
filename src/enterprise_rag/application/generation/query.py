@@ -309,6 +309,19 @@ class QueryDocumentsService:
         elif not expanded and not pinned_ids and has_prior_turns:
             pinned_ids = match_document_ids_for_entities(entities, titles)
             inferred_pin = bool(pinned_ids)
+        elif not expanded and not pinned_ids and not has_prior_turns and entities:
+            # First turn, no history to be ambiguous about — but if the question
+            # names exactly one document unambiguously (e.g. "EMULGEN 2020G"),
+            # pin retrieval to it instead of "searching openly". An open search
+            # lets a short/sparse document lose to an unrelated, richer-embedded
+            # one on generic terms like "composition" — active_conversation_context
+            # already resolves this same entity match for display; retrieval was
+            # silently not using it. Stay open (no pin) whenever the match is
+            # ambiguous (0 or 2+ documents), preserving today's behavior there.
+            first_turn_match = match_document_ids_for_entities(entities, titles)
+            if len(first_turn_match) == 1:
+                pinned_ids = first_turn_match
+                inferred_pin = True
 
         self._gate.enforce_conversation_context(
             has_active_context=bool(pinned_ids) or has_prior_turns,

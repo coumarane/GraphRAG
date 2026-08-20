@@ -139,6 +139,93 @@ async def test_followup_stays_in_pinned_context_not_other_doc() -> None:
 
 
 @pytest.mark.asyncio
+async def test_first_turn_naming_one_product_pins_before_retrieval() -> None:
+    """Regression for a real production bug: a fresh, first-turn question
+    ("What is EMULGEN 2020G composition?", no conversation_history) returned
+    a completely unrelated product's ingredient table. Root cause: retrieval
+    only pinned document_ids for follow-ups or detected context switches —
+    "first turn may search openly" — so an explicitly-named product on turn
+    one got no scoping at all, letting a longer/richer unrelated document
+    outrank the short one it actually named. The fix pins on turn one too,
+    but only when the named entity matches exactly one document (ambiguous
+    or unmatched entities still search openly, unchanged).
+    """
+    tenant = TenantContext(tenant_id=new_id())
+    doc_gamma = uuid4()
+    doc_delta = uuid4()
+    ver_gamma = new_id()
+    ver_delta = new_id()
+    chunk_gamma = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=doc_gamma,
+        version_id=ver_gamma,
+        text="GAMMA 100 INCI: OCTYLDODECETH-20, 100%.",
+        name="GAMMA 100-SPEC.pdf",
+    )
+    chunk_delta = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=doc_delta,
+        version_id=ver_delta,
+        text="DELTA composition: Butylene Glycol 6.0%, Glycerin 4.0%, Water to 100%.",
+        name="DELTA SERIES.pdf",
+    )
+
+    store = InMemoryChunkLookupStore()
+    await store.upsert(tenant, [chunk_gamma, chunk_delta])
+    embedder = FakeEmbeddingModel()
+    vectors = InMemoryChunkVectorStore()
+    await vectors.ensure_collection(vector_size=2)
+    embedded = await EmbedChunksService(embedder).embed([chunk_gamma, chunk_delta])
+    await vectors.upsert(tenant, embedded.records)
+    lexical = InMemoryLexicalSearchStore()
+    await lexical.upsert(tenant, [chunk_gamma, chunk_delta])
+
+    def response_fn(request) -> str:
+        import json
+
+        return json.dumps(
+            {
+                "answer": "GAMMA 100 is OCTYLDODECETH-20, 100% [C1].",
+                "citation_ids": ["C1"],
+            }
+        )
+
+    titles = {doc_gamma: "GAMMA 100-SPEC.pdf", doc_delta: "DELTA SERIES.pdf"}
+
+    async def title_provider(_tenant: TenantContext):
+        return titles
+
+    service = QueryDocumentsService(
+        RetrieveEvidenceService(
+            embedding_model=embedder,
+            vector_store=vectors,
+            chunk_store=store,
+            lexical_store=lexical,
+            reranker=FakeReranker(),
+            document_names=titles,
+        ),
+        GenerateAnswerService(FakeChatModel(response_fn=response_fn)),
+        document_titles=title_provider,
+    )
+
+    # First turn: no conversation_history, no pre-set document_ids filter —
+    # only the product name in the question itself to go on.
+    outcome = await service.query(
+        tenant,
+        QueryRequest(
+            question="What is GAMMA 100 composition?",
+            mode=RetrievalMode.NAIVE,
+            top_k=5,
+            rerank=False,
+        ),
+    )
+    cites = outcome.response.citations
+    assert cites
+    assert all(c.document_id == doc_gamma for c in cites)
+    assert "DELTA" not in outcome.response.answer
+
+
+@pytest.mark.asyncio
 async def test_scope_miss_then_yes_expands() -> None:
     tenant = TenantContext(tenant_id=new_id())
     doc_a = uuid4()
