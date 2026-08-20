@@ -343,6 +343,7 @@ class DocumentPipeline:
         )
         w.audit.document.primary_parser = w.used_parser
         w.audit.document.fallback_parsers = w.fallbacks
+        self._record_parse_audit(w.raw, primary=w.used_parser)
         w.audit.stage_completed(
             "PARSE",
             status=StageRunStatus.COMPLETED,
@@ -368,6 +369,51 @@ class DocumentPipeline:
             pages_processed=w.raw.page_count,
             elements_processed=len(w.raw.elements),
         )
+
+    def _record_parse_audit(self, raw: RawParserResult, *, primary: str | None) -> None:
+        """Populate per-page/per-element audit detail for the parse report.
+
+        RawElement has no stable element_id yet (normalization assigns it),
+        so this only records what's known at parse time — page, type,
+        detector, position. The already-wired vision-provenance stamping
+        later in the pipeline updates these same records once vision
+        enrichment runs, and NORMALIZE flips per-element status forward.
+        """
+        w = self.w
+        assert w.audit is not None
+        for order, element in enumerate(raw.elements):
+            page_no = int(element.page_start)
+            bbox = None
+            if element.bounding_boxes:
+                box = element.bounding_boxes[0]
+                bbox = {
+                    "x0": float(box.x0),
+                    "y0": float(box.y0),
+                    "x1": float(box.x1),
+                    "y1": float(box.y1),
+                }
+            w.audit.element_detected(
+                page_number=page_no,
+                normalized_element_type=element.element_type.value,
+                original_parser_element_type=str(
+                    element.metadata.get("raw_type") or element.element_type.value
+                ),
+                detector=primary,
+                parser_name=primary,
+                reading_order=element.reading_order if element.reading_order else order,
+                bbox=bbox,
+                section_path=list(element.section_path),
+                confidence_score=element.parser_confidence,
+                confidence_source=("parser" if element.parser_confidence is not None else None),
+            )
+        for page in raw.pages or []:
+            w.audit.ensure_page(int(page.page_number))
+            w.audit.page_completed(
+                int(page.page_number),
+                page_parser=primary,
+                has_native_text=not bool(page.is_scanned),
+                ocr_required=bool(page.is_scanned),
+            )
 
     async def _run_vision(self, context: StageContext) -> None:
         w = self.w
