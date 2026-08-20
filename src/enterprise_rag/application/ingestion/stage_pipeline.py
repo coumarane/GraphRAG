@@ -44,6 +44,7 @@ from enterprise_rag.domain.ingestion.stages import (
 )
 from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
 from enterprise_rag.domain.parsing.audit import (
+    ElementProcessingStatus,
     RoutingReasonCode,
     StageRunStatus,
 )
@@ -415,6 +416,46 @@ class DocumentPipeline:
                 ocr_required=bool(page.is_scanned),
             )
 
+    def _reconcile_normalized_audit(self, normalized: NormalizedDocument) -> None:
+        """Pair parse-time audit records to their normalized counterparts.
+
+        Mirrors local_pipeline.py's matching: RawElement has no element_id at
+        detection time, so pair best-effort by (page, element_type) in
+        detection order. Without this, every audit record stays at
+        reached_normalized=False and reconcile_content_loss() (run at
+        document_completed) flags every single element as a content loss —
+        which is misleading for documents that processed fine.
+        """
+        w = self.w
+        assert w.audit is not None
+        by_page_type: dict[tuple[int | None, str | None], list] = {}
+        for element in normalized.elements:
+            key = (element.page_start, element.element_type.value)
+            by_page_type.setdefault(key, []).append(element)
+        normalized_ids = {element.element_id for element in normalized.elements}
+        for report in list(w.audit._elements):
+            key = (report.page_number, report.normalized_element_type)
+            bucket = by_page_type.get(key) or []
+            if not bucket:
+                continue
+            matched = bucket.pop(0)
+            w.audit.update_element(
+                report,
+                element_id=matched.element_id,
+                section_path=list(matched.section_path or []),
+                reached_normalized=True,
+                status=ElementProcessingStatus.PROCESSED,
+                processing_tool=(
+                    report.processing_tool
+                    if report.detector == "vision"
+                    or (report.detector or "").endswith("+vision")
+                    or (report.processing_tool or "").startswith("parser+vision")
+                    or report.processing_tool == "vision_enrichment"
+                    else "normalizer"
+                ),
+            )
+        w.audit.mark_normalized(normalized_ids)
+
     async def _run_vision(self, context: StageContext) -> None:
         w = self.w
         assert (
@@ -507,6 +548,7 @@ class DocumentPipeline:
         )
         w.audit.stage_started("NORMALIZE", tool="normalize_parser_result")
         w.normalized = normalize_parser_result(w.raw, source)
+        self._reconcile_normalized_audit(w.normalized)
         w.audit.stage_completed(
             "NORMALIZE", status=StageRunStatus.COMPLETED, output_count=len(w.normalized.elements)
         )
@@ -589,6 +631,7 @@ class DocumentPipeline:
             meta["document_name"] = doc_title
             stamped.append(chunk.model_copy(update={"metadata": meta}))
         w.chunks = stamped
+        w.audit.mark_downstream(chunking=True)
         w.audit.stage_completed("CHUNK", output_count=len(w.chunks))
         await w.save_json("chunks", {"chunks": [item.model_dump(mode="json") for item in w.chunks]})
         return StageOutcome(status=StageOutcomeStatus.COMPLETED, elements_processed=len(w.chunks))
@@ -647,6 +690,7 @@ class DocumentPipeline:
         await w.service.vector_store.upsert(context.tenant, w.embedded)
         await w.service.chunk_store.upsert(context.tenant, w.chunks)
         await w.service.lexical_store.upsert(context.tenant, w.chunks)
+        w.audit.mark_downstream(vector_index=True)
         w.audit.stage_completed("INDEX_VECTOR", output_count=len(w.embedded))
         await w.save_json("index_vector", {"count": len(w.embedded), "upserted": True})
         return StageOutcome(status=StageOutcomeStatus.COMPLETED, elements_processed=len(w.embedded))
@@ -699,6 +743,7 @@ class DocumentPipeline:
                 w.raw.warnings.append(f"semantic_graph_failed:{type(graph_exc).__name__}")
             projected = StructuralGraphBuilder().build(w.normalized, chunking_result)
             w.graph_counts = await w.service.graph_store.upsert_graph(context.tenant, projected)
+        w.audit.mark_downstream(graph_index=True)
         await w.save_json("graph", {"counts": w.graph_counts, "upserted": True})
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
 

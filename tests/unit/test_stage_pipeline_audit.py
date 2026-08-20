@@ -17,7 +17,9 @@ from enterprise_rag.application.ingestion.stage_pipeline import DocumentPipeline
 from enterprise_rag.domain.elements.enums import ElementType
 from enterprise_rag.domain.elements.geometry import BoundingBox
 from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
+from enterprise_rag.domain.parsing.audit import ElementProcessingStatus
+from enterprise_rag.domain.parsing.normalize import normalize_parser_result
+from enterprise_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
 
 
 def _workspace() -> PipelineWorkspace:
@@ -111,3 +113,37 @@ def test_record_parse_audit_handles_empty_document() -> None:
 
     assert workspace.audit._elements == []
     assert workspace.audit._pages == {}
+
+
+def test_reconcile_normalized_audit_clears_false_content_loss() -> None:
+    """Without reconciliation, every detected element stays reached_normalized=False,
+    and reconcile_content_loss() (run at document_completed) flags all of them as
+    lost content — even for documents that processed successfully end to end. This
+    is a regression test for that false-positive: after normalization runs, every
+    element that survived should be marked PROCESSED / reached_normalized=True.
+    """
+    workspace = _workspace()
+    pipeline = DocumentPipeline(workspace)
+    raw = _raw_result()
+    pipeline._record_parse_audit(raw, primary="docling")
+    assert all(not el.reached_normalized for el in workspace.audit._elements)
+
+    source = ParseSource(
+        tenant_id=workspace.audit.tenant_id,
+        document_id=workspace.audit.document_id,
+        version_id=workspace.audit.version_id,
+        filename="doc.pdf",
+        mime_type="application/pdf",
+        content=b"%PDF-1.4",
+    )
+    normalized = normalize_parser_result(raw, source)
+
+    pipeline._reconcile_normalized_audit(normalized)
+
+    assert workspace.audit._elements
+    assert all(el.reached_normalized for el in workspace.audit._elements)
+    assert all(el.status == ElementProcessingStatus.PROCESSED for el in workspace.audit._elements)
+    assert all(el.element_id is not None for el in workspace.audit._elements)
+
+    workspace.audit.reconcile_content_loss()
+    assert workspace.audit.content_losses == []
