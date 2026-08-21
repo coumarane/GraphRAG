@@ -18,14 +18,17 @@ import { Button } from "@/components/ui/button";
 import { readCachedSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
+  createConversation,
   createEmptyThread,
   createMessage,
   createProject,
+  createProjectRemote,
+  deleteConversation,
+  fetchConversations,
+  fetchProjects,
   isScopeExpandAffirmative,
-  loadChatProjects,
-  loadChatThreads,
-  saveChatProjects,
-  saveChatThreads,
+  patchConversation,
+  patchProject,
   titleFromQuestion,
   upsertProject,
   upsertThread,
@@ -34,7 +37,7 @@ import {
   type ChatMessage,
   type ChatProject,
   type ChatThread,
-} from "@/lib/chatHistory";
+} from "@/lib/chatApi";
 
 const MODES = [
   "auto",
@@ -606,48 +609,74 @@ function ChatWorkspace() {
   }, []);
 
   useEffect(() => {
-    const loaded = loadChatThreads(tenantKey);
-    setProjects(loadChatProjects(tenantKey));
-    if (loaded.length) {
-      setThreads(loaded);
-      setActiveId(loaded[0].id);
-    } else {
-      const fresh = createEmptyThread();
-      setThreads([fresh]);
-      setActiveId(fresh.id);
+    let cancelled = false;
+    setHydrated(false);
+    async function hydrate() {
+      let loaded: ChatThread[] = [];
+      let loadedProjects: ChatProject[] = [];
+      try {
+        [loaded, loadedProjects] = await Promise.all([
+          fetchConversations(),
+          fetchProjects(),
+        ]);
+      } catch {
+        // Fall through to the empty-state branch below on failure.
+      }
+      if (cancelled) return;
+      setProjects(loadedProjects);
+      if (loaded.length) {
+        setThreads(loaded);
+        setActiveId(loaded[0].id);
+      } else {
+        const fresh = createEmptyThread();
+        setThreads([fresh]);
+        setActiveId(fresh.id);
+        void createConversation(fresh).catch(() => {});
+      }
+      setSelectedProjectId(null);
+      setHydrated(true);
     }
-    setSelectedProjectId(null);
-    setHydrated(true);
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, [tenantKey]);
 
   useEffect(() => {
     const fromUrl = searchParams.get("document_id");
     if (!fromUrl || !hydrated || !activeThread) return;
     if (activeThread.documentId === fromUrl) return;
-    setThreads((prev) => {
-      const next = prev.map((thread) =>
+    setThreads((prev) =>
+      prev.map((thread) =>
         thread.id === activeThread.id
           ? { ...thread, documentId: fromUrl, updatedAt: new Date().toISOString() }
           : thread,
-      );
-      saveChatThreads(tenantKey, next);
-      return next;
-    });
-  }, [searchParams, hydrated, activeThread, tenantKey]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    saveChatThreads(tenantKey, threads);
-  }, [threads, tenantKey, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    saveChatProjects(tenantKey, projects);
-  }, [projects, tenantKey, hydrated]);
+      ),
+    );
+    void patchConversation(activeThread.id, { document_id: fromUrl }).catch(() => {});
+  }, [searchParams, hydrated, activeThread]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeThread?.messages.length, busy]);
+
+  function remoteThreadPatch(patch: Partial<ChatThread>) {
+    const mapped: Partial<{
+      title: string;
+      mode: string;
+      document_id: string | null;
+      project_id: string | null;
+      pinned: boolean;
+      archived: boolean;
+    }> = {};
+    if (patch.title !== undefined) mapped.title = patch.title;
+    if (patch.mode !== undefined) mapped.mode = patch.mode;
+    if (patch.documentId !== undefined) mapped.document_id = patch.documentId || null;
+    if (patch.projectId !== undefined) mapped.project_id = patch.projectId ?? null;
+    if (patch.pinned !== undefined) mapped.pinned = patch.pinned;
+    if (patch.archived !== undefined) mapped.archived = patch.archived;
+    return mapped;
+  }
 
   function startNewChat() {
     const fresh = createEmptyThread({
@@ -662,6 +691,7 @@ function ChatWorkspace() {
     setShowInspect(false);
     setShowChangeContext(false);
     textareaRef.current?.focus();
+    void createConversation(fresh).catch(() => {});
   }
 
   function deleteChat(threadId: string) {
@@ -670,11 +700,13 @@ function ChatWorkspace() {
       if (!remaining.length) {
         const fresh = createEmptyThread({ projectId: selectedProjectId });
         setActiveId(fresh.id);
+        void createConversation(fresh).catch(() => {});
         return [fresh];
       }
       if (activeId === threadId) setActiveId(remaining[0].id);
       return remaining;
     });
+    void deleteConversation(threadId).catch(() => {});
   }
 
   function patchThread(threadId: string, patch: Partial<ChatThread>) {
@@ -687,11 +719,13 @@ function ChatWorkspace() {
         updatedAt: new Date().toISOString(),
       });
     });
+    void patchConversation(threadId, remoteThreadPatch(patch)).catch(() => {});
   }
 
   function handleCreateProject(name: string): string {
     const project = createProject(name);
     setProjects((prev) => upsertProject(prev, project));
+    void createProjectRemote(project).catch(() => {});
     return project.id;
   }
 
@@ -704,6 +738,7 @@ function ChatWorkspace() {
         updatedAt: new Date().toISOString(),
       }),
     );
+    void patchConversation(activeThread.id, remoteThreadPatch(patch)).catch(() => {});
   }
 
   function insertMention() {
@@ -726,7 +761,6 @@ function ChatWorkspace() {
     setBusy(true);
     setError(null);
     const userMessage = createMessage("user", question);
-    const historyForContext = activeThread.messages;
     const nextMessages = [...activeThread.messages, userMessage];
     const titled =
       activeThread.messages.length === 0
@@ -764,10 +798,7 @@ function ChatWorkspace() {
         },
         body: JSON.stringify({
           question: questionForApi,
-          conversation_history: historyForContext.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
+          conversation_id: activeThread.id,
           mode: activeThread.mode,
           document_ids: documentIds,
           expand_document_scope: expandScope,
@@ -791,7 +822,6 @@ function ChatWorkspace() {
         ...unwrapped.warnings,
       ];
       const uniqueWarnings = [...new Set(warnings)];
-      const awaitingExpand = uniqueWarnings.includes("awaiting_scope_expand");
       const rawCtx = body.active_conversation_context;
       let nextContext = activeThread.conversationContext ?? null;
       if (
@@ -924,11 +954,10 @@ function ChatWorkspace() {
           ...current,
           title: titled,
           messages: [...current.messages, assistantMessage],
-          pendingExpandQuestion: awaitingExpand
-            ? expandScope
-              ? pending
-              : question
-            : null,
+          pendingExpandQuestion:
+            typeof body.pending_expand_question === "string"
+              ? body.pending_expand_question
+              : null,
           conversationContext: nextContext,
           updatedAt: new Date().toISOString(),
         });
@@ -1000,27 +1029,22 @@ function ChatWorkspace() {
     onMoveThread: (threadId: string, projectId: string | null) =>
       patchThread(threadId, { projectId }),
     onTogglePinProject: (projectId: string) => {
-      setProjects((prev) => {
-        const project = prev.find((item) => item.id === projectId);
-        if (!project) return prev;
-        return upsertProject(prev, {
-          ...project,
-          pinned: !project.pinned,
-          updatedAt: new Date().toISOString(),
-        });
-      });
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return;
+      const pinned = !project.pinned;
+      setProjects((prev) =>
+        upsertProject(prev, { ...project, pinned, updatedAt: new Date().toISOString() }),
+      );
+      void patchProject(projectId, { pinned }).catch(() => {});
     },
     onCreateProject: handleCreateProject,
     onRenameProject: (projectId: string, name: string) => {
-      setProjects((prev) => {
-        const project = prev.find((item) => item.id === projectId);
-        if (!project) return prev;
-        return upsertProject(prev, {
-          ...project,
-          name,
-          updatedAt: new Date().toISOString(),
-        });
-      });
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return;
+      setProjects((prev) =>
+        upsertProject(prev, { ...project, name, updatedAt: new Date().toISOString() }),
+      );
+      void patchProject(projectId, { name }).catch(() => {});
     },
   };
 

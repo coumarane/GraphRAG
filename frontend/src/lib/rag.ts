@@ -51,7 +51,10 @@ export async function proxyJson(
   });
   const setCookie = upstream.headers.get("set-cookie");
   if (setCookie) headers.set("set-cookie", setCookie);
-  return new Response(text, {
+  // Statuses with a null body (204/205/304) reject a non-null body argument
+  // even when the text is empty — the Fetch spec forbids it outright.
+  const nullBodyStatus = [204, 205, 304].includes(upstream.status);
+  return new Response(nullBodyStatus ? null : text, {
     status: upstream.status,
     headers,
   });
