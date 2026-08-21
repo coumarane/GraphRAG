@@ -17,6 +17,7 @@ from enterprise_rag.domain.graph.vocabulary import (
 from enterprise_rag.domain.ids import content_sha256_hex, new_id
 from enterprise_rag.domain.modality import Modality
 from enterprise_rag.domain.retrieval import (
+    RetrievalFilters,
     RetrievalMode,
     RetrievalRequest,
     analyze_query,
@@ -458,6 +459,120 @@ async def test_local_graph_retrieval_returns_mentioned_chunks() -> None:
     )
     assert any(item.chunk_id == chunk.chunk_id for item in outcome.result.evidence)
     assert outcome.result.graph_paths
+
+
+@pytest.mark.asyncio
+async def test_local_graph_retrieval_respects_document_scope() -> None:
+    """Two unrelated products both mention "water" as an ingredient, so the
+    graph entity node they share links to chunks in both documents. A request
+    pinned to product A's document must not surface product B's chunk via that
+    shared entity — regression for a real production bug: a query naming one
+    product returned a completely unrelated product's ingredient table because
+    LOCAL graph traversal ignored request.filters.document_ids entirely.
+    """
+    tenant = TenantContext(tenant_id=new_id())
+    doc_a, version_a = new_id(), new_id()
+    doc_b, version_b = new_id(), new_id()
+    chunk_a = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=doc_a,
+        version_id=version_a,
+        text="Product A composition: OCTYLDODECETH-20, 100%.",
+    )
+    chunk_b = _chunk(
+        tenant_id=tenant.tenant_id,
+        document_id=doc_b,
+        version_id=version_b,
+        text="Product B toner formulation: Butylene Glycol 6.0%, water to 100%.",
+    )
+    entity_id = new_id()
+    graph = InMemoryGraphStore()
+    await graph.upsert_graph(
+        tenant,
+        ProjectedGraph(
+            tenant_id=tenant.tenant_id,
+            document_id=doc_a,
+            version_id=version_a,
+            nodes=[
+                GraphNode(
+                    node_id=chunk_a.chunk_id,
+                    label=StructuralNodeLabel.CHUNK.value,
+                    tenant_id=tenant.tenant_id,
+                    properties={"chunk_id": str(chunk_a.chunk_id)},
+                ),
+                GraphNode(
+                    node_id=entity_id,
+                    label=SemanticNodeLabel.CHEMICAL.value,
+                    tenant_id=tenant.tenant_id,
+                    properties={"canonical_name": "water", "normalized_name": "water"},
+                ),
+            ],
+            relationships=[
+                GraphRelationship(
+                    relationship_id=new_id(),
+                    relationship_type=SemanticRelationshipType.MENTIONS.value,
+                    tenant_id=tenant.tenant_id,
+                    source_node_id=chunk_a.chunk_id,
+                    target_node_id=entity_id,
+                ),
+            ],
+        ),
+    )
+    await graph.upsert_graph(
+        tenant,
+        ProjectedGraph(
+            tenant_id=tenant.tenant_id,
+            document_id=doc_b,
+            version_id=version_b,
+            nodes=[
+                GraphNode(
+                    node_id=chunk_b.chunk_id,
+                    label=StructuralNodeLabel.CHUNK.value,
+                    tenant_id=tenant.tenant_id,
+                    properties={"chunk_id": str(chunk_b.chunk_id)},
+                ),
+            ],
+            relationships=[
+                GraphRelationship(
+                    relationship_id=new_id(),
+                    relationship_type=SemanticRelationshipType.MENTIONS.value,
+                    tenant_id=tenant.tenant_id,
+                    source_node_id=chunk_b.chunk_id,
+                    target_node_id=entity_id,
+                ),
+            ],
+        ),
+    )
+    chunk_store = InMemoryChunkLookupStore()
+    await chunk_store.upsert(tenant, [chunk_a, chunk_b])
+    embedder = FakeEmbeddingModel()
+    vectors = InMemoryChunkVectorStore()
+    await vectors.ensure_collection(vector_size=2)
+    await vectors.upsert(
+        tenant,
+        (await EmbedChunksService(embedder).embed([chunk_a, chunk_b])).records,
+    )
+
+    service = RetrieveEvidenceService(
+        embedding_model=embedder,
+        vector_store=vectors,
+        chunk_store=chunk_store,
+        graph_store=graph,
+    )
+    outcome = await service.retrieve(
+        tenant,
+        RetrievalRequest(
+            question="What water content does Product A have?",
+            mode=RetrievalMode.LOCAL,
+            filters=RetrievalFilters(document_ids=[doc_a]),
+            top_k=5,
+            graph_depth=2,
+            rerank=False,
+        ),
+    )
+    document_ids = {item.document_id for item in outcome.result.evidence}
+    assert document_ids == {doc_a}
+    assert chunk_b.chunk_id not in {item.chunk_id for item in outcome.result.evidence}
 
 
 @pytest.mark.asyncio

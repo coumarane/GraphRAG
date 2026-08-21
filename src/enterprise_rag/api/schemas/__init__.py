@@ -22,9 +22,29 @@ from enterprise_rag.api.schemas.common import (
     RetrievalSearchResponse,
     StageProgressItem,
 )
+from enterprise_rag.api.schemas.conversations import (
+    ChatConversationCreateRequest,
+    ChatConversationDetailResponse,
+    ChatConversationListResponse,
+    ChatConversationResponse,
+    ChatConversationUpdateRequest,
+    ChatMessageResponse,
+    ChatProjectCreateRequest,
+    ChatProjectResponse,
+    ChatProjectUpdateRequest,
+)
 
 __all__ = [
     "AssetResponse",
+    "ChatConversationCreateRequest",
+    "ChatConversationDetailResponse",
+    "ChatConversationListResponse",
+    "ChatConversationResponse",
+    "ChatConversationUpdateRequest",
+    "ChatMessageResponse",
+    "ChatProjectCreateRequest",
+    "ChatProjectResponse",
+    "ChatProjectUpdateRequest",
     "ChunkListResponse",
     "ChunkPreviewItem",
     "DeletionAcceptedResponse",

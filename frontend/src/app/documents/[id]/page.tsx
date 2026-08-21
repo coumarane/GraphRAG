@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
@@ -16,6 +16,26 @@ type DocumentMeta = {
   current_version_id: string | null;
   tags: string[];
 };
+
+type RunProgress = {
+  status: string;
+  current_stage?: string | null;
+  estimated_completion_percent?: number;
+  error_message?: string | null;
+  latest_warning?: string | null;
+};
+
+const TERMINAL = new Set(["ready", "failed", "deleted", "partial"]);
+const IN_PROGRESS = new Set(["ingesting", "registered", "pending"]);
+
+function stageLabel(stage: string | null | undefined): string {
+  if (!stage) return "";
+  return stage
+    .toLowerCase()
+    .split("_")
+    .map((word) => word[0]?.toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 type Chunk = {
   chunk_id: string;
@@ -40,6 +60,8 @@ export default function DocumentDetailPage() {
   const [busy, setBusy] = useState(true);
   const [reprocessing, setReprocessing] = useState(false);
   const [tab, setTab] = useState<Tab>("original");
+  const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
+  const pollRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!documentId) return;
@@ -83,7 +105,55 @@ export default function DocumentDetailPage() {
 
   useEffect(() => {
     void load();
+    return () => {
+      if (pollRef.current != null) window.clearInterval(pollRef.current);
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (meta && IN_PROGRESS.has(meta.status)) startProgressPoll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta?.status]);
+
+  function stopProgressPoll() {
+    if (pollRef.current != null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  function startProgressPoll() {
+    if (pollRef.current != null || !documentId) return;
+    const tick = async () => {
+      try {
+        const headers = { "X-Tenant-Key": readTenantKey() };
+        const statusRes = await fetch(`/api/documents/${documentId}`, {
+          headers,
+          cache: "no-store",
+        });
+        if (statusRes.ok) {
+          const statusBody = (await statusRes.json()) as DocumentMeta;
+          setMeta(statusBody);
+          if (TERMINAL.has(statusBody.status)) {
+            stopProgressPoll();
+            setRunProgress(null);
+            setReprocessing(false);
+            await load();
+            return;
+          }
+        }
+        const runRes = await fetch(
+          `/api/documents/${documentId}/ingestion-runs/latest`,
+          { headers, cache: "no-store" },
+        );
+        if (runRes.ok) setRunProgress((await runRes.json()) as RunProgress);
+      } catch {
+        /* keep polling */
+      }
+    };
+    void tick();
+    pollRef.current = window.setInterval(() => void tick(), 1500);
+  }
 
   async function downloadOriginal() {
     const res = await fetch(`/api/documents/${documentId}/original`, {
@@ -124,24 +194,10 @@ export default function DocumentDetailPage() {
             : body.message || response.statusText,
         );
       }
-      for (let i = 0; i < 40; i += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        await load();
-        const statusRes = await fetch(`/api/documents/${documentId}`, {
-          headers: { "X-Tenant-Key": readTenantKey() },
-          cache: "no-store",
-        });
-        if (!statusRes.ok) continue;
-        const statusBody = (await statusRes.json()) as DocumentMeta;
-        if (["ready", "failed", "partial"].includes(statusBody.status)) {
-          break;
-        }
-      }
+      startProgressPoll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setReprocessing(false);
-      await load();
     }
   }
 
@@ -174,6 +230,24 @@ export default function DocumentDetailPage() {
               </span>
               {meta.tags.length ? ` · ${meta.tags.join(", ")}` : ""}
             </p>
+          ) : null}
+          {meta && IN_PROGRESS.has(meta.status) && runProgress ? (
+            <div className="mt-2 w-56 space-y-1">
+              <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                <div
+                  className="h-full rounded-full bg-accent transition-all"
+                  style={{
+                    width: `${Math.round(runProgress.estimated_completion_percent ?? 0)}%`,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted">
+                {Math.round(runProgress.estimated_completion_percent ?? 0)}%
+                {runProgress.current_stage
+                  ? ` · ${stageLabel(runProgress.current_stage)}`
+                  : ""}
+              </p>
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">

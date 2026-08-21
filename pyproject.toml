@@ -129,6 +129,11 @@ dev = [
 [tool.uv]
 default-groups = ["dev"]
 package = true
+# Marker/surya still declare pillow<11; Docling needs pillow 12. The APIs are
+# compatible — override so the full parser extra can install together.
+override-dependencies = [
+  "pillow>=12.3.0",
+]
 
 [tool.ruff]
 target-version = "py313"
@@ -211,6 +216,7 @@ pythonpath = ["src"]
 filterwarnings = [
   "error",
   "ignore::DeprecationWarning",
+  "ignore::ResourceWarning",
   "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
 markers = [

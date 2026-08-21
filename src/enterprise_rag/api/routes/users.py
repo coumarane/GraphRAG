@@ -9,6 +9,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from enterprise_rag.api.dependencies import ContainerDep, TenantDep
+from enterprise_rag.application.auth.permissions import (
+    apply_user_permission_update,
+    normalize_user_attributes,
+)
 from enterprise_rag.application.authorization.gate import require_action
 from enterprise_rag.application.authorization.service import subject_from_tenant
 from enterprise_rag.domain.auth.models import CreateUserRequest, UserStatus
@@ -122,6 +126,7 @@ async def admin_list_users(tenant: TenantDep, container: ContainerDep) -> dict[s
                 "display_name": user.display_name,
                 "role": user.role,
                 "status": user.status.value if hasattr(user.status, "value") else user.status,
+                "is_active": bool(user.is_active),
                 "attributes": dict(user.attributes),
             }
             for user in users
@@ -144,9 +149,11 @@ async def admin_create_user(
 
     if container.user_repo is None:
         raise ValidationError("User repository is not configured")
-    attrs = dict(body.attributes)
-    if body.role == "admin":
-        attrs.setdefault("admin", True)
+    attrs = normalize_user_attributes(
+        dict(body.attributes),
+        role=(body.role or "member").strip().casefold(),
+        default_can_ingest=True,
+    )
     record = UserRecord(
         user_id=new_id(),
         tenant_id=tenant.tenant_id,
@@ -163,8 +170,10 @@ async def admin_create_user(
     return {
         "user_id": str(created.user_id),
         "email": created.email,
+        "display_name": created.display_name,
         "role": created.role,
         "status": created.status.value,
+        "is_active": created.is_active,
         "attributes": dict(created.attributes),
     }
 
@@ -182,30 +191,41 @@ async def admin_patch_user(
     user = await container.user_repo.get_by_id(user_id)
     if user is None or user.tenant_id != tenant.tenant_id:
         raise NotFoundError("User not found", details={"user_id": str(user_id)})
-    update = user.model_copy(
-        update={
-            "display_name": body.display_name
-            if body.display_name is not None
-            else user.display_name,
-            "role": body.role if body.role is not None else user.role,
-            "status": body.status if body.status is not None else user.status,
-            "attributes": body.attributes if body.attributes is not None else user.attributes,
-            "is_active": (
-                (body.status or user.status) == UserStatus.ACTIVE
-            ),
-        }
+    update = apply_user_permission_update(
+        user,
+        display_name=body.display_name,
+        role=body.role,
+        status=body.status,
+        attributes=body.attributes,
     )
-    if update.role == "admin":
-        attrs = dict(update.attributes)
-        attrs.setdefault("admin", True)
-        update = update.model_copy(update={"attributes": attrs})
+    if (
+        tenant.user_id is not None
+        and user.user_id == tenant.user_id
+        and user.role == "admin"
+        and update.role != "admin"
+    ):
+        raise ValidationError(
+            "You cannot remove your own workspace admin access",
+            details={"user_id": str(user_id)},
+        )
+    if (
+        tenant.user_id is not None
+        and user.user_id == tenant.user_id
+        and update.status != UserStatus.ACTIVE
+    ):
+        raise ValidationError(
+            "You cannot disable your own account",
+            details={"user_id": str(user_id)},
+        )
     updated = await container.user_repo.update(update)
     await container.commit_db()
     return {
         "user_id": str(updated.user_id),
         "email": updated.email,
+        "display_name": updated.display_name,
         "role": updated.role,
         "status": updated.status.value,
+        "is_active": updated.is_active,
         "attributes": dict(updated.attributes),
     }
 
@@ -253,9 +273,7 @@ async def admin_list_quotas(tenant: TenantDep, container: ContainerDep) -> dict[
     return {
         "tenant": quotas.snapshot(tenant_id=tenant.tenant_id, user_id=None),
         "assignments": [
-            a.model_dump(mode="json")
-            for a in quotas.assignments
-            if a.tenant_id == tenant.tenant_id
+            a.model_dump(mode="json") for a in quotas.assignments if a.tenant_id == tenant.tenant_id
         ],
     }
 

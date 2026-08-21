@@ -10,6 +10,7 @@ from enterprise_rag.application.chunking import (
 )
 from enterprise_rag.config.settings import ChunkingSettings
 from enterprise_rag.domain.chunks import ChunkType
+from enterprise_rag.domain.chunks.models import ChunkBase
 from enterprise_rag.domain.chunks.vectors import VectorSearchRequest
 from enterprise_rag.domain.documents import NormalizedDocument, ParserInfo
 from enterprise_rag.domain.elements import (
@@ -258,6 +259,45 @@ async def test_embed_and_inmemory_search_enforces_tenant() -> None:
         version_id=document.version_id,
     )
     assert deleted == written
+
+
+@pytest.mark.asyncio
+async def test_embed_skips_empty_chunks_instead_of_failing_whole_batch() -> None:
+    """A blank chunk (e.g. a slide that's pure image, no extractable text)
+    must not take the whole document down. OpenAI's embeddings endpoint
+    rejects an empty/whitespace-only input with a 400 for the *entire*
+    batch it's part of — so filtering has to happen before the call, not
+    after. Regression for exactly that: a real document failed ingestion
+    entirely because one chunk among many had empty text.
+    """
+    tenant_id = new_id()
+    document_id = new_id()
+    version_id = new_id()
+    ids = {"tenant_id": tenant_id, "document_id": document_id, "version_id": version_id}
+
+    def _chunk(text: str) -> ChunkBase:
+        return ChunkBase(
+            chunk_id=new_id(),
+            **ids,
+            modality=Modality.TEXT,
+            chunk_type=ChunkType.TEXT,
+            text=text,
+            token_count=len(text.split()),
+            page_start=1,
+            page_end=1,
+            content_hash=_hash(text or "empty"),
+        )
+
+    chunks = [_chunk("Real extractable content."), _chunk(""), _chunk("   "), _chunk("More text.")]
+
+    result = await EmbedChunksService(FakeEmbeddingModel()).embed(chunks)
+
+    assert result.skipped_empty == 2
+    assert len(result.records) == 2
+    assert {record.point_id for record in result.records} == {
+        chunks[0].chunk_id,
+        chunks[3].chunk_id,
+    }
 
 
 @pytest.mark.asyncio

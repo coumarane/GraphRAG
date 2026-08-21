@@ -50,6 +50,8 @@ class IngestionRunModel(Base, TimestampMixin, TenantOwnedMixin):
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     correlation_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         nullable=False,
@@ -90,6 +92,8 @@ class IngestionStageModel(Base, TimestampMixin, TenantOwnedMixin):
     warning: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(

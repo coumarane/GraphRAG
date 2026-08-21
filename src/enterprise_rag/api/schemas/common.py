@@ -143,6 +143,10 @@ class StageProgressItem(BaseModel):
     warning: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    worker_id: str | None = None
+    heartbeat_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class IngestionRunResponse(BaseModel):
@@ -161,6 +165,10 @@ class IngestionRunResponse(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     correlation_id: str | None = None
+    worker_id: str | None = None
+    heartbeat_at: datetime | None = None
+    current_stage: str | None = None
+    estimated_completion_percent: float = 0.0
     stages: list[StageProgressItem] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -205,7 +213,15 @@ class QueryApiRequest(BaseModel):
     include_graph_paths: bool = False
     rerank: bool = True
     answer_model_override: str | None = None
-    conversation_history: list[dict[str, str]] = Field(default_factory=list)
+    conversation_id: UUID | None = None
+    conversation_history: list[dict[str, str]] = Field(
+        default_factory=list,
+        deprecated=(
+            "Ignored once conversation_id resolves to a conversation — history is "
+            "loaded server-side from persisted messages instead. Kept only for "
+            "callers that never pass conversation_id."
+        ),
+    )
     expand_document_scope: bool = False
 
 
@@ -244,5 +260,10 @@ class HealthResponse(BaseModel):
     status: str
 
 
-# Re-export QueryResponse for route typing convenience.
-QueryApiResponse = QueryResponse
+class QueryApiResponse(QueryResponse):
+    """QueryResponse plus the server-persisted conversation it was recorded under."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: UUID
+    pending_expand_question: str | None = None

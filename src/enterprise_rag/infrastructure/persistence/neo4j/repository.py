@@ -121,8 +121,8 @@ class Neo4jGraphStore:
         query = (
             "MATCH (n {tenant_id: $tenant_id}) "
             "WHERE n.node_id = $version_id "
-            "OR (n.version_id = $version_id AND coalesce(n.label, '') "
-            "NOT IN ['Entity','Person','Organization','Product','Ingredient',"
+            "OR (n.version_id = $version_id AND NOT coalesce(n.label, '') "
+            "IN ['Entity','Person','Organization','Product','Ingredient',"
             "'Chemical','Regulation','Location','Concept','Topic','Community']) "
             "OR n.node_id IN $chunk_ids "
             "OR (n.label = 'Chunk' AND n.version_id = $version_id) "

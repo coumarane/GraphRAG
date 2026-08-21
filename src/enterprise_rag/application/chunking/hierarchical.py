@@ -140,8 +140,10 @@ class HierarchicalMultimodalChunker:
         children: list[ChunkBase] = []
 
         by_section: dict[tuple[str, ...], list[DocumentElement]] = defaultdict(list)
+        boilerplate_elements: list[DocumentElement] = []
         for element in document.elements:
             if element.element_type in _SKIP:
+                boilerplate_elements.append(element)
                 continue
             key = tuple(element.section_path) if element.section_path else ("(document)",)
             by_section[key].append(element)
@@ -152,7 +154,92 @@ class HierarchicalMultimodalChunker:
             parents.append(parent)
             children.extend(self._chunk_section(document, parent, ordered))
 
+        boilerplate = self._make_boilerplate_chunk(document, boilerplate_elements)
+        if boilerplate is not None:
+            parent, child = boilerplate
+            parents.append(parent)
+            children.append(child)
+
         return ChunkingResult(parents=parents, children=children)
+
+    def _make_boilerplate_chunk(
+        self,
+        document: NormalizedDocument,
+        elements: list[DocumentElement],
+    ) -> tuple[ChunkBase, ChunkBase] | None:
+        """Repeated page headers/footers (letterhead, doc title, classification
+        stamp) are excluded from normal section chunking so they don't get
+        duplicated into every chunk on every page. But dropping them entirely
+        makes any fact that ONLY appears there — e.g. a manufacturer name in a
+        title-slide logo — permanently unretrievable by every retrieval mode.
+        Keep one deduplicated chunk per document instead of discarding them.
+        """
+        ordered = sorted(elements, key=lambda item: (item.page_start, item.reading_order))
+        seen: set[str] = set()
+        lines: list[str] = []
+        kept: list[DocumentElement] = []
+        for element in ordered:
+            text = _element_text(element).strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            lines.append(text)
+            kept.append(element)
+        if not lines:
+            return None
+
+        section_path = ["(document header/footer)"]
+        joined = "\n".join(lines)
+        content_hash = content_sha256_hex(f"boilerplate|{joined}")
+        parent_id = deterministic_id(
+            str(document.tenant_id),
+            str(document.document_id),
+            str(document.version_id),
+            f"parent:boilerplate:{content_hash[:16]}",
+        )
+        parent = ChunkBase(
+            chunk_id=parent_id,
+            tenant_id=document.tenant_id,
+            document_id=document.document_id,
+            version_id=document.version_id,
+            parent_chunk_id=None,
+            modality=Modality.TEXT,
+            chunk_type=ChunkType.SECTION,
+            text=joined,
+            token_count=_estimate_tokens(joined),
+            element_ids=[el.element_id for el in kept],
+            page_start=min(el.page_start for el in kept),
+            page_end=max(el.page_end for el in kept),
+            section_path=section_path,
+            source_object_keys=[],
+            content_hash=content_hash,
+            metadata={"role": "parent", "boilerplate": True},
+        )
+        child_id = deterministic_id(
+            str(document.tenant_id),
+            str(document.document_id),
+            str(document.version_id),
+            f"child:boilerplate:{content_hash[:16]}",
+        )
+        child = ChunkBase(
+            chunk_id=child_id,
+            tenant_id=document.tenant_id,
+            document_id=document.document_id,
+            version_id=document.version_id,
+            parent_chunk_id=parent.chunk_id,
+            modality=Modality.TEXT,
+            chunk_type=ChunkType.TEXT,
+            text=joined,
+            token_count=_estimate_tokens(joined),
+            element_ids=[el.element_id for el in kept],
+            page_start=parent.page_start,
+            page_end=parent.page_end,
+            section_path=section_path,
+            source_object_keys=[],
+            content_hash=content_hash,
+            metadata={"role": "child", "boilerplate": True},
+        )
+        return parent, child
 
     def _make_section_parent(
         self,

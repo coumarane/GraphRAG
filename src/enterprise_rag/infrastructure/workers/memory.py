@@ -1,13 +1,15 @@
-"""In-memory task queue and dead-letter store for tests/local workers."""
+"""In-memory task queue for tests/local workers."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from uuid import UUID
 
-from enterprise_rag.domain.ingestion.retry import DeadLetterRecord, IngestionTaskMessage
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.shared.exceptions import AuthorizationError
+from enterprise_rag.domain.ingestion.retry import IngestionTaskMessage
+from enterprise_rag.infrastructure.persistence.dead_letters import InMemoryDeadLetterStore
+
+__all__ = ["InMemoryDeadLetterStore", "InMemoryIngestionTaskQueue"]
 
 
 class InMemoryIngestionTaskQueue:
@@ -17,8 +19,9 @@ class InMemoryIngestionTaskQueue:
         self._queue: asyncio.Queue[IngestionTaskMessage] = asyncio.Queue()
         self._inflight: dict[UUID, IngestionTaskMessage] = {}
 
-    async def enqueue(self, message: IngestionTaskMessage) -> None:
+    async def enqueue(self, message: IngestionTaskMessage) -> str:
         await self._queue.put(message)
+        return str(message.task_id)
 
     async def dequeue(self, *, timeout_seconds: float | None = None) -> IngestionTaskMessage | None:
         try:
@@ -32,32 +35,12 @@ class InMemoryIngestionTaskQueue:
         return message
 
     async def acknowledge(self, task_id: object) -> None:
-        self._inflight.pop(UUID(str(task_id)), None)
+        raw = str(task_id)
+        with contextlib.suppress(ValueError):
+            self._inflight.pop(UUID(raw), None)
+        for inflight_id, message in list(self._inflight.items()):
+            if raw in {str(message.task_id), str(message.stream_message_id or "")}:
+                self._inflight.pop(inflight_id, None)
 
     async def depth(self) -> int:
         return self._queue.qsize() + len(self._inflight)
-
-
-class InMemoryDeadLetterStore:
-    """Process-local dead-letter sink."""
-
-    def __init__(self) -> None:
-        self.records: list[DeadLetterRecord] = []
-
-    async def append(self, tenant: TenantContext, record: DeadLetterRecord) -> DeadLetterRecord:
-        if record.tenant_id != tenant.tenant_id:
-            raise AuthorizationError("Dead-letter tenant mismatch")
-        self.records.append(record)
-        return record
-
-    async def list_for_run(
-        self,
-        tenant: TenantContext,
-        ingestion_run_id: object,
-    ) -> list[DeadLetterRecord]:
-        run_id = UUID(str(ingestion_run_id))
-        return [
-            record
-            for record in self.records
-            if record.tenant_id == tenant.tenant_id and record.ingestion_run_id == run_id
-        ]

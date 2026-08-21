@@ -97,6 +97,8 @@ class IngestionRunRecord(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     correlation_id: str | None = None
+    worker_id: str | None = None
+    heartbeat_at: datetime | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -120,6 +122,8 @@ class IngestionStageRecord(BaseModel):
     warning: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    worker_id: str | None = None
+    heartbeat_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)

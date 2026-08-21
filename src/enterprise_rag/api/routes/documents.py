@@ -20,6 +20,7 @@ from enterprise_rag.api.schemas import (
     ElementListResponse,
     GraphViewResponse,
     IngestAcceptedResponse,
+    IngestionRunResponse,
     ReprocessAcceptedResponse,
 )
 from enterprise_rag.application.authorization.filters import filter_authorized_documents
@@ -109,6 +110,23 @@ async def ingest_document(
             container,
             tenant,
             result.ingestion_run_id,
+        )
+    elif (
+        container.outbox_store is not None
+        and not result.duplicate_version
+    ):
+        from enterprise_rag.application.ingestion.enqueue import enqueue_ingest_ids
+
+        run = await container.require_ingestion_repo().get_run(tenant, result.ingestion_run_id)
+        await enqueue_ingest_ids(
+            container.outbox_store,
+            tenant=tenant,
+            ingestion_run_id=result.ingestion_run_id,
+            document_id=result.document_id,
+            version_id=result.version_id,
+            content_hash=(run.content_hash if run is not None else ""),
+            config_fingerprint=(run.config_fingerprint if run is not None else ""),
+            correlation_id=run.correlation_id if run is not None else None,
         )
 
     await container.commit_db()
@@ -248,6 +266,24 @@ async def reprocess_document(
             tenant,
             result.ingestion_run_id,
         )
+    elif (
+        container.outbox_store is not None
+        and result.ingestion_run_id is not None
+        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+    ):
+        from enterprise_rag.application.ingestion.enqueue import enqueue_ingest_ids
+
+        run = await container.require_ingestion_repo().get_run(tenant, result.ingestion_run_id)
+        await enqueue_ingest_ids(
+            container.outbox_store,
+            tenant=tenant,
+            ingestion_run_id=result.ingestion_run_id,
+            document_id=result.document_id,
+            version_id=result.version_id,
+            content_hash=(run.content_hash if run is not None else ""),
+            config_fingerprint=(run.config_fingerprint if run is not None else ""),
+            correlation_id=run.correlation_id if run is not None else None,
+        )
 
     await container.commit_db()
     return ReprocessAcceptedResponse(
@@ -261,6 +297,31 @@ async def reprocess_document(
         graph_cleared=result.graph_cleared,
         warnings=list(result.warnings),
     )
+
+
+@router.get(
+    "/{document_id}/ingestion-runs/latest",
+    response_model=IngestionRunResponse,
+)
+async def get_latest_ingestion_run(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+) -> IngestionRunResponse:
+    """Most recent ingestion run for a document, for live progress polling."""
+    from enterprise_rag.api.routes.ingestion import _run_response
+
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    repo = container.require_ingestion_repo()
+    run = await repo.get_latest_run_for_document(tenant, document_id)
+    if run is None:
+        raise NotFoundError(
+            "No ingestion run found for document", details={"document_id": str(document_id)}
+        )
+    stages = await repo.list_stages(tenant, run.ingestion_run_id)
+    return _run_response(run, stages)
 
 
 @router.get("/{document_id}/chunks", response_model=ChunkListResponse)

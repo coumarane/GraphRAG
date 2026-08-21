@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from enterprise_rag.domain.conversation.records import (
+    ChatConversationRecord,
+    ChatMessageRecord,
+    ChatProjectRecord,
+)
 from enterprise_rag.domain.ingestion.records import (
     DocumentRecord,
     DocumentVersionRecord,
@@ -18,6 +23,9 @@ from enterprise_rag.domain.ingestion.stages import (
 )
 from enterprise_rag.domain.types import JsonValue
 from enterprise_rag.infrastructure.persistence.postgres.models import (
+    ChatConversationModel,
+    ChatMessageModel,
+    ChatProjectModel,
     DocumentModel,
     DocumentVersionModel,
     IngestionRunModel,
@@ -103,6 +111,8 @@ def run_to_record(model: IngestionRunModel) -> IngestionRunRecord:
         error_code=model.error_code,
         error_message=model.error_message,
         correlation_id=model.correlation_id,
+        worker_id=model.worker_id,
+        heartbeat_at=model.heartbeat_at,
         metadata=_metadata(model.metadata_json),
         started_at=model.started_at,
         completed_at=model.completed_at,
@@ -124,6 +134,8 @@ def stage_to_record(model: IngestionStageModel) -> IngestionStageRecord:
         warning=model.warning,
         error_code=model.error_code,
         error_message=model.error_message,
+        worker_id=model.worker_id,
+        heartbeat_at=model.heartbeat_at,
         started_at=model.started_at,
         completed_at=model.completed_at,
         metadata=_metadata(model.metadata_json),
@@ -145,4 +157,53 @@ def parser_attempt_to_record(model: ParserAttemptModel) -> ParserAttemptRecord:
         warnings=[str(item) for item in (model.warnings or [])],
         metadata=_metadata(model.metadata_json),
         created_at=model.created_at,
+    )
+
+
+def chat_project_to_record(model: ChatProjectModel) -> ChatProjectRecord:
+    return ChatProjectRecord(
+        project_id=model.project_id,
+        tenant_id=model.tenant_id,
+        owner_user_id=model.owner_user_id,
+        name=model.name,
+        pinned=model.pinned,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def chat_conversation_to_record(model: ChatConversationModel) -> ChatConversationRecord:
+    return ChatConversationRecord(
+        conversation_id=model.conversation_id,
+        tenant_id=model.tenant_id,
+        owner_user_id=model.owner_user_id,
+        project_id=model.project_id,
+        title=model.title,
+        mode=model.mode,
+        document_id=model.document_id,
+        pending_expand_question=model.pending_expand_question,
+        conversation_context=_metadata(model.conversation_context)
+        if model.conversation_context is not None
+        else None,
+        pinned=model.pinned,
+        archived=model.archived,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def chat_message_to_record(model: ChatMessageModel) -> ChatMessageRecord:
+    return ChatMessageRecord(
+        message_id=model.message_id,
+        tenant_id=model.tenant_id,
+        conversation_id=model.conversation_id,
+        role=model.role,
+        content=model.content,
+        citations=[dict(item) for item in (model.citations or [])],
+        warnings=[str(item) for item in (model.warnings or [])],
+        retrieval_mode=model.retrieval_mode,
+        retrieval_trace_id=model.retrieval_trace_id,
+        graph_paths=[dict(item) for item in (model.graph_paths or [])],
+        created_at=model.created_at,
+        updated_at=model.updated_at,
     )

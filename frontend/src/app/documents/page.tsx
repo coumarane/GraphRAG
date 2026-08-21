@@ -21,7 +21,26 @@ type ListResponse = {
   limit: number;
 };
 
+type RunProgress = {
+  status: string;
+  current_stage?: string | null;
+  estimated_completion_percent?: number;
+  error_message?: string | null;
+  latest_warning?: string | null;
+};
+
 const TERMINAL = new Set(["ready", "failed", "deleted", "partial"]);
+// Statuses worth polling ingestion-run progress for.
+const IN_PROGRESS = new Set(["ingesting", "registered", "pending"]);
+
+function stageLabel(stage: string | null | undefined): string {
+  if (!stage) return "";
+  return stage
+    .toLowerCase()
+    .split("_")
+    .map((word) => word[0]?.toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 function DocumentsPageContent() {
   const searchParams = useSearchParams();
@@ -31,7 +50,8 @@ function DocumentsPageContent() {
   const [busy, setBusy] = useState(true);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const pollRef = useRef<number | null>(null);
+  const [runProgress, setRunProgress] = useState<Record<string, RunProgress>>({});
+  const pollRefs = useRef<Map<string, number>>(new Map());
 
   const visibleItems = useMemo(() => {
     const items = data?.items ?? [];
@@ -65,31 +85,39 @@ function DocumentsPageContent() {
             : body.message || response.statusText,
         );
       }
-      setData(body as ListResponse);
+      const list = body as ListResponse;
+      setData(list);
+      for (const item of list.items) {
+        if (IN_PROGRESS.has(item.status)) startStatusPoll(item.document_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setData(null);
     } finally {
       setBusy(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     void load();
+    const refs = pollRefs.current;
     return () => {
-      if (pollRef.current != null) window.clearInterval(pollRef.current);
+      for (const id of refs.values()) window.clearInterval(id);
+      refs.clear();
     };
   }, [load]);
 
-  function stopPolling() {
-    if (pollRef.current != null) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
+  function stopPolling(documentId: string) {
+    const id = pollRefs.current.get(documentId);
+    if (id != null) {
+      window.clearInterval(id);
+      pollRefs.current.delete(documentId);
     }
   }
 
   function startStatusPoll(documentId: string) {
-    stopPolling();
+    if (pollRefs.current.has(documentId)) return;
     const tick = async () => {
       try {
         const res = await fetch(`/api/documents/${documentId}`, {
@@ -109,22 +137,45 @@ function DocumentsPageContent() {
             ),
           };
         });
+
         if (TERMINAL.has(body.status)) {
-          stopPolling();
-          setReprocessingId(null);
-          setActionMessage(
-            body.status === "ready"
-              ? "Reprocess finished — document is ready."
-              : `Reprocess ended with status: ${body.status}`,
+          stopPolling(documentId);
+          setRunProgress((prev) => {
+            const next = { ...prev };
+            delete next[documentId];
+            return next;
+          });
+          setReprocessingId((current) =>
+            current === documentId ? null : current,
           );
+          if (reprocessingId === documentId) {
+            setActionMessage(
+              body.status === "ready"
+                ? "Reprocess finished — document is ready."
+                : `Reprocess ended with status: ${body.status}`,
+            );
+          }
           void load();
+          return;
+        }
+
+        const runRes = await fetch(
+          `/api/documents/${documentId}/ingestion-runs/latest`,
+          { headers: { "X-Tenant-Key": readTenantKey() }, cache: "no-store" },
+        );
+        if (runRes.ok) {
+          const run = (await runRes.json()) as RunProgress;
+          setRunProgress((prev) => ({ ...prev, [documentId]: run }));
         }
       } catch {
         /* keep polling */
       }
     };
     void tick();
-    pollRef.current = window.setInterval(() => void tick(), 1500);
+    pollRefs.current.set(
+      documentId,
+      window.setInterval(() => void tick(), 1500),
+    );
   }
 
   async function reprocess(documentId: string) {
@@ -263,6 +314,31 @@ function DocumentsPageContent() {
                     >
                       {doc.status}
                     </span>
+                    {IN_PROGRESS.has(doc.status) && runProgress[doc.document_id] ? (
+                      <div className="mt-1.5 w-32 space-y-1">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                          <div
+                            className="h-full rounded-full bg-accent transition-all"
+                            style={{
+                              width: `${Math.round(
+                                runProgress[doc.document_id]
+                                  .estimated_completion_percent ?? 0,
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted">
+                          {Math.round(
+                            runProgress[doc.document_id]
+                              .estimated_completion_percent ?? 0,
+                          )}
+                          %
+                          {runProgress[doc.document_id].current_stage
+                            ? ` · ${stageLabel(runProgress[doc.document_id].current_stage)}`
+                            : ""}
+                        </p>
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-muted">
                     {doc.document_type || "—"}

@@ -10,6 +10,11 @@ from enterprise_rag.infrastructure.persistence.postgres.models.abac import (
     TenantMembershipModel,
     UsageCounterModel,
 )
+from enterprise_rag.infrastructure.persistence.postgres.models.conversations import (
+    ChatConversationModel,
+    ChatMessageModel,
+    ChatProjectModel,
+)
 from enterprise_rag.infrastructure.persistence.postgres.models.documents import (
     DocumentModel,
     DocumentVersionModel,
@@ -19,6 +24,10 @@ from enterprise_rag.infrastructure.persistence.postgres.models.ingestion import 
     IngestionRunModel,
     IngestionStageModel,
     ParserAttemptModel,
+)
+from enterprise_rag.infrastructure.persistence.postgres.models.outbox import (
+    IngestionDeadLetterModel,
+    OutboxEventModel,
 )
 from enterprise_rag.infrastructure.persistence.postgres.models.parsing_audit import (
     ContentLossRecordModel,
@@ -34,15 +43,20 @@ from enterprise_rag.infrastructure.persistence.postgres.models.users import User
 
 __all__ = [
     "AuthorizationPolicyModel",
+    "ChatConversationModel",
+    "ChatMessageModel",
+    "ChatProjectModel",
     "ContentLossRecordModel",
     "DocumentModel",
     "DocumentParseReportModel",
     "DocumentVersionModel",
     "ElementParseReportModel",
+    "IngestionDeadLetterModel",
     "IngestionIssueModel",
     "IngestionRunModel",
     "IngestionStageModel",
     "ModelUsageEventModel",
+    "OutboxEventModel",
     "PageParseReportModel",
     "ParserAttemptModel",
     "PolicyVersionModel",

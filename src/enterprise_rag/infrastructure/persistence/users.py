@@ -121,6 +121,17 @@ class SqlAlchemyUserRepository:
         model.is_active = user.is_active and status == UserStatus.ACTIVE
         model.attributes = dict(user.attributes)
         await self._session.flush()
+        membership_result = await self._session.execute(
+            select(TenantMembershipModel).where(
+                TenantMembershipModel.user_id == user.user_id,
+                TenantMembershipModel.tenant_id == user.tenant_id,
+            )
+        )
+        membership = membership_result.scalar_one_or_none()
+        if membership is not None:
+            membership.status = status.value
+            membership.attributes = dict(user.attributes)
+            await self._session.flush()
         return _to_record(model)
 
     async def get_membership(
@@ -196,6 +207,12 @@ class InMemoryUserRepository:
             raise NotFoundError("User not found", details={"user_id": str(user.user_id)})
         self._by_id[user.user_id] = user
         self._by_email[user.email.strip().casefold()] = user.user_id
+        membership_key = (user.user_id, user.tenant_id)
+        existing = self._memberships.get(membership_key)
+        if existing is not None:
+            self._memberships[membership_key] = existing.model_copy(
+                update={"status": user.status, "attributes": dict(user.attributes)}
+            )
         return user
 
     async def get_membership(

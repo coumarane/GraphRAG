@@ -513,9 +513,11 @@ jobs:
           set -euo pipefail
 
           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-
-          # Base64-encode key safely (single line)
-          KEY_B64="$(printf '%s' "${ARGOCD_GITHUB_APP_PRIVATE_KEY}" | tr -d '\r' | base64 -w0)"
+          KEY_B64=""
+          if [ -n "${ARGOCD_GITHUB_APP_ID:-}" ] && [ -n "${ARGOCD_GITHUB_APP_INSTALLATION_ID:-}" ] && [ -n "${ARGOCD_GITHUB_APP_PRIVATE_KEY:-}" ]; then
+            # Base64-encode key safely (single line)
+            KEY_B64="$(printf '%s' "${ARGOCD_GITHUB_APP_PRIVATE_KEY}" | tr -d '\r' | base64 -w0)"
+          fi
 
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" \
             "ARGOCD_GITHUB_APP_ID='${ARGOCD_GITHUB_APP_ID}' \
@@ -544,27 +546,31 @@ jobs:
           kubectl -n argocd rollout status deployment/argocd-server --timeout=600s
           kubectl -n argocd get httproute argocd -o wide
 
-          # Reconstruct PEM key exactly
-          KEY_CONTENT="$(printf '%s' "$KEY_B64" | base64 -d)"
+          if [ -n "${ARGOCD_GITHUB_APP_ID:-}" ] && [ -n "${ARGOCD_GITHUB_APP_INSTALLATION_ID:-}" ] && [ -n "${KEY_B64:-}" ]; then
+            KEY_CONTENT="$(printf '%s' "$KEY_B64" | base64 -d)"
 
-          # Apply repo secret (correct YAML + correct key names)
-          cat <<EOF | kubectl apply -f -
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: repo-github-chatwithdocs
-            namespace: argocd
-            labels:
-              argocd.argoproj.io/secret-type: repository
-          type: Opaque
-          stringData:
-            url: "${REPO_URL}"
-            type: git
-            githubAppID: "${ARGOCD_GITHUB_APP_ID}"
-            githubAppInstallationID: "${ARGOCD_GITHUB_APP_INSTALLATION_ID}"
-            githubAppPrivateKey: |
-          $(printf '%s\n' "$KEY_CONTENT" | sed 's/^/    /')
-          EOF
+            # Apply repo secret only when GitHub App credentials are fully provided.
+            cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: repo-github-chatwithdocs
+              namespace: argocd
+              labels:
+                argocd.argoproj.io/secret-type: repository
+            type: Opaque
+            stringData:
+              url: "${REPO_URL}"
+              type: git
+              githubAppID: "${ARGOCD_GITHUB_APP_ID}"
+              githubAppInstallationID: "${ARGOCD_GITHUB_APP_INSTALLATION_ID}"
+              githubAppPrivateKey: |
+            $(printf '%s\n' "$KEY_CONTENT" | sed 's/^/    /')
+            EOF
+          else
+            echo "GitHub App credentials not provided; deleting repo-github-chatwithdocs so Argo CD uses direct access to the public repository."
+            kubectl -n argocd delete secret repo-github-chatwithdocs --ignore-not-found
+          fi
 
           kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=600s
           kubectl -n argocd logs deployment/argocd-repo-server --since=5m | tail -200

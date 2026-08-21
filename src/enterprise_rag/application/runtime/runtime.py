@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,6 +89,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     tenant_repo: TenantRepository | None = None
     document_repo: DocumentRepository | None = None
     ingestion_repo: IngestionRepository | None = None
+    chat_project_repo = None
+    chat_conversation_repo = None
     parsing_audit_repo = None
     usage_repo = None
     db_session: AsyncSession | None = None
@@ -97,7 +100,12 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
 
     meta_backend = metadata_store_backend()
     if meta_backend in {"postgres", "postgresql", "pg"}:
+        import asyncio
+
         from enterprise_rag.infrastructure.persistence.postgres import (
+            LockedAsyncProxy,
+            SqlAlchemyChatConversationRepository,
+            SqlAlchemyChatProjectRepository,
             SqlAlchemyDocumentRepository,
             SqlAlchemyIngestionRepository,
             SqlAlchemyTenantRepository,
@@ -114,13 +122,30 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
 
         engine = create_engine(resolved.postgres)
         session_factory = create_session_factory(engine)
-        db_session = session_factory()
-        tenant_repo = SqlAlchemyTenantRepository(db_session)
-        document_repo = SqlAlchemyDocumentRepository(db_session)
-        ingestion_repo = SqlAlchemyIngestionRepository(db_session)
-        parsing_audit_repo = SqlAlchemyParsingAuditRepository(db_session)
-        usage_repo = SqlAlchemyUsageRepository(db_session)
-        user_repo = SqlAlchemyUserRepository(db_session)
+        # This container lives for the whole process, but uvicorn (API) and
+        # the ingestion worker's background tasks touch its single session
+        # concurrently. AsyncSession isn't safe for that. Repositories are
+        # wrapped (not the raw session) so a whole repo method call — e.g.
+        # the sync `add()` followed by `await flush()` — is one atomic
+        # locked unit; repos are built on the *raw* session internally so
+        # they don't try to re-acquire the same lock their own call holds.
+        db_lock = asyncio.Lock()
+        raw_session = session_factory()
+        tenant_repo = LockedAsyncProxy(SqlAlchemyTenantRepository(raw_session), db_lock)
+        document_repo = LockedAsyncProxy(SqlAlchemyDocumentRepository(raw_session), db_lock)
+        ingestion_repo = LockedAsyncProxy(SqlAlchemyIngestionRepository(raw_session), db_lock)
+        chat_project_repo = LockedAsyncProxy(
+            SqlAlchemyChatProjectRepository(raw_session), db_lock
+        )
+        chat_conversation_repo = LockedAsyncProxy(
+            SqlAlchemyChatConversationRepository(raw_session), db_lock
+        )
+        parsing_audit_repo = LockedAsyncProxy(
+            SqlAlchemyParsingAuditRepository(raw_session), db_lock
+        )
+        usage_repo = LockedAsyncProxy(SqlAlchemyUsageRepository(raw_session), db_lock)
+        user_repo = LockedAsyncProxy(SqlAlchemyUserRepository(raw_session), db_lock)
+        db_session = LockedAsyncProxy(raw_session, db_lock)
 
         async def _commit() -> None:
             await db_session.commit()
@@ -153,9 +178,12 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         tenant_repo=tenant_repo,
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
+        chat_project_repo=chat_project_repo,
+        chat_conversation_repo=chat_conversation_repo,
         parsing_audit_repo=parsing_audit_repo,
         usage_repo=usage_repo,
-        auto_process_ingest=True,
+        auto_process_ingest=os.environ.get("INGEST_EXECUTION", "worker").strip().lower()
+        in {"inline", "inprocess", "api"},
         use_live_models=True,
         max_pages=resolved.security.max_pages,
         on_commit=on_commit,
@@ -190,4 +218,87 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             jwt_secret=resolved.security.auth_jwt_secret,
             jwt_ttl_seconds=resolved.security.auth_jwt_ttl_seconds,
         )
+    _wire_ingest_queue(
+        container,
+        resolved,
+        raw_session=raw_session if meta_backend in {"postgres", "postgresql", "pg"} else None,
+        db_lock=db_lock if meta_backend in {"postgres", "postgresql", "pg"} else None,
+        on_commit=on_commit,
+    )
     return container
+
+
+def _wire_ingest_queue(
+    container: ServiceContainer,
+    settings: Settings,
+    *,
+    raw_session: AsyncSession | None,
+    db_lock: Any | None,
+    on_commit: Callable[[], Awaitable[None]] | None,
+) -> None:
+    from enterprise_rag.application.ingestion.outbox_publisher import OutboxPublisher
+    from enterprise_rag.infrastructure.persistence.dead_letters import (
+        InMemoryDeadLetterStore,
+        SqlAlchemyDeadLetterStore,
+    )
+    from enterprise_rag.infrastructure.persistence.outbox import (
+        InMemoryOutboxStore,
+        SqlAlchemyOutboxStore,
+    )
+    from enterprise_rag.infrastructure.persistence.postgres import LockedAsyncProxy
+    from enterprise_rag.infrastructure.persistence.redis import InMemoryStreamIngestionQueue
+
+    if raw_session is not None and db_lock is not None:
+        container.outbox_store = LockedAsyncProxy(SqlAlchemyOutboxStore(raw_session), db_lock)
+        container.dead_letter_store = LockedAsyncProxy(
+            SqlAlchemyDeadLetterStore(raw_session), db_lock
+        )
+    else:
+        container.outbox_store = InMemoryOutboxStore()
+        container.dead_letter_store = InMemoryDeadLetterStore()
+
+    queue_backend = os.environ.get("INGEST_QUEUE_BACKEND", "").strip().lower()
+    use_redis = queue_backend in {"redis", "streams"} or (
+        not queue_backend and raw_session is not None
+    )
+    redis_client = None
+    if use_redis:
+        try:
+            import redis.asyncio as redis_async
+
+            redis_client = redis_async.from_url(
+                settings.redis.url.get_secret_value(),
+                decode_responses=False,
+            )
+        except Exception:
+            redis_client = None
+    if redis_client is not None:
+        from enterprise_rag.infrastructure.persistence.redis import RedisStreamIngestionQueue
+
+        container.ingest_queue = RedisStreamIngestionQueue(
+            redis_client,
+            stream_key=settings.worker.stream_key,
+            group_name=settings.worker.consumer_group,
+            consumer_name=settings.worker.consumer_name or "api-publisher",
+        )
+    else:
+        container.ingest_queue = InMemoryStreamIngestionQueue(
+            stream_key=settings.worker.stream_key,
+            group_name=settings.worker.consumer_group,
+            consumer_name=settings.worker.consumer_name or "api-publisher",
+        )
+
+    async def _load_run_status(tenant_id, run_id):
+        if container.ingestion_repo is None:
+            return None
+        from enterprise_rag.domain.tenant import TenantContext
+
+        run = await container.ingestion_repo.get_run(TenantContext(tenant_id=tenant_id), run_id)
+        return None if run is None else run.status
+
+    container.outbox_publisher = OutboxPublisher(
+        container.outbox_store,
+        container.ingest_queue,
+        on_commit=on_commit,
+        load_run_status=_load_run_status,
+    )

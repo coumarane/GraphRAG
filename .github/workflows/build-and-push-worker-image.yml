@@ -1,0 +1,249 @@
+name: Build And Push Worker Image
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "src/**"
+      - "alembic/**"
+      - "config/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Dockerfile.worker"
+      - "Dockerfile.worker-base"
+      - ".github/workflows/build-and-push-worker-image.yml"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag (defaults to commit SHA)"
+        required: false
+        default: ""
+      rebuild_base:
+        description: "Force rebuild of the worker base image before building the worker image."
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY_HOST: harbor.safranys.com
+  HARBOR_PROJECT: chatwithdocs
+  IMAGE_NAME: worker
+  BASE_IMAGE_NAME: worker-base
+  DOCKERFILE_PATH: Dockerfile.worker
+  BUILD_CONTEXT: .
+  BASE_DOCKERFILE_PATH: Dockerfile.worker-base
+  STABLE_BASE_TAG: dev
+
+permissions:
+  contents: write
+
+jobs:
+  detect-base-changes:
+    name: Detect Worker Base Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rebuild: ${{ steps.detect.outputs.rebuild }}
+      base_image_ref: ${{ steps.detect.outputs.base_image_ref }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect base rebuild requirement
+        id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          INPUT_REBUILD_BASE: ${{ inputs.rebuild_base }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${BASE_IMAGE_NAME}"
+          DEFAULT_BASE_IMAGE="${IMAGE_REF}:${STABLE_BASE_TAG}"
+          REBUILD=false
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${INPUT_REBUILD_BASE}" = "true" ]; then
+              REBUILD=true
+            fi
+          else
+            BEFORE="${EVENT_BEFORE:-}"
+            if [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+              REBUILD=true
+            else
+              if git diff --name-only "${BEFORE}" "${GITHUB_SHA}" -- \
+                pyproject.toml \
+                uv.lock \
+                Dockerfile.worker-base \
+                .github/workflows/build-and-push-worker-base-image.yml \
+                .github/workflows/build-and-push-worker-image.yml | grep -q .; then
+                REBUILD=true
+              fi
+            fi
+          fi
+
+          echo "rebuild=${REBUILD}" >> "$GITHUB_OUTPUT"
+          echo "base_image_ref=${DEFAULT_BASE_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "Worker base rebuild required: ${REBUILD}"
+
+  build-base:
+    name: Build and Push Worker Base Image
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: detect-base-changes
+    if: needs.detect-base-changes.outputs.rebuild == 'true'
+    outputs:
+      base_image_ref: ${{ steps.build.outputs.base_image_ref }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Harbor
+        uses: ./.github/actions/login-harbor
+        with:
+          registry-host: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          password: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push worker base
+        id: build
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-${GITHUB_SHA}}"
+          IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${BASE_IMAGE_NAME}"
+          IID_FILE="$(mktemp)"
+
+          docker buildx build \
+            --push \
+            -f "${BASE_DOCKERFILE_PATH}" \
+            -t "${IMAGE_REF}:${TAG}" \
+            -t "${IMAGE_REF}:${STABLE_BASE_TAG}" \
+            --iidfile "${IID_FILE}" \
+            "${BUILD_CONTEXT}"
+
+          DIGEST="$(cat "${IID_FILE}")"
+          BASE_IMAGE_REF="${IMAGE_REF}@${DIGEST}"
+
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "base_image_ref=${BASE_IMAGE_REF}" >> "$GITHUB_OUTPUT"
+          echo "Pushed: ${IMAGE_REF}:${TAG}"
+          echo "Stable: ${IMAGE_REF}:${STABLE_BASE_TAG}"
+          echo "Digest: ${DIGEST}"
+
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}
+
+  build-and-push:
+    name: Build and Push Worker Image
+    runs-on: ubuntu-latest
+    environment: dev
+    if: ${{ always() && needs.detect-base-changes.result == 'success' && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') }}
+    needs:
+      - detect-base-changes
+      - build-base
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Harbor
+        uses: ./.github/actions/login-harbor
+        with:
+          registry-host: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          password: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (with digest)
+        id: build
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+          BASE_IMAGE_REF: ${{ needs.build-base.outputs.base_image_ref || needs.detect-base-changes.outputs.base_image_ref }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-${GITHUB_SHA}}"
+          IMAGE_REF="${REGISTRY_HOST}/${HARBOR_PROJECT}/${IMAGE_NAME}"
+          IID_FILE="$(mktemp)"
+
+          if [ -z "${BASE_IMAGE_REF}" ]; then
+            echo "Worker base image ref could not be resolved."
+            exit 1
+          fi
+
+          docker buildx build \
+            --push \
+            --build-arg "BASE_IMAGE=${BASE_IMAGE_REF}" \
+            -f "${DOCKERFILE_PATH}" \
+            -t "${IMAGE_REF}:${TAG}" \
+            -t "${IMAGE_REF}:latest" \
+            --iidfile "${IID_FILE}" \
+            "${BUILD_CONTEXT}"
+
+          DIGEST="$(cat "${IID_FILE}")"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pushed: ${IMAGE_REF}:${TAG}"
+          echo "Digest:  ${DIGEST}"
+
+      - name: Security scan image with Trivy
+        continue-on-error: true
+        env:
+          TRIVY_IGNORE_UNFIXED: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: table
+          exit-code: 0
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Update kustomization image to digest (GitOps)
+        if: github.ref == 'refs/heads/dev'
+        uses: ./.github/actions/update-kustomize-image
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          image-name: harbor.safranys.com/chatwithdocs/worker
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          digest: ${{ steps.build.outputs.digest }}
+          kustomization-dir: infra/k8s/worker
+          commit-message: "chore(dev): deploy worker @${{ steps.build.outputs.digest }}"
+
+      - name: Verify rendered worker image uses committed digest
+        if: github.ref == 'refs/heads/dev'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RENDERED_IMAGE="$(kubectl kustomize infra/k8s/worker | awk '/image: harbor.safranys.com\/chatwithdocs\/worker/ {print $2; exit}')"
+
+          if [ -z "${RENDERED_IMAGE}" ]; then
+            echo "Rendered worker manifest does not contain the Harbor worker image."
+            exit 1
+          fi
+
+          case "${RENDERED_IMAGE}" in
+            harbor.safranys.com/chatwithdocs/worker@sha256:*)
+              ;;
+            *)
+              echo "Rendered worker image is not pinned by digest: ${RENDERED_IMAGE}"
+              exit 1
+              ;;
+          esac
+
+          echo "Rendered worker image: ${RENDERED_IMAGE}"
+
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}

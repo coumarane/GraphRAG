@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from enterprise_rag.domain.ids import new_id
 from enterprise_rag.domain.ingestion.stages import IngestionStageName
 from enterprise_rag.domain.types import JsonValue
-from enterprise_rag.shared.exceptions import PermanentError, TransientError
+from enterprise_rag.shared.exceptions import ParserError, PermanentError, TransientError
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ def is_retryable_exception(exc: BaseException) -> bool:
     """Classify exceptions for retry vs dead-letter."""
     if isinstance(exc, TransientError):
         return True
-    return not isinstance(exc, PermanentError)
+    return not isinstance(exc, (PermanentError, ParserError))
 
 
 class DeadLetterRecord(BaseModel):
@@ -56,6 +56,8 @@ class DeadLetterRecord(BaseModel):
     attempt_count: int = Field(ge=0)
     error_code: str
     error_message: str
+    original_stream_id: str | None = None
+    correlation_id: str | None = None
     payload: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -73,5 +75,7 @@ class IngestionTaskMessage(BaseModel):
     content_hash: str
     config_fingerprint: str
     correlation_id: str | None = None
+    stream_message_id: str | None = None
+    outbox_event_id: UUID | None = None
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     attempt_count: int = Field(default=0, ge=0)

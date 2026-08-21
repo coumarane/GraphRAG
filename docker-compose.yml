@@ -100,6 +100,9 @@ services:
       VECTOR_STORE_BACKEND: qdrant
       GRAPH_STORE_BACKEND: neo4j
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      METADATA_STORE_BACKEND: postgres
+      INGEST_EXECUTION: worker
+      INGEST_QUEUE_BACKEND: redis
       POSTGRES__HOST: postgres
       POSTGRES__PORT: "5432"
       POSTGRES__DB: enterprise_rag

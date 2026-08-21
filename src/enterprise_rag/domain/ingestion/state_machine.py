@@ -164,6 +164,17 @@ class IngestionStateMachine:
             and record.config_fingerprint == config_fingerprint
         )
 
+    def reset_stale_running(self) -> list[IngestionStageName]:
+        """Turn abandoned RUNNING rows back into PENDING so resume can continue."""
+        reset: list[IngestionStageName] = []
+        for name, record in self.stages.items():
+            if record.status is StageStatus.RUNNING:
+                record.status = StageStatus.PENDING
+                reset.append(name)
+        if reset and self.run_status is IngestionRunStatus.RUNNING:
+            self.run_status = IngestionRunStatus.PENDING
+        return reset
+
     def mark_running(
         self,
         stage: IngestionStageName,

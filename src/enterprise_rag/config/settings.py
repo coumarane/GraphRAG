@@ -297,7 +297,7 @@ class ConcurrencySettings(BaseModel):
 
 
 class WorkerSettings(BaseModel):
-    """Ingestion worker retry and dead-letter defaults."""
+    """Ingestion worker retry, stream and dead-letter defaults."""
 
     max_stage_attempts: int = 3
     retry_base_delay_seconds: float = 0.05
@@ -305,6 +305,14 @@ class WorkerSettings(BaseModel):
     retry_jitter: bool = False
     poll_interval_seconds: float = 0.01
     lease_seconds: float = 60.0
+    stream_key: str = "ingestion-jobs"
+    dlq_stream_key: str = "ingestion-dlq"
+    consumer_group: str = "ingestion-workers"
+    consumer_name: str = ""
+    heartbeat_seconds: float = 15.0
+    heartbeat_stale_seconds: float = 90.0
+    reclaim_idle_seconds: float = 120.0
+    outbox_poll_seconds: float = 1.0
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
