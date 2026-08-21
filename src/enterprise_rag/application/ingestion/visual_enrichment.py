@@ -307,15 +307,23 @@ def collect_visual_targets(raw: RawParserResult) -> list[VisualTarget]:
 
 
 VISION_MAX_EDGE = 1280
-VISION_RENDER_SCALE = 1.0
-# Element-level crops (a logo, a small callout) come from a page region that
-# may be only a few percent of the page's area. Rendering the whole page at
-# VISION_RENDER_SCALE and then cropping to that region leaves very few real
-# pixels for the crop -- e.g. a 5%-wide logo on a page rendered at 1.0 scale
-# can end up under 40px wide, illegible even to a vision model. PDF content is
-# vector, so rendering at a higher scale before cropping is lossless
-# additional detail, not interpolated blur; the crop keeps the payload small
-# even at this scale since only the bbox region survives.
+# No parser in this codebase currently populates RawElement.bounding_boxes
+# (Docling's adapter drops the provenance bbox it gets from the library;
+# grep finds BoundingBox(...) constructed nowhere else either), so every
+# "element crop" sent to vision today is actually a full-page render at this
+# scale -- a small region like a title-slide logo ends up as a tiny, often
+# illegible, fraction of that page image. Confirmed live: GPT consistently
+# described a company logo generically instead of reading its text across
+# repeated re-ingestions of the same document. 1.0 leaves real page content
+# at native PDF point size (often well under the 1280px cap below); 2.2
+# still gets clamped down for larger pages but gives small pages/regions
+# meaningfully more real pixels before that cap applies.
+VISION_RENDER_SCALE = 2.2
+# Kept for when/if a parser starts reporting real bounding boxes: a crop of
+# a small region needs denser source pixels than a full-page render, and PDF
+# content is vector so rendering higher before cropping is lossless detail,
+# not interpolated blur -- the crop keeps the payload small regardless of
+# scale since only the bbox region survives.
 VISION_CROP_RENDER_SCALE = 3.0
 
 
