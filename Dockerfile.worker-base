@@ -54,6 +54,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # just at `uv sync` time. Without it every docling parse fails with
 # "InvalidCxxCompiler: No working C++ compiler found ... cxx: (None, 'g++')".
 # gcc/build-essential are still build-only and stay out of this stage.
+#
+# fonts-noto-cjk/fontconfig: pdfium (used to rasterize PDF pages before
+# GPT-vision transcription) falls back to its own built-in glyphs for Latin
+# text but has no CJK glyphs of its own -- without a system CJK font, any
+# Japanese/Chinese/Korean text that isn't a pre-rendered raster image renders
+# as blank/missing, so a vision model literally cannot read it no matter how
+# good the prompt or render resolution is. Confirmed empirically: this image
+# had zero font files besides two bundled Latin-only Python package assets.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
@@ -61,6 +69,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       curl ca-certificates \
       g++ \
       libgl1 libglib2.0-0 \
+      fonts-noto-cjk fontconfig \
     && groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --create-home --home-dir /app app
 
