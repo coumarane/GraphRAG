@@ -192,7 +192,7 @@ def test_cli_ingest_and_query(tmp_path: Path) -> None:
     set_container(container)
     runner = CliRunner()
     path = tmp_path / "cli.pdf"
-    sample = Path("examples/sample.pdf")
+    sample = Path("../data/examples/sample.pdf")
     if sample.exists():
         path.write_bytes(sample.read_bytes())
     else:

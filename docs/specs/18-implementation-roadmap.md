@@ -82,6 +82,6 @@ uv run pytest
 
 docker compose config
 docker compose up -d --wait
-uv run enterprise-rag ingest examples/sample.pdf --tenant-id demo --wait
+uv run enterprise-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait
 uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 ```

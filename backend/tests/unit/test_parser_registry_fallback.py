@@ -15,9 +15,9 @@ from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService,
 
 @pytest.mark.asyncio
 async def test_parse_document_raw_uses_registry_with_available_parser() -> None:
-    sample = Path("examples/sample.pdf")
+    sample = Path("../data/examples/sample.pdf")
     if not sample.exists():
-        pytest.skip("examples/sample.pdf missing")
+        pytest.skip("../data/examples/sample.pdf missing")
     data = sample.read_bytes()
     outcome = await _parse_document_raw(
         data=data,
@@ -52,9 +52,9 @@ async def test_registry_includes_pdfium_parser() -> None:
 
 @pytest.mark.asyncio
 async def test_explicit_pdfium_override_parses_sample() -> None:
-    sample = Path("examples/sample.pdf")
+    sample = Path("../data/examples/sample.pdf")
     if not sample.exists():
-        pytest.skip("examples/sample.pdf missing")
+        pytest.skip("../data/examples/sample.pdf missing")
     source = ParseSource(
         tenant_id=uuid4(),
         document_id=uuid4(),

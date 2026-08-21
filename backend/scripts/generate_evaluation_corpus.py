@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate examples/sample.pdf and evaluation/corpus/*.pdf."""
+"""Regenerate data/examples/sample.pdf and data/evaluation/corpus/*.pdf."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 from enterprise_rag.infrastructure.intake.pdf_bytes import build_simple_pdf
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS = ROOT / "evaluation" / "corpus"
-EXAMPLES = ROOT / "examples"
+CORPUS = ROOT.parent / "data" / "evaluation" / "corpus"
+EXAMPLES = ROOT.parent / "data" / "examples"
 
 DOCS: dict[str, tuple[str, list[str]]] = {
     "text_heavy.pdf": (
@@ -88,7 +88,7 @@ def main() -> None:
             ],
         )
     )
-    print(f"wrote {len(DOCS)} corpus pdfs and examples/sample.pdf")
+    print(f"wrote {len(DOCS)} corpus pdfs and data/examples/sample.pdf")
 
 
 if __name__ == "__main__":

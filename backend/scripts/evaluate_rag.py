@@ -2,8 +2,8 @@
 """Offline / live RAG evaluation harness for reliability validation.
 
 Usage:
-  uv run python scripts/evaluate_rag.py --documents evaluation/corpus --output reports/rag-evaluation.json
-  uv run python scripts/evaluate_rag.py --documents evaluation/corpus --live --generate-questions
+  uv run python scripts/evaluate_rag.py --documents ../data/evaluation/corpus --output ../data/reports/rag-evaluation.json
+  uv run python scripts/evaluate_rag.py --documents ../data/evaluation/corpus --live --generate-questions
 """
 
 from __future__ import annotations
@@ -475,7 +475,7 @@ def main() -> None:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--max-pages", type=int, default=20)
-    parser.add_argument("--output", default="reports/rag-evaluation.json")
+    parser.add_argument("--output", default="../data/reports/rag-evaluation.json")
     args = parser.parse_args()
     report = asyncio.run(run_evaluation(args))
     out = Path(args.output)

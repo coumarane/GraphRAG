@@ -1,31 +1,33 @@
 .PHONY: sync lint format format-check typecheck test unit integration evaluation acceptance compose-config up down
 
+BACKEND := --directory backend
+
 sync:
-	uv sync --all-extras
+	uv $(BACKEND) sync --all-extras
 
 lint:
-	uv run ruff check .
+	uv $(BACKEND) run ruff check .
 
 format:
-	uv run ruff format .
+	uv $(BACKEND) run ruff format .
 
 format-check:
-	uv run ruff format --check .
+	uv $(BACKEND) run ruff format --check .
 
 typecheck:
-	uv run mypy src
+	uv $(BACKEND) run mypy src
 
 unit:
-	uv run pytest tests/unit
+	uv $(BACKEND) run pytest tests/unit
 
 integration:
-	uv run pytest tests/integration
+	uv $(BACKEND) run pytest tests/integration
 
 evaluation:
-	uv run pytest tests/evaluation -m evaluation
+	uv $(BACKEND) run pytest tests/evaluation -m evaluation
 
 test:
-	uv run pytest
+	uv $(BACKEND) run pytest
 
 compose-config:
 	docker compose config

@@ -3,7 +3,7 @@
 
 Usage:
   uv run python scripts/inspect_chunks.py path/to/document.pdf
-  uv run python scripts/inspect_chunks.py path/to/document.pdf --json-out reports/chunks.json
+  uv run python scripts/inspect_chunks.py path/to/document.pdf --json-out ../data/reports/chunks.json
 """
 
 from __future__ import annotations

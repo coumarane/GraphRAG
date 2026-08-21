@@ -13,9 +13,9 @@ from enterprise_rag.domain.ingestion.stages import IngestionRunStatus
 
 @pytest.mark.asyncio
 async def test_process_registered_pdf_completes(tmp_path: Path) -> None:
-    sample = Path("examples/sample.pdf")
+    sample = Path("../data/examples/sample.pdf")
     if not sample.exists():
-        pytest.skip("examples/sample.pdf missing")
+        pytest.skip("../data/examples/sample.pdf missing")
 
     dest = tmp_path / "sample.pdf"
     dest.write_bytes(sample.read_bytes())

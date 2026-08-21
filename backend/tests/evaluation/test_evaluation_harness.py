@@ -25,7 +25,7 @@ def test_corpus_files_exist() -> None:
     for path in files:
         assert path.is_file(), path
         assert path.stat().st_size > 100
-    sample = Path("examples/sample.pdf")
+    sample = Path("../data/examples/sample.pdf")
     assert sample.is_file()
 
 

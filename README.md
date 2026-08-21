@@ -5,8 +5,9 @@ Production-oriented multi-tenant multimodal GraphRAG platform. Documents are par
 ## Quick start (local, in-memory)
 
 ```bash
-uv sync --all-extras
 cp .env.example .env
+cd backend
+uv sync --all-extras
 uv run ruff check .
 uv run mypy src
 uv run pytest tests/unit
@@ -18,11 +19,11 @@ uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
 # OBJECT_STORE_BACKEND=minio uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
 
 # CLI against local container
-uv run enterprise-rag ingest examples/sample.pdf --tenant-id demo --wait --output json
+uv run enterprise-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait --output json
 uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 
 # Web UI (proxies to the API; http://localhost:3000)
-cd frontend && npm install && npm run dev
+cd ../frontend && npm install && npm run dev
 ```
 
 ## Docker Compose
@@ -36,7 +37,8 @@ cp .env.example .env
 docker compose config
 docker compose up -d --wait
 # UI: http://localhost:3000  · API docs: http://localhost:8000/docs
-uv run enterprise-rag ingest examples/sample.pdf --tenant-id demo --wait
+cd backend
+uv run enterprise-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait
 uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 ```
 
@@ -50,24 +52,21 @@ docker compose --profile gpu up -d worker-gpu
 
 | Path | Role |
 |---|---|
-| `src/enterprise_rag/` | Application, domain, infrastructure |
+| `backend/` | Python API + worker + CLI (`src/enterprise_rag/`), migrations (`alembic/`), config, tests, Dockerfiles (`docker/`) |
 | `frontend/` | Next.js upload / query / graph UI |
-| `config/` | Default / development / production YAML |
-| `alembic/` | PostgreSQL migrations |
-| `evaluation/` | Versioned corpus + question set |
-| `examples/sample.pdf` | Smoke-test document |
-| `docs/` | Architecture, evaluation, troubleshooting |
-| `specs/` | Authoritative product/engineering specs |
-| `contracts/` | Stable interface contracts |
+| `infra/` | Ansible, Terraform, Kubernetes, ArgoCD, Harbor |
+| `docs/` | Architecture, evaluation, troubleshooting; `docs/specs/` product/engineering specs; `docs/notes/` working notes |
+| `data/` | `examples/` smoke-test document, `evaluation/` versioned corpus + questions, `reports/` generated reports, `samples/` local business PDFs (gitignored) |
+| `backend/contracts/` | Stable interface contracts |
 
 ## Evaluation
 
 ```bash
-uv run pytest tests/evaluation -m evaluation
+cd backend && uv run pytest tests/evaluation -m evaluation
 ```
 
 See [docs/evaluation.md](docs/evaluation.md).
 
 ## Spec-driven implementation
 
-Authoritative guidance lives in `CURSOR.md` and `specs/18-implementation-roadmap.md`. Prefer `contracts/` over narrative specs when they diverge.
+Authoritative guidance lives in `docs/notes/CURSOR.md` and `docs/specs/18-implementation-roadmap.md`. Prefer `backend/contracts/` over narrative specs when they diverge.

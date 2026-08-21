@@ -5,13 +5,13 @@ on:
     branches:
       - dev
     paths:
-      - "src/**"
-      - "alembic/**"
-      - "config/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "Dockerfile.worker"
-      - "Dockerfile.worker-base"
+      - "backend/src/**"
+      - "backend/alembic/**"
+      - "backend/config/**"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "backend/docker/Dockerfile.worker"
+      - "backend/docker/Dockerfile.worker-base"
       - ".github/workflows/build-and-push-worker-image.yml"
   workflow_dispatch:
     inputs:
@@ -30,9 +30,9 @@ env:
   HARBOR_PROJECT: chatwithdocs
   IMAGE_NAME: worker
   BASE_IMAGE_NAME: worker-base
-  DOCKERFILE_PATH: Dockerfile.worker
-  BUILD_CONTEXT: .
-  BASE_DOCKERFILE_PATH: Dockerfile.worker-base
+  DOCKERFILE_PATH: backend/docker/Dockerfile.worker
+  BUILD_CONTEXT: backend
+  BASE_DOCKERFILE_PATH: backend/docker/Dockerfile.worker-base
   STABLE_BASE_TAG: dev
 
 permissions:
@@ -75,9 +75,9 @@ jobs:
               REBUILD=true
             else
               if git diff --name-only "${BEFORE}" "${GITHUB_SHA}" -- \
-                pyproject.toml \
-                uv.lock \
-                Dockerfile.worker-base \
+                backend/pyproject.toml \
+                backend/uv.lock \
+                backend/docker/Dockerfile.worker-base \
                 .github/workflows/build-and-push-worker-base-image.yml \
                 .github/workflows/build-and-push-worker-image.yml | grep -q .; then
                 REBUILD=true

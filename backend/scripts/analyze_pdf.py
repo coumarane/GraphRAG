@@ -5,7 +5,7 @@ Usage:
   uv run python scripts/analyze_pdf.py path/to/document.pdf
   uv run python scripts/analyze_pdf.py sample_data --recursive
   uv run python scripts/analyze_pdf.py sample_data --recursive --compare-parsers
-  uv run python scripts/analyze_pdf.py sample_data --recursive --json-out reports/corpus-inventory.json
+  uv run python scripts/analyze_pdf.py ../data/samples --recursive --json-out ../data/reports/corpus-inventory.json
 """
 
 from __future__ import annotations

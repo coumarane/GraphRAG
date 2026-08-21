@@ -19,7 +19,7 @@ Local stack is defined in `docker-compose.yml`.
 ## Images
 
 - `Dockerfile` — multi-stage `api` / shared base (non-root user `app`)
-- `Dockerfile.worker` — parser-capable worker image (still CPU-default; no CUDA required)
+- `backend/docker/Dockerfile.worker` — parser-capable worker image (still CPU-default; no CUDA required)
 
 ## Configuration precedence
 
