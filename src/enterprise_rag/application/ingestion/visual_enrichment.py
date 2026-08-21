@@ -308,6 +308,15 @@ def collect_visual_targets(raw: RawParserResult) -> list[VisualTarget]:
 
 VISION_MAX_EDGE = 1280
 VISION_RENDER_SCALE = 1.0
+# Element-level crops (a logo, a small callout) come from a page region that
+# may be only a few percent of the page's area. Rendering the whole page at
+# VISION_RENDER_SCALE and then cropping to that region leaves very few real
+# pixels for the crop -- e.g. a 5%-wide logo on a page rendered at 1.0 scale
+# can end up under 40px wide, illegible even to a vision model. PDF content is
+# vector, so rendering at a higher scale before cropping is lossless
+# additional detail, not interpolated blur; the crop keeps the payload small
+# even at this scale since only the bbox region survives.
+VISION_CROP_RENDER_SCALE = 3.0
 
 
 def fit_image_for_vision(image: object, *, max_edge: int = VISION_MAX_EDGE) -> object:
@@ -325,16 +334,25 @@ def render_visual_png(
     page_number: int,
     bbox: BoundingBox | None,
     *,
-    scale: float = VISION_RENDER_SCALE,
+    scale: float | None = None,
 ) -> bytes:
-    """Render a page or normalized crop as PNG bytes."""
+    """Render a page or normalized crop as PNG bytes.
+
+    ``scale`` defaults to ``VISION_CROP_RENDER_SCALE`` when cropping to a
+    ``bbox`` (denser source pixels for a small region) and to
+    ``VISION_RENDER_SCALE`` for a full-page render.
+    """
     import pypdfium2 as pdfium
+
+    resolved_scale = scale
+    if resolved_scale is None:
+        resolved_scale = VISION_CROP_RENDER_SCALE if bbox is not None else VISION_RENDER_SCALE
 
     document = pdfium.PdfDocument(data)
     try:
         page = document[page_number - 1]
         try:
-            bitmap = page.render(scale=scale)
+            bitmap = page.render(scale=resolved_scale)
             try:
                 pil = bitmap.to_pil()
             finally:
