@@ -213,7 +213,15 @@ class QueryApiRequest(BaseModel):
     include_graph_paths: bool = False
     rerank: bool = True
     answer_model_override: str | None = None
-    conversation_history: list[dict[str, str]] = Field(default_factory=list)
+    conversation_id: UUID | None = None
+    conversation_history: list[dict[str, str]] = Field(
+        default_factory=list,
+        deprecated=(
+            "Ignored once conversation_id resolves to a conversation — history is "
+            "loaded server-side from persisted messages instead. Kept only for "
+            "callers that never pass conversation_id."
+        ),
+    )
     expand_document_scope: bool = False
 
 
@@ -252,5 +260,10 @@ class HealthResponse(BaseModel):
     status: str
 
 
-# Re-export QueryResponse for route typing convenience.
-QueryApiResponse = QueryResponse
+class QueryApiResponse(QueryResponse):
+    """QueryResponse plus the server-persisted conversation it was recorded under."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: UUID
+    pending_expand_question: str | None = None

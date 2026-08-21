@@ -14,6 +14,10 @@ from enterprise_rag.application.ingestion.local_pipeline import ProcessRegistere
 from enterprise_rag.application.retrieval import RetrieveEvidenceService
 from enterprise_rag.application.runtime.container import ServiceContainer
 from enterprise_rag.domain.chunks.protocols import ChunkVectorStore
+from enterprise_rag.domain.conversation.protocols import (
+    ChatConversationRepository,
+    ChatProjectRepository,
+)
 from enterprise_rag.domain.graph.protocols import GraphStore
 from enterprise_rag.domain.ingestion.protocols import (
     DocumentRepository,
@@ -43,6 +47,8 @@ from enterprise_rag.infrastructure.persistence.chunks.lexical_qdrant import (
     QdrantHydratingLexicalStore,
 )
 from enterprise_rag.infrastructure.persistence.memory import (
+    InMemoryChatConversationRepository,
+    InMemoryChatProjectRepository,
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
     InMemoryObjectStore,
@@ -154,6 +160,8 @@ def build_local_container(
     tenant_repo: TenantRepository | None = None,
     document_repo: DocumentRepository | None = None,
     ingestion_repo: IngestionRepository | None = None,
+    chat_project_repo: ChatProjectRepository | None = None,
+    chat_conversation_repo: ChatConversationRepository | None = None,
     parsing_audit_repo: ParsingAuditRepository | None = None,
     usage_repo: UsageRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
@@ -171,6 +179,16 @@ def build_local_container(
     tenant_repo = tenant_repo or InMemoryTenantRepository()
     document_repo = document_repo or InMemoryDocumentRepository()
     ingestion_repo = ingestion_repo or InMemoryIngestionRepository()
+    chat_conversation_repo = chat_conversation_repo or InMemoryChatConversationRepository()
+    if chat_project_repo is None:
+        # Link the two in-memory stores so deleting a project can un-file its
+        # conversations itself (the Postgres repo gets this for free from the
+        # real ON DELETE SET NULL foreign key).
+        chat_project_repo = InMemoryChatProjectRepository(
+            chat_conversation_repo
+            if isinstance(chat_conversation_repo, InMemoryChatConversationRepository)
+            else None
+        )
     parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
     usage_repo = usage_repo or InMemoryUsageRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
@@ -308,6 +326,8 @@ def build_local_container(
         tenant_repo=tenant_repo,
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
+        chat_project_repo=chat_project_repo,
+        chat_conversation_repo=chat_conversation_repo,
         object_store=object_store,
         register_source=register,
         retrieve=retrieve,

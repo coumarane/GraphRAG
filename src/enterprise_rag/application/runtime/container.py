@@ -18,6 +18,10 @@ from enterprise_rag.application.generation.query import QueryDocumentsService
 from enterprise_rag.application.ingestion.register_source import RegisterSourceService
 from enterprise_rag.application.retrieval.retrieve import RetrieveEvidenceService
 from enterprise_rag.domain.chunks.protocols import ChunkVectorStore
+from enterprise_rag.domain.conversation.protocols import (
+    ChatConversationRepository,
+    ChatProjectRepository,
+)
 from enterprise_rag.domain.deletion.stages import (
     DeletionOperationStatus,
     ReindexScope,
@@ -72,6 +76,8 @@ class ServiceContainer:
     tenant_repo: TenantRepository | None = None
     document_repo: DocumentRepository | None = None
     ingestion_repo: IngestionRepository | None = None
+    chat_project_repo: ChatProjectRepository | None = None
+    chat_conversation_repo: ChatConversationRepository | None = None
     object_store: ObjectStore | None = None
     register_source: RegisterSourceService | None = None
     retrieve: RetrieveEvidenceService | None = None
@@ -154,6 +160,16 @@ class ServiceContainer:
         if self.ingestion_repo is None:
             raise ConfigurationError("Ingestion repository is not configured")
         return self.ingestion_repo
+
+    def require_chat_project_repo(self) -> ChatProjectRepository:
+        if self.chat_project_repo is None:
+            raise ConfigurationError("Chat project repository is not configured")
+        return self.chat_project_repo
+
+    def require_chat_conversation_repo(self) -> ChatConversationRepository:
+        if self.chat_conversation_repo is None:
+            raise ConfigurationError("Chat conversation repository is not configured")
+        return self.chat_conversation_repo
 
     def require_parsing_audit_repo(self) -> Any:
         if self.parsing_audit_repo is None:

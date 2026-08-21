@@ -89,6 +89,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     tenant_repo: TenantRepository | None = None
     document_repo: DocumentRepository | None = None
     ingestion_repo: IngestionRepository | None = None
+    chat_project_repo = None
+    chat_conversation_repo = None
     parsing_audit_repo = None
     usage_repo = None
     db_session: AsyncSession | None = None
@@ -102,6 +104,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
 
         from enterprise_rag.infrastructure.persistence.postgres import (
             LockedAsyncProxy,
+            SqlAlchemyChatConversationRepository,
+            SqlAlchemyChatProjectRepository,
             SqlAlchemyDocumentRepository,
             SqlAlchemyIngestionRepository,
             SqlAlchemyTenantRepository,
@@ -130,6 +134,12 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         tenant_repo = LockedAsyncProxy(SqlAlchemyTenantRepository(raw_session), db_lock)
         document_repo = LockedAsyncProxy(SqlAlchemyDocumentRepository(raw_session), db_lock)
         ingestion_repo = LockedAsyncProxy(SqlAlchemyIngestionRepository(raw_session), db_lock)
+        chat_project_repo = LockedAsyncProxy(
+            SqlAlchemyChatProjectRepository(raw_session), db_lock
+        )
+        chat_conversation_repo = LockedAsyncProxy(
+            SqlAlchemyChatConversationRepository(raw_session), db_lock
+        )
         parsing_audit_repo = LockedAsyncProxy(
             SqlAlchemyParsingAuditRepository(raw_session), db_lock
         )
@@ -168,6 +178,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         tenant_repo=tenant_repo,
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
+        chat_project_repo=chat_project_repo,
+        chat_conversation_repo=chat_conversation_repo,
         parsing_audit_repo=parsing_audit_repo,
         usage_repo=usage_repo,
         auto_process_ingest=os.environ.get("INGEST_EXECUTION", "worker").strip().lower()

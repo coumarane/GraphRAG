@@ -2,6 +2,8 @@
 
 from enterprise_rag.infrastructure.persistence.postgres.base import Base
 from enterprise_rag.infrastructure.persistence.postgres.repositories import (
+    SqlAlchemyChatConversationRepository,
+    SqlAlchemyChatProjectRepository,
     SqlAlchemyDocumentRepository,
     SqlAlchemyIngestionRepository,
     SqlAlchemyTenantRepository,
@@ -22,6 +24,8 @@ from enterprise_rag.infrastructure.persistence.postgres.session import (
 __all__ = [
     "Base",
     "LockedAsyncProxy",
+    "SqlAlchemyChatConversationRepository",
+    "SqlAlchemyChatProjectRepository",
     "SqlAlchemyDocumentRepository",
     "SqlAlchemyIngestionRepository",
     "SqlAlchemyTenantRepository",

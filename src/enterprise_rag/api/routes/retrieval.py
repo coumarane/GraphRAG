@@ -16,6 +16,8 @@ from enterprise_rag.api.schemas import (
 from enterprise_rag.application.authorization.gate import require_action, reserve_quota
 from enterprise_rag.application.usage.context import usage_context
 from enterprise_rag.domain.authorization.models import Action
+from enterprise_rag.domain.conversation.naming import title_from_question
+from enterprise_rag.domain.conversation.records import ChatConversationRecord, ChatMessageRecord
 from enterprise_rag.domain.ids import new_id
 from enterprise_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
 from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters, RetrievalRequest
@@ -87,6 +89,45 @@ async def query_documents(
     container: ContainerDep,
 ) -> QueryApiResponse:
     require_action(container.require_authorization(), tenant, Action.QUERY_EXECUTE)
+    conv_repo = container.require_chat_conversation_repo()
+
+    if body.conversation_id is not None:
+        conversation = await conv_repo.get_conversation(tenant, body.conversation_id)
+        if conversation is None:
+            # Upsert-on-unknown-id: closes a race between the frontend's
+            # background "create conversation" call (fired when a new chat
+            # starts) and the first message being sent before that call has
+            # landed. Simpler and more robust than client-side promise
+            # tracking, and no less safe — the id is still tenant/owner
+            # scoped from here on.
+            conversation = await conv_repo.create_conversation(
+                tenant,
+                ChatConversationRecord(
+                    conversation_id=body.conversation_id,
+                    tenant_id=tenant.tenant_id,
+                    owner_user_id=tenant.user_id,
+                    mode=body.mode.value,
+                ),
+            )
+    else:
+        conversation = await conv_repo.create_conversation(
+            tenant,
+            ChatConversationRecord(
+                conversation_id=new_id(),
+                tenant_id=tenant.tenant_id,
+                owner_user_id=tenant.user_id,
+                mode=body.mode.value,
+            ),
+        )
+
+    history_records = await conv_repo.list_messages(tenant, conversation.conversation_id)
+    history = [{"role": message.role, "content": message.content} for message in history_records]
+    # body.conversation_history is intentionally never used from here on: once
+    # conversation_id resolves, the server-persisted history is the source of
+    # truth. Honoring a client-sent array in parallel would let a client
+    # inject fabricated prior turns straight into entity-pinning/clarification
+    # prompt construction, and would silently diverge from what's persisted.
+
     reservation = reserve_quota(
         container.require_quotas(),
         tenant,
@@ -117,7 +158,7 @@ async def query_documents(
                     include_graph_paths=body.include_graph_paths,
                     rerank=body.rerank,
                     answer_model_override=body.answer_model_override,
-                    conversation_history=list(body.conversation_history),
+                    conversation_history=history,
                     expand_document_scope=body.expand_document_scope,
                 ),
             )
@@ -128,8 +169,54 @@ async def query_documents(
     except Exception:
         container.require_quotas().release(reservation_id=reservation.reservation_id)
         raise
+
+    response = outcome.response
+    pending = (conversation.pending_expand_question or "").strip()
+    awaiting = "awaiting_scope_expand" in response.warnings
+    next_pending = (
+        (pending if pending and body.expand_document_scope else body.question)
+        if awaiting
+        else None
+    )
+
+    await conv_repo.add_message(
+        tenant,
+        ChatMessageRecord(
+            message_id=new_id(),
+            tenant_id=tenant.tenant_id,
+            conversation_id=conversation.conversation_id,
+            role="user",
+            content=body.question,
+        ),
+    )
+    await conv_repo.add_message(
+        tenant,
+        ChatMessageRecord(
+            message_id=new_id(),
+            tenant_id=tenant.tenant_id,
+            conversation_id=conversation.conversation_id,
+            role="assistant",
+            content=response.answer,
+            citations=[citation.model_dump(mode="json") for citation in response.citations],
+            warnings=list(response.warnings),
+            retrieval_mode=response.retrieval_mode.value,
+            retrieval_trace_id=response.retrieval_trace_id,
+            graph_paths=[path.model_dump(mode="json") for path in response.graph_paths],
+        ),
+    )
+
+    conversation.pending_expand_question = next_pending
+    conversation.conversation_context = response.active_conversation_context
+    if not history_records and conversation.title in ("", "New chat"):
+        conversation.title = title_from_question(body.question)
+    await conv_repo.update_conversation(tenant, conversation)
+
     await container.commit_db()
-    return outcome.response
+    return QueryApiResponse(
+        **response.model_dump(),
+        conversation_id=conversation.conversation_id,
+        pending_expand_question=next_pending,
+    )
 
 
 @router.post("/graph/search", response_model=GraphSearchResponse)
