@@ -208,6 +208,10 @@ Rules:
 - Do NOT compress large visual gaps into similar estimated percentages. If one bar is near the top and others mid/low, lead_strength must be clearly_ahead even if you are unsure of exact %.
 - Also copy values_markdown into tables[] when the chart is a quantitative comparison.
 - For maps / company location slides: OCR every pin label (factories, head office, branches, labs, subsidiaries) into ocr_text and figures.ocr_labels.
+- For logos, letterheads, or company/brand marks (a name next to an emblem,
+  seal, or wordmark — often at the top of the page): transcribe the exact
+  company/organization name and any registered brand name verbatim into
+  ocr_text, in every language shown (native-script and Romanized forms).
 - Do not invent unseen numeric values; approximate rankings from the visual if exact numbers are unreadable.
 """
 

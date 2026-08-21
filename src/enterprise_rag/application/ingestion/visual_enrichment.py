@@ -85,6 +85,12 @@ Rules:
   magnification. Do not invent measurements that are not printed.
 - For charts: capture axes, legend, series, and values_markdown.
 - For photos/product shots: describe appearance, color, texture, packaging text.
+- For logos, letterheads, or company/brand marks (a name next to an emblem,
+  seal, or wordmark — often at the top of a slide or document): transcribe
+  the exact company/organization name and any registered brand name verbatim
+  into ocr_text, in every language shown (e.g. both the native-script and
+  Romanized forms). Treat this as the primary fact to capture even if the
+  rest of the crop is decorative.
 - For scanned images: transcribe readable text faithfully; note unreadable regions.
 - Never invent unseen numeric values.
 """
