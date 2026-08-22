@@ -8,16 +8,16 @@ from collections.abc import AsyncIterator
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.ingestion import DocumentLifecycleStatus, DocumentRecord
-from enterprise_rag.domain.ingestion.records import TenantRecord
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.postgres.base import Base
-from enterprise_rag.infrastructure.persistence.postgres.repositories import (
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.ingestion import DocumentLifecycleStatus, DocumentRecord
+from graph_rag.domain.ingestion.records import TenantRecord
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.postgres.base import Base
+from graph_rag.infrastructure.persistence.postgres.repositories import (
     SqlAlchemyDocumentRepository,
     SqlAlchemyTenantRepository,
 )
-from enterprise_rag.infrastructure.persistence.postgres.session import LockedAsyncProxy
+from graph_rag.infrastructure.persistence.postgres.session import LockedAsyncProxy
 
 
 class _RacyAsyncFake:

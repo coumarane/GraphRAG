@@ -6,12 +6,12 @@ import asyncio
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from enterprise_rag.application.usage.aggregate import aggregate_usage_events
-from enterprise_rag.application.usage.context import usage_context
-from enterprise_rag.application.usage.record import capability_for_role, record_model_usage
-from enterprise_rag.domain.billing.openai_pricing import estimate_usd, get_default_pricing_table
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.models.contracts import (
+from graph_rag.application.usage.aggregate import aggregate_usage_events
+from graph_rag.application.usage.context import usage_context
+from graph_rag.application.usage.record import capability_for_role, record_model_usage
+from graph_rag.domain.billing.openai_pricing import estimate_usd, get_default_pricing_table
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.models.contracts import (
     ChatMessage,
     EmbeddingRequest,
     GenerationRequest,
@@ -19,12 +19,12 @@ from enterprise_rag.domain.models.contracts import (
     ModelRole,
     TokenUsage,
 )
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.domain.usage.models import UsageCapability, UsageEvent
-from enterprise_rag.infrastructure.models.openai_direct import OpenAIChatModel, OpenAIEmbeddingModel
-from enterprise_rag.infrastructure.persistence.memory.usage import InMemoryUsageRepository
-from enterprise_rag.application.runtime.local import build_local_container
-from enterprise_rag.api.app import create_app
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.domain.usage.models import UsageCapability, UsageEvent
+from graph_rag.infrastructure.models.openai_direct import OpenAIChatModel, OpenAIEmbeddingModel
+from graph_rag.infrastructure.persistence.memory.usage import InMemoryUsageRepository
+from graph_rag.application.runtime.local import build_local_container
+from graph_rag.api.app import create_app
 from fastapi.testclient import TestClient
 
 
@@ -181,7 +181,7 @@ def test_record_model_usage_noop_without_context() -> None:
 
 
 def test_ops_usage_endpoint_empty(monkeypatch) -> None:
-    from enterprise_rag.config.settings import clear_settings_cache
+    from graph_rag.config.settings import clear_settings_cache
 
     monkeypatch.setenv("AUTH_ENABLED", "false")
     clear_settings_cache()

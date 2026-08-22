@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from pydantic import SecretStr
 
-from enterprise_rag.config.settings import AzureBlobSettings
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.azure_blob.object_store import AzureBlobObjectStore
+from graph_rag.config.settings import AzureBlobSettings
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.azure_blob.object_store import AzureBlobObjectStore
 
 
 class _FakeBlobClient:

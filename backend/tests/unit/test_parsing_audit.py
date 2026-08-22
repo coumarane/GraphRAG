@@ -6,18 +6,18 @@ from uuid import uuid4
 
 import pytest
 
-from enterprise_rag.application.ingestion.compare_parse_reports import (
+from graph_rag.application.ingestion.compare_parse_reports import (
     CompareParseReportsService,
     diff_snapshots,
 )
-from enterprise_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
-from enterprise_rag.domain.parsing.audit import (
+from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
+from graph_rag.domain.parsing.audit import (
     ContentLossReason,
     ElementProcessingStatus,
     RoutingReasonCode,
 )
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.memory.parsing_audit import (
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.memory.parsing_audit import (
     InMemoryParsingAuditRepository,
 )
 

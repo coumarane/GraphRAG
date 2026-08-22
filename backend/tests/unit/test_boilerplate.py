@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from enterprise_rag.application.chunking.hierarchical import HierarchicalMultimodalChunker
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.domain.elements.models import TextElement
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.parsing.boilerplate import (
+from graph_rag.application.chunking.hierarchical import HierarchicalMultimodalChunker
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.elements.models import TextElement
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.parsing.boilerplate import (
     detect_boilerplate,
     reclassify_boilerplate_elements,
 )
-from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
-from enterprise_rag.domain.tenant import TenantContext
+from graph_rag.domain.parsing.normalize import normalize_parser_result
+from graph_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
+from graph_rag.domain.tenant import TenantContext
 
 
 def test_detect_repeated_footer_across_pages() -> None:

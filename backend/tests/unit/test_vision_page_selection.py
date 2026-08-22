@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from enterprise_rag.application.ingestion.local_pipeline import _select_vision_pages
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
+from graph_rag.application.ingestion.local_pipeline import _select_vision_pages
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
 
 
 def _page(n: int, *, density: float | None = None, coverage: float | None = None) -> RawPage:

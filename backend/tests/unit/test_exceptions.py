@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.shared.exceptions import (
+from graph_rag.shared.exceptions import (
     CitationValidationError,
     ConfigurationError,
     EnterpriseRagError,
@@ -20,7 +20,7 @@ from enterprise_rag.shared.exceptions import (
 def test_base_error_payload() -> None:
     err = EnterpriseRagError("boom", details={"stage": "VALIDATE"})
     payload = err.to_dict()
-    assert payload["code"] == "enterprise_rag_error"
+    assert payload["code"] == "graph_rag_error"
     assert payload["message"] == "boom"
     assert payload["details"]["stage"] == "VALIDATE"
 

@@ -4,4 +4,4 @@ Resumable stages are tracked in PostgreSQL. Workers dequeue tasks, execute stage
 
 Key stages: register → inspect → parse → enrich modalities → chunk → embed → index vectors → extract/project graph → finalize.
 
-CLI: `enterprise-rag ingest SOURCE --tenant-id demo --wait`
+CLI: `graph-rag ingest SOURCE --tenant-id demo --wait`

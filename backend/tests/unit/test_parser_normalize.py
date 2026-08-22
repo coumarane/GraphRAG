@@ -4,23 +4,23 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.domain.parsing.normalize import empty_parse_source, normalize_parser_result
-from enterprise_rag.domain.parsing.types import (
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.parsing.normalize import empty_parse_source, normalize_parser_result
+from graph_rag.domain.parsing.types import (
     ParseOptions,
     ParserName,
     RawElement,
     RawPage,
     RawParserResult,
 )
-from enterprise_rag.infrastructure.parsers.convert import dict_to_raw_result
-from enterprise_rag.infrastructure.parsers.docling import DoclingParser
-from enterprise_rag.infrastructure.parsers.marker import MarkerParser
-from enterprise_rag.infrastructure.parsers.mineru import MinerUParser
-from enterprise_rag.infrastructure.parsers.paddleocr import PaddleOCRParser
-from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
-from enterprise_rag.infrastructure.parsers.text import TextDocumentParser
-from enterprise_rag.shared.exceptions import ParserError
+from graph_rag.infrastructure.parsers.convert import dict_to_raw_result
+from graph_rag.infrastructure.parsers.docling import DoclingParser
+from graph_rag.infrastructure.parsers.marker import MarkerParser
+from graph_rag.infrastructure.parsers.mineru import MinerUParser
+from graph_rag.infrastructure.parsers.paddleocr import PaddleOCRParser
+from graph_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
+from graph_rag.infrastructure.parsers.text import TextDocumentParser
+from graph_rag.shared.exceptions import ParserError
 from tests.unit.contract_support import assert_matches_contract
 
 
@@ -148,7 +148,7 @@ async def test_docling_adapter_with_injected_convert() -> None:
 def test_docling_page_helpers_use_provenance() -> None:
     from types import SimpleNamespace
 
-    from enterprise_rag.infrastructure.parsers.docling.adapter import (
+    from graph_rag.infrastructure.parsers.docling.adapter import (
         _map_label,
         _page_from_item,
     )

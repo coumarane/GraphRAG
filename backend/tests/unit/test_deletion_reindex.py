@@ -4,32 +4,32 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
-from enterprise_rag.application.deletion import DeleteDocumentService, ReindexScope
-from enterprise_rag.application.graph import BuildKnowledgeGraphService
-from enterprise_rag.application.runtime import build_local_container
-from enterprise_rag.domain.deletion import orphan_shared_entity_ids, related_shared_entity_ids
-from enterprise_rag.domain.documents import NormalizedDocument, NormalizedPage, ParserInfo
-from enterprise_rag.domain.elements import HeadingElement, TextElement
-from enterprise_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
-from enterprise_rag.domain.graph.vocabulary import (
+from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.deletion import DeleteDocumentService, ReindexScope
+from graph_rag.application.graph import BuildKnowledgeGraphService
+from graph_rag.application.runtime import build_local_container
+from graph_rag.domain.deletion import orphan_shared_entity_ids, related_shared_entity_ids
+from graph_rag.domain.documents import NormalizedDocument, NormalizedPage, ParserInfo
+from graph_rag.domain.elements import HeadingElement, TextElement
+from graph_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
+from graph_rag.domain.graph.vocabulary import (
     SemanticNodeLabel,
     SemanticRelationshipType,
     StructuralNodeLabel,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.ingestion.records import DocumentRecord, DocumentVersionRecord
-from enterprise_rag.domain.ingestion.stages import DocumentLifecycleStatus
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.cache import InMemoryCacheInvalidator
-from enterprise_rag.infrastructure.models import FakeEmbeddingModel, FakeStructuredExtractor
-from enterprise_rag.infrastructure.persistence.chunks import InMemoryChunkLookupStore
-from enterprise_rag.infrastructure.persistence.memory import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.ingestion.records import DocumentRecord, DocumentVersionRecord
+from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.cache import InMemoryCacheInvalidator
+from graph_rag.infrastructure.models import FakeEmbeddingModel, FakeStructuredExtractor
+from graph_rag.infrastructure.persistence.chunks import InMemoryChunkLookupStore
+from graph_rag.infrastructure.persistence.memory import (
     InMemoryDocumentRepository,
     InMemoryObjectStore,
 )
-from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
 
 
 def _hash(text: str) -> str:

@@ -13,14 +13,14 @@ uv run mypy src
 uv run pytest tests/unit
 
 # API (in-memory object store by default)
-uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
+uv run uvicorn graph_rag.api.app:get_app --factory --reload
 
 # Persist uploads to MinIO locally (requires MinIO running)
-# OBJECT_STORE_BACKEND=minio uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
+# OBJECT_STORE_BACKEND=minio uv run uvicorn graph_rag.api.app:get_app --factory --reload
 
 # CLI against local container
-uv run enterprise-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait --output json
-uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
+uv run graph-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait --output json
+uv run graph-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 
 # Web UI (proxies to the API; http://localhost:3000)
 cd ../frontend && npm install && npm run dev
@@ -38,8 +38,8 @@ docker compose config
 docker compose up -d --wait
 # UI: http://localhost:3000  · API docs: http://localhost:8000/docs
 cd backend
-uv run enterprise-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait
-uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
+uv run graph-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait
+uv run graph-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 ```
 
 Optional GPU worker profile (does not change the default CPU stack):
@@ -52,12 +52,12 @@ docker compose --profile gpu up -d worker-gpu
 
 | Path | Role |
 |---|---|
-| `backend/` | Python API + worker + CLI (`src/enterprise_rag/`), migrations (`alembic/`), config, tests, Dockerfiles (`docker/`) |
+| `backend/` | Python API + worker + CLI (`src/graph_rag/`), migrations (`alembic/`), config, tests, Dockerfiles (`docker/`) |
 | `frontend/` | Next.js upload / query / graph UI |
 | `infra/` | Ansible, Terraform, Kubernetes, ArgoCD, Harbor |
 | `docs/` | Architecture, evaluation, troubleshooting; `docs/specs/` product/engineering specs; `docs/notes/` working notes |
 | `data/` | `examples/` smoke-test document, `evaluation/` versioned corpus + questions, `reports/` generated reports, `samples/` local business PDFs (gitignored) |
-| `backend/contracts/` | Stable interface contracts |
+| `docs/contracts/` | Stable interface contracts |
 
 ## Evaluation
 
@@ -69,4 +69,4 @@ See [docs/evaluation.md](docs/evaluation.md).
 
 ## Spec-driven implementation
 
-Authoritative guidance lives in `docs/notes/CURSOR.md` and `docs/specs/18-implementation-roadmap.md`. Prefer `backend/contracts/` over narrative specs when they diverge.
+Authoritative guidance lives in `docs/notes/CURSOR.md` and `docs/specs/18-implementation-roadmap.md`. Prefer `docs/contracts/` over narrative specs when they diverge.

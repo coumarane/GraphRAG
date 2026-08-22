@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.application.runtime.local import build_local_container
-from enterprise_rag.application.runtime.runtime import (
+from graph_rag.application.runtime.local import build_local_container
+from graph_rag.application.runtime.runtime import (
     build_runtime_container,
     object_store_backend,
 )
-from enterprise_rag.config.settings import Settings
-from enterprise_rag.infrastructure.persistence.memory import InMemoryObjectStore
-from enterprise_rag.infrastructure.persistence.minio import MinioObjectStore
+from graph_rag.config.settings import Settings
+from graph_rag.infrastructure.persistence.memory import InMemoryObjectStore
+from graph_rag.infrastructure.persistence.minio import MinioObjectStore
 
 
 def test_object_store_backend_defaults_to_memory(monkeypatch: pytest.MonkeyPatch) -> None:

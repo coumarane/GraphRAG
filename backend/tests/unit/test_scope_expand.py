@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from enterprise_rag.domain.conversation.scope_expand import (
+from graph_rag.domain.conversation.scope_expand import (
     answer_looks_like_abstention,
     build_scope_miss_message,
     detect_scope_expand_from_history,

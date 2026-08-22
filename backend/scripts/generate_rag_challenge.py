@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
-from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource
+from graph_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
+from graph_rag.domain.parsing.normalize import normalize_parser_result
+from graph_rag.domain.parsing.types import ParseSource
 
 
 def _questions_for_text(document_id: str, filename: str, page: int, text: str) -> list[dict[str, Any]]:

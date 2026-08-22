@@ -10,17 +10,17 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from enterprise_rag.api.app import create_app
-from enterprise_rag.application.runtime import ElementView, build_local_container
-from enterprise_rag.cli.main import app as cli_app
-from enterprise_rag.cli.main import set_container
-from enterprise_rag.domain.ids import deterministic_id, new_id
-from enterprise_rag.domain.modality import Modality
+from graph_rag.api.app import create_app
+from graph_rag.application.runtime import ElementView, build_local_container
+from graph_rag.cli.main import app as cli_app
+from graph_rag.cli.main import set_container
+from graph_rag.domain.ids import deterministic_id, new_id
+from graph_rag.domain.modality import Modality
 
 
 @pytest.fixture
 def container(monkeypatch: pytest.MonkeyPatch):
-    from enterprise_rag.config.settings import clear_settings_cache
+    from graph_rag.config.settings import clear_settings_cache
 
     monkeypatch.setenv("AUTH_ENABLED", "false")
     clear_settings_cache()

@@ -1,0 +1,189 @@
+"""Repository ports for PostgreSQL lifecycle persistence.
+
+Every tenant-owned method requires ``TenantContext``.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol
+from uuid import UUID
+
+from graph_rag.domain.ingestion.records import (
+    DocumentRecord,
+    DocumentVersionRecord,
+    IngestionRunRecord,
+    IngestionStageRecord,
+    ParserAttemptRecord,
+    TenantRecord,
+)
+from graph_rag.domain.ingestion.stages import IngestionStageName
+from graph_rag.domain.tenant import TenantContext
+
+
+class TenantRepository(Protocol):
+    """Tenant registry port."""
+
+    async def upsert(self, tenant: TenantRecord) -> TenantRecord:
+        """Create or update a tenant."""
+        ...
+
+    async def get_by_id(self, tenant_id: UUID) -> TenantRecord | None:
+        """Fetch tenant by id."""
+        ...
+
+    async def get_by_key(self, tenant_key: str) -> TenantRecord | None:
+        """Fetch tenant by human-readable key."""
+        ...
+
+
+class DocumentRepository(Protocol):
+    """Document and version port."""
+
+    async def create_document(
+        self,
+        tenant: TenantContext,
+        document: DocumentRecord,
+    ) -> DocumentRecord:
+        """Insert a document for the authorized tenant."""
+        ...
+
+    async def get_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> DocumentRecord | None:
+        """Fetch a tenant-scoped document."""
+        ...
+
+    async def list_documents(
+        self,
+        tenant: TenantContext,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[DocumentRecord], int]:
+        """List tenant-scoped documents (newest first when timestamps exist)."""
+        ...
+
+    async def update_document(
+        self,
+        tenant: TenantContext,
+        document: DocumentRecord,
+    ) -> DocumentRecord:
+        """Update a tenant-scoped document."""
+        ...
+
+    async def create_version(
+        self,
+        tenant: TenantContext,
+        version: DocumentVersionRecord,
+    ) -> DocumentVersionRecord:
+        """Insert a document version."""
+        ...
+
+    async def get_version(
+        self,
+        tenant: TenantContext,
+        version_id: UUID,
+    ) -> DocumentVersionRecord | None:
+        """Fetch a tenant-scoped document version."""
+        ...
+
+    async def get_version_by_content_hash(
+        self,
+        tenant: TenantContext,
+        document_id: UUID | None,
+        content_hash: str,
+    ) -> DocumentVersionRecord | None:
+        """Find a version by content hash.
+
+        When ``document_id`` is set, search is limited to that document.
+        When ``document_id`` is ``None``, search is tenant-wide.
+        """
+        ...
+
+    async def lock_for_content_hash(
+        self,
+        tenant: TenantContext,
+        content_hash: str,
+    ) -> None:
+        """Acquire a transaction-scoped lock for duplicate detection."""
+        ...
+
+
+class IngestionRepository(Protocol):
+    """Ingestion run and stage port."""
+
+    async def create_run(
+        self,
+        tenant: TenantContext,
+        run: IngestionRunRecord,
+        stages: list[IngestionStageRecord],
+    ) -> IngestionRunRecord:
+        """Persist a new run with its stage rows."""
+        ...
+
+    async def get_run(
+        self,
+        tenant: TenantContext,
+        ingestion_run_id: UUID,
+    ) -> IngestionRunRecord | None:
+        """Fetch a tenant-scoped ingestion run."""
+        ...
+
+    async def get_latest_run_for_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> IngestionRunRecord | None:
+        """Fetch the most recently created run for a document, if any."""
+        ...
+
+    async def update_run(
+        self,
+        tenant: TenantContext,
+        run: IngestionRunRecord,
+    ) -> IngestionRunRecord:
+        """Update run lifecycle fields."""
+        ...
+
+    async def list_stages(
+        self,
+        tenant: TenantContext,
+        ingestion_run_id: UUID,
+    ) -> list[IngestionStageRecord]:
+        """List stages for a run ordered by pipeline position."""
+        ...
+
+    async def get_stage(
+        self,
+        tenant: TenantContext,
+        ingestion_run_id: UUID,
+        stage: IngestionStageName,
+    ) -> IngestionStageRecord | None:
+        """Fetch one stage row."""
+        ...
+
+    async def update_stage(
+        self,
+        tenant: TenantContext,
+        stage: IngestionStageRecord,
+    ) -> IngestionStageRecord:
+        """Update a stage row."""
+        ...
+
+    async def add_parser_attempt(
+        self,
+        tenant: TenantContext,
+        attempt: ParserAttemptRecord,
+    ) -> ParserAttemptRecord:
+        """Append a parser attempt audit row."""
+        ...
+
+    async def list_parser_attempts(
+        self,
+        tenant: TenantContext,
+        ingestion_run_id: UUID,
+    ) -> list[ParserAttemptRecord]:
+        """List parser attempts for a run."""
+        ...

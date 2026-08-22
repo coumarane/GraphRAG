@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator
 
-CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "contracts"
+CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "docs" / "contracts"
 
 
 @lru_cache(maxsize=16)

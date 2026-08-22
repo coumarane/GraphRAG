@@ -13,7 +13,7 @@ export type AuthSession = {
   };
 };
 
-const SESSION_KEY = "enterprise-rag-session";
+const SESSION_KEY = "graph-rag-session";
 
 export function cacheSession(session: AuthSession | null): void {
   if (typeof window === "undefined") return;

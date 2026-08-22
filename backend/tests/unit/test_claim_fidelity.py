@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from enterprise_rag.application.generation.prompts import build_answer_messages
-from enterprise_rag.domain.citations.registry import CitationRegistry
-from enterprise_rag.domain.generation.claim_fidelity import (
+from graph_rag.application.generation.prompts import build_answer_messages
+from graph_rag.domain.citations.registry import CitationRegistry
+from graph_rag.domain.generation.claim_fidelity import (
     CLAIM_STRENGTH_OVERREACH,
     build_claim_fidelity_hint,
     detect_claim_strength_overreach,
     question_asks_normative_value,
 )
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.retrieval.models import RetrievedEvidence
-from enterprise_rag.domain.tenant import TenantContext
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.retrieval.models import RetrievedEvidence
+from graph_rag.domain.tenant import TenantContext
 
 
 def _evidence(text: str) -> RetrievedEvidence:

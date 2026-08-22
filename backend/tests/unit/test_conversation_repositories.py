@@ -13,29 +13,29 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from enterprise_rag.domain.auth.models import UserRecord
-from enterprise_rag.domain.conversation.records import (
+from graph_rag.domain.auth.models import UserRecord
+from graph_rag.domain.conversation.records import (
     ChatConversationRecord,
     ChatMessageRecord,
     ChatProjectRecord,
 )
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.ingestion.records import TenantRecord
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.memory.conversations import (
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.ingestion.records import TenantRecord
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.memory.conversations import (
     InMemoryChatConversationRepository,
     InMemoryChatProjectRepository,
 )
-from enterprise_rag.infrastructure.persistence.postgres.base import Base
-from enterprise_rag.infrastructure.persistence.postgres.repositories.conversations import (
+from graph_rag.infrastructure.persistence.postgres.base import Base
+from graph_rag.infrastructure.persistence.postgres.repositories.conversations import (
     SqlAlchemyChatConversationRepository,
     SqlAlchemyChatProjectRepository,
 )
-from enterprise_rag.infrastructure.persistence.postgres.repositories.documents import (
+from graph_rag.infrastructure.persistence.postgres.repositories.documents import (
     SqlAlchemyTenantRepository,
 )
-from enterprise_rag.infrastructure.persistence.users import SqlAlchemyUserRepository
-from enterprise_rag.shared.exceptions import PermanentError
+from graph_rag.infrastructure.persistence.users import SqlAlchemyUserRepository
+from graph_rag.shared.exceptions import PermanentError
 
 
 @pytest.fixture

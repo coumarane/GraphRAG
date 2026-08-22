@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from enterprise_rag.domain.conversation.conversation_context import (
+from graph_rag.domain.conversation.conversation_context import (
     infer_context_entities,
     match_document_ids_for_entities,
     normalize_title,
 )
-from enterprise_rag.domain.conversation.context_resolver import QueryContextResolver
+from graph_rag.domain.conversation.context_resolver import QueryContextResolver
 
 
 def test_match_sy_knp_entity_to_presentation_title() -> None:

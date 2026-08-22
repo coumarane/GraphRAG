@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.application.multimodal import EnrichDocumentService
-from enterprise_rag.config.settings import MultimodalSettings
-from enterprise_rag.domain.documents import NormalizedDocument, ParserInfo
-from enterprise_rag.domain.elements import (
+from graph_rag.application.multimodal import EnrichDocumentService
+from graph_rag.config.settings import MultimodalSettings
+from graph_rag.domain.documents import NormalizedDocument, ParserInfo
+from graph_rag.domain.elements import (
     CaptionElement,
     ChartElement,
     EquationElement,
@@ -18,9 +18,9 @@ from enterprise_rag.domain.elements import (
     TableElement,
     TextElement,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.multimodal import ContextBuilderConfig, ElementContextBuilder
-from enterprise_rag.infrastructure.models import FakeStructuredExtractor, FakeTokenCounter
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.multimodal import ContextBuilderConfig, ElementContextBuilder
+from graph_rag.infrastructure.models import FakeStructuredExtractor, FakeTokenCounter
 
 
 def _hash(text: str) -> str:

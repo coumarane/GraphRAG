@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from enterprise_rag.domain.conversation.context_resolver import (
+from graph_rag.domain.conversation.context_resolver import (
     ConversationTurn,
     QueryContextResolver,
 )
-from enterprise_rag.domain.conversation.entity_clarification import (
+from graph_rag.domain.conversation.entity_clarification import (
     bind_entity_to_question,
     clarification_options,
     detect_clarification_resume,

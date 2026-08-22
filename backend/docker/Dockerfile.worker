@@ -26,4 +26,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 USER app
 
-CMD ["enterprise-rag", "worker", "--poll-interval", "1.0"]
+CMD ["graph-rag", "worker", "--poll-interval", "1.0"]

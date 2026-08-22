@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from enterprise_rag.domain.retrieval.condition_facets import extract_condition_facets
-from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
+from graph_rag.domain.retrieval.condition_facets import extract_condition_facets
+from graph_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
 
 
 def test_extract_pdf_splits_single_newline_pages() -> None:

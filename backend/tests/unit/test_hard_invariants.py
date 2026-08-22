@@ -6,17 +6,17 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from enterprise_rag.domain.conversation.scope_expand import AWAITING_SCOPE_EXPAND
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.policies import (
+from graph_rag.domain.conversation.scope_expand import AWAITING_SCOPE_EXPAND
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.policies import (
     HARD_INVARIANTS,
     HardInvariant,
     HardInvariantGate,
     InvariantVerdict,
 )
-from enterprise_rag.domain.retrieval.models import RetrievedEvidence
-from enterprise_rag.domain.tenant import TenantContext
+from graph_rag.domain.retrieval.models import RetrievedEvidence
+from graph_rag.domain.tenant import TenantContext
 
 
 def _evidence(text: str, *, score: float = 0.5, document_id: UUID | None = None) -> RetrievedEvidence:
@@ -139,20 +139,20 @@ async def test_query_service_returns_enforced_invariants() -> None:
     """Smoke: successful query lists hard invariants on the response."""
     import json
 
-    from enterprise_rag.application.chunking import EmbedChunksService
-    from enterprise_rag.application.generation.generate_answer import GenerateAnswerService
-    from enterprise_rag.application.generation.query import QueryDocumentsService
-    from enterprise_rag.application.retrieval.retrieve import RetrieveEvidenceService
-    from enterprise_rag.domain.chunks.models import ChunkBase, ChunkType
-    from enterprise_rag.domain.ids import content_sha256_hex
-    from enterprise_rag.domain.retrieval.enums import RetrievalMode
-    from enterprise_rag.domain.retrieval.models import QueryRequest
-    from enterprise_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel, FakeReranker
-    from enterprise_rag.infrastructure.persistence.chunks import (
+    from graph_rag.application.chunking import EmbedChunksService
+    from graph_rag.application.generation.generate_answer import GenerateAnswerService
+    from graph_rag.application.generation.query import QueryDocumentsService
+    from graph_rag.application.retrieval.retrieve import RetrieveEvidenceService
+    from graph_rag.domain.chunks.models import ChunkBase, ChunkType
+    from graph_rag.domain.ids import content_sha256_hex
+    from graph_rag.domain.retrieval.enums import RetrievalMode
+    from graph_rag.domain.retrieval.models import QueryRequest
+    from graph_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel, FakeReranker
+    from graph_rag.infrastructure.persistence.chunks import (
         InMemoryChunkLookupStore,
         InMemoryLexicalSearchStore,
     )
-    from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+    from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
 
     tenant = TenantContext(tenant_id=new_id())
     doc_id = new_id()

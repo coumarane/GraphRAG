@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from enterprise_rag.domain.parsing.routing import recommend_from_inspection
-from enterprise_rag.domain.parsing.types import ParseSource, ParserName
-from enterprise_rag.infrastructure.parsers.pdfium.inspector import PdfiumInspector
+from graph_rag.domain.parsing.routing import recommend_from_inspection
+from graph_rag.domain.parsing.types import ParseSource, ParserName
+from graph_rag.infrastructure.parsers.pdfium.inspector import PdfiumInspector
 
 _TABLE_RE = re.compile(
     r"(?i)\b(inci|cas|specification|item|unit|value|density|viscosity|"
@@ -216,7 +216,7 @@ def _parser_available(name: str) -> bool:
 
 async def _try_parser_compare(path: Path, data: bytes) -> dict[str, Any]:
     """Best-effort parser comparison; mark unavailable parsers as NEEDS_REVIEW."""
-    from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService
+    from graph_rag.infrastructure.parsers.registry import ParseDocumentService
 
     results: dict[str, Any] = {}
     service = ParseDocumentService()
@@ -243,7 +243,7 @@ async def _try_parser_compare(path: Path, data: bytes) -> dict[str, Any]:
             continue
         started = time.perf_counter()
         try:
-            from enterprise_rag.domain.parsing.types import ParseOptions
+            from graph_rag.domain.parsing.types import ParseOptions
 
             raw = await service.parse_raw(
                 source,
@@ -357,7 +357,7 @@ async def analyze_one(
         )]],
     }
     # Candidate list from profile defaults.
-    from enterprise_rag.domain.parsing.routing import DEFAULT_ROUTE_PROFILES
+    from graph_rag.domain.parsing.routing import DEFAULT_ROUTE_PROFILES
 
     route = DEFAULT_ROUTE_PROFILES.get(profile)
     if route:

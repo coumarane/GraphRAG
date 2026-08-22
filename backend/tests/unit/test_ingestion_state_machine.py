@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.ingestion import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.ingestion import (
     INGESTION_STAGE_ORDER,
     IngestionRunStatus,
     IngestionStageName,
@@ -13,7 +13,7 @@ from enterprise_rag.domain.ingestion import (
     StageStatus,
     build_persisted_stage_records,
 )
-from enterprise_rag.shared.exceptions import IngestionError
+from graph_rag.shared.exceptions import IngestionError
 
 
 def test_pipeline_has_twenty_two_stages() -> None:

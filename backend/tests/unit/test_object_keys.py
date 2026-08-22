@@ -6,13 +6,13 @@ from uuid import uuid4
 
 import pytest
 
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.storage import (
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.storage import (
     assert_tenant_object_prefix,
     original_object_key,
     sanitize_filename,
 )
-from enterprise_rag.shared.exceptions import ValidationError
+from graph_rag.shared.exceptions import ValidationError
 
 
 def test_sanitize_filename_strips_paths() -> None:

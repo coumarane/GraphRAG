@@ -10,12 +10,12 @@ import re
 from pathlib import Path
 from uuid import UUID
 
-from enterprise_rag.application.ingestion import RegisterSourceRequest
-from enterprise_rag.application.runtime.runtime import build_runtime_container
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
-from enterprise_rag.domain.tenant import TenantContext
+from graph_rag.application.ingestion import RegisterSourceRequest
+from graph_rag.application.runtime.runtime import build_runtime_container
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
+from graph_rag.domain.tenant import TenantContext
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "sample_data"

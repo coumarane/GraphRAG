@@ -36,23 +36,23 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-from enterprise_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
-from enterprise_rag.application.generation import GenerateAnswerService, QueryDocumentsService
-from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
-from enterprise_rag.application.retrieval import RetrieveEvidenceService
-from enterprise_rag.domain.conversation import ConversationState
-from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel
-from enterprise_rag.infrastructure.persistence.chunks import (
+from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.generation import GenerateAnswerService, QueryDocumentsService
+from graph_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
+from graph_rag.application.retrieval import RetrieveEvidenceService
+from graph_rag.domain.conversation import ConversationState
+from graph_rag.domain.parsing.normalize import normalize_parser_result
+from graph_rag.domain.parsing.types import ParseSource
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel
+from graph_rag.infrastructure.persistence.chunks import (
     InMemoryChunkLookupStore,
     InMemoryLexicalSearchStore,
 )
-from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
 
 
 def _collect_pdfs(path: Path) -> list[Path]:
@@ -182,7 +182,7 @@ async def ingest_pdfs(
     lexical = InMemoryLexicalSearchStore()
     graph = InMemoryGraphStore()
     if live:
-        from enterprise_rag.infrastructure.models import OpenAIChatModel, OpenAIEmbeddingModel
+        from graph_rag.infrastructure.models import OpenAIChatModel, OpenAIEmbeddingModel
 
         embedder = OpenAIEmbeddingModel()
         chat = OpenAIChatModel()

@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.application.chunking import HierarchicalMultimodalChunker
-from enterprise_rag.application.graph import BuildKnowledgeGraphService
-from enterprise_rag.domain.documents import NormalizedDocument, ParserInfo
-from enterprise_rag.domain.documents.components import DocumentSection, NormalizedPage
-from enterprise_rag.domain.elements import (
+from graph_rag.application.chunking import HierarchicalMultimodalChunker
+from graph_rag.application.graph import BuildKnowledgeGraphService
+from graph_rag.domain.documents import NormalizedDocument, ParserInfo
+from graph_rag.domain.documents.components import DocumentSection, NormalizedPage
+from graph_rag.domain.elements import (
     CaptionElement,
     HeadingElement,
     ImageElement,
     TextElement,
 )
-from enterprise_rag.domain.graph import (
+from graph_rag.domain.graph import (
     EntityResolver,
     EntityType,
     ExtractedEntity,
@@ -26,12 +26,12 @@ from enterprise_rag.domain.graph import (
     merge_node_cypher,
     normalize_entity_name,
 )
-from enterprise_rag.domain.graph.cypher_safety import assert_relationship_type
-from enterprise_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import FakeStructuredExtractor
-from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
-from enterprise_rag.shared.exceptions import ValidationError
+from graph_rag.domain.graph.cypher_safety import assert_relationship_type
+from graph_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import FakeStructuredExtractor
+from graph_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
+from graph_rag.shared.exceptions import ValidationError
 
 
 def _hash(text: str) -> str:

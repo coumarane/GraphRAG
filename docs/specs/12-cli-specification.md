@@ -1,11 +1,11 @@
 # 12 — CLI Specification
 
-Use Typer. Provide package command `enterprise-rag` and compatibility scripts under `scripts/`.
+Use Typer. Provide package command `graph-rag` and compatibility scripts under `scripts/`.
 
 ## Ingest
 
 ```bash
-enterprise-rag ingest SOURCE \
+graph-rag ingest SOURCE \
   --tenant-id demo \
   --parser auto \
   --parser-profile balanced \
@@ -39,7 +39,7 @@ Arguments:
 ## Query
 
 ```bash
-enterprise-rag query "Compare the particle-size charts" \
+graph-rag query "Compare the particle-size charts" \
   --tenant-id demo \
   --mode mix \
   --include-images \

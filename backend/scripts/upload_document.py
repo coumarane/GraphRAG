@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper: upload/ingest a document via enterprise-rag CLI."""
+"""Compatibility wrapper: upload/ingest a document via graph-rag CLI."""
 
 from __future__ import annotations
 
 import sys
 
-from enterprise_rag.cli.main import app
+from graph_rag.cli.main import app
 
 
 def main() -> None:
-    # Rewrite to `enterprise-rag ingest ...` while preserving argv tail.
+    # Rewrite to `graph-rag ingest ...` while preserving argv tail.
     sys.argv = [sys.argv[0], "ingest", *sys.argv[1:]]
     app()
 

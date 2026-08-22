@@ -6,26 +6,26 @@ from uuid import uuid4
 
 import pytest
 
-from enterprise_rag.application.chunking import EmbedChunksService
-from enterprise_rag.application.generation.generate_answer import GenerateAnswerService
-from enterprise_rag.application.generation.query import QueryDocumentsService
-from enterprise_rag.application.retrieval.retrieve import RetrieveEvidenceService
-from enterprise_rag.domain.chunks.models import ChunkBase, ChunkType
-from enterprise_rag.domain.conversation.scope_expand import (
+from graph_rag.application.chunking import EmbedChunksService
+from graph_rag.application.generation.generate_answer import GenerateAnswerService
+from graph_rag.application.generation.query import QueryDocumentsService
+from graph_rag.application.retrieval.retrieve import RetrieveEvidenceService
+from graph_rag.domain.chunks.models import ChunkBase, ChunkType
+from graph_rag.domain.conversation.scope_expand import (
     AWAITING_SCOPE_EXPAND,
     DOCUMENT_SCOPE_EXPANDED,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel, FakeReranker
-from enterprise_rag.infrastructure.persistence.chunks import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel, FakeReranker
+from graph_rag.infrastructure.persistence.chunks import (
     InMemoryChunkLookupStore,
     InMemoryLexicalSearchStore,
 )
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
 
 
 def _hash(text: str) -> str:

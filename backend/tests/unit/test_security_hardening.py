@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from enterprise_rag.application.generation.prompts import SYSTEM_PROMPT, build_answer_messages
-from enterprise_rag.domain.citations.registry import CitationRegistry
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.security import (
+from graph_rag.application.generation.prompts import SYSTEM_PROMPT, build_answer_messages
+from graph_rag.domain.citations.registry import CitationRegistry
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.security import (
     DOCUMENT_CONTEXT_END,
     DOCUMENT_CONTEXT_START,
     EVIDENCE_END,
@@ -22,17 +22,17 @@ from enterprise_rag.domain.security import (
     wrap_untrusted_document_text,
     wrap_untrusted_evidence,
 )
-from enterprise_rag.domain.storage.limits import assert_safe_zip_archive, assert_within_page_limit
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.intake.mime_detection import detect_mime_type
-from enterprise_rag.infrastructure.intake.source_loader import DefaultSourceLoader
-from enterprise_rag.infrastructure.parsers.base import run_parser_sync
-from enterprise_rag.infrastructure.security import (
+from graph_rag.domain.storage.limits import assert_safe_zip_archive, assert_within_page_limit
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.intake.mime_detection import detect_mime_type
+from graph_rag.infrastructure.intake.source_loader import DefaultSourceLoader
+from graph_rag.infrastructure.parsers.base import run_parser_sync
+from graph_rag.infrastructure.security import (
     ConcurrencyLimiter,
     RejectingMalwareScanner,
     ensure_clean,
 )
-from enterprise_rag.shared.exceptions import (
+from graph_rag.shared.exceptions import (
     TransientError,
     UnsupportedDocumentError,
     ValidationError,
@@ -90,7 +90,7 @@ async def test_malware_scanner_hook_rejects_upload(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_ensure_clean_noop_passes() -> None:
-    from enterprise_rag.infrastructure.security import NoOpMalwareScanner
+    from graph_rag.infrastructure.security import NoOpMalwareScanner
 
     result = await ensure_clean(NoOpMalwareScanner(), b"%PDF", filename="a.pdf")
     assert result.clean is True

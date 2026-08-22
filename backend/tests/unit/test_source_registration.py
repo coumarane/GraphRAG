@@ -8,18 +8,18 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from enterprise_rag.application.ingestion import RegisterSourceRequest, RegisterSourceService
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.storage.protocols import StoredObject
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.intake.source_loader import DefaultSourceLoader
-from enterprise_rag.infrastructure.persistence.postgres.base import Base
-from enterprise_rag.infrastructure.persistence.postgres.repositories import (
+from graph_rag.application.ingestion import RegisterSourceRequest, RegisterSourceService
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.storage.protocols import StoredObject
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.intake.source_loader import DefaultSourceLoader
+from graph_rag.infrastructure.persistence.postgres.base import Base
+from graph_rag.infrastructure.persistence.postgres.repositories import (
     SqlAlchemyDocumentRepository,
     SqlAlchemyIngestionRepository,
     SqlAlchemyTenantRepository,
 )
-from enterprise_rag.shared.exceptions import ConflictError
+from graph_rag.shared.exceptions import ConflictError
 
 
 class InMemoryObjectStore:

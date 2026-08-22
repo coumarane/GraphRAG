@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from enterprise_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
+from graph_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
 
 
 def test_new_id_is_uuid_version_7() -> None:

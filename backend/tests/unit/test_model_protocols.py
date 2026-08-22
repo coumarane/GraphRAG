@@ -7,7 +7,7 @@ from typing import get_type_hints
 
 from pydantic import BaseModel
 
-from enterprise_rag.domain.models import (
+from graph_rag.domain.models import (
     ChatModel,
     EmbeddingModel,
     EmbeddingRequest,

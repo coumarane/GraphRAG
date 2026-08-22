@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enterprise_rag import __version__
+from graph_rag import __version__
 
 
 def test_version_is_semver_like() -> None:

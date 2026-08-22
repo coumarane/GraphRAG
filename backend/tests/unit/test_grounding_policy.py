@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from enterprise_rag.application.generation.prompts import SYSTEM_PROMPT, build_answer_messages
-from enterprise_rag.domain.citations.registry import CitationRegistry
-from enterprise_rag.domain.generation.grounding_policy import (
+from graph_rag.application.generation.prompts import SYSTEM_PROMPT, build_answer_messages
+from graph_rag.domain.citations.registry import CitationRegistry
+from graph_rag.domain.generation.grounding_policy import (
     CONFLICTING_EVIDENCE,
     EvidenceSufficiency,
     assess_evidence,
     detect_numeric_conflicts,
     filter_grounded_graph_paths,
 )
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.retrieval.models import GraphPath, RetrievedEvidence
-from enterprise_rag.domain.tenant import TenantContext
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.retrieval.models import GraphPath, RetrievedEvidence
+from graph_rag.domain.tenant import TenantContext
 
 
 def _ev(text: str, *, name: str, score: float = 0.8) -> RetrievedEvidence:

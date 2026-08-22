@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from enterprise_rag.application.runtime import build_local_container
-from enterprise_rag.application.ingestion.register_source import RegisterSourceRequest
-from enterprise_rag.domain.ingestion.stages import IngestionRunStatus
+from graph_rag.application.runtime import build_local_container
+from graph_rag.application.ingestion.register_source import RegisterSourceRequest
+from graph_rag.domain.ingestion.stages import IngestionRunStatus
 
 
 @pytest.mark.asyncio

@@ -6,35 +6,35 @@ import json
 
 import pytest
 
-from enterprise_rag.application.chunking import EmbedChunksService
-from enterprise_rag.application.generation import (
+from graph_rag.application.chunking import EmbedChunksService
+from graph_rag.application.generation import (
     GenerateAnswerService,
     QueryDocumentsService,
 )
-from enterprise_rag.application.retrieval import RetrieveEvidenceService
-from enterprise_rag.domain.chunks.models import ChunkBase, ChunkType
-from enterprise_rag.domain.citations import (
+from graph_rag.application.retrieval import RetrieveEvidenceService
+from graph_rag.domain.chunks.models import ChunkBase, ChunkType
+from graph_rag.domain.citations import (
     CitationRegistry,
     extract_citation_ids,
     parse_generation_text,
     remap_graph_path_citations,
     validate_citations,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.models.contracts import GenerationRequest
-from enterprise_rag.domain.retrieval import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.models.contracts import GenerationRequest
+from graph_rag.domain.retrieval import (
     GraphPath,
     QueryRequest,
     RetrievalMode,
     RetrievalResult,
     RetrievedEvidence,
 )
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel
-from enterprise_rag.infrastructure.persistence.chunks import InMemoryChunkLookupStore
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
-from enterprise_rag.shared.exceptions import CitationValidationError
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import FakeChatModel, FakeEmbeddingModel
+from graph_rag.infrastructure.persistence.chunks import InMemoryChunkLookupStore
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.shared.exceptions import CitationValidationError
 
 
 def _hash(text: str) -> str:
@@ -183,7 +183,7 @@ def test_validate_citations_keeps_sources_on_partial_claim_fidelity_answer() -> 
 
 
 def test_validate_numeric_grounding_flags_column_misread() -> None:
-    from enterprise_rag.domain.citations import validate_numeric_grounding
+    from graph_rag.domain.citations import validate_numeric_grounding
 
     tenant = TenantContext(tenant_id=new_id())
     evidence = _evidence(

@@ -17,9 +17,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from enterprise_rag.config.settings import Settings
-from enterprise_rag.infrastructure.persistence.postgres import models as _models  # noqa: F401
-from enterprise_rag.infrastructure.persistence.postgres.base import Base
+from graph_rag.config.settings import Settings
+from graph_rag.infrastructure.persistence.postgres import models as _models  # noqa: F401
+from graph_rag.infrastructure.persistence.postgres.base import Base
 
 config = context.config
 

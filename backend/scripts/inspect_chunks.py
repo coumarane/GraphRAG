@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from enterprise_rag.application.chunking import HierarchicalMultimodalChunker
-from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
-from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource
+from graph_rag.application.chunking import HierarchicalMultimodalChunker
+from graph_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw as _extract_pdf_raw
+from graph_rag.domain.parsing.normalize import normalize_parser_result
+from graph_rag.domain.parsing.types import ParseSource
 
 
 async def inspect_path(path: Path, *, max_pages: int = 50) -> dict[str, Any]:

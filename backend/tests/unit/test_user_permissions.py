@@ -9,19 +9,19 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from enterprise_rag.api.app import create_app
-from enterprise_rag.api.dependencies import get_tenant_context
-from enterprise_rag.application.auth.permissions import (
+from graph_rag.api.app import create_app
+from graph_rag.api.dependencies import get_tenant_context
+from graph_rag.application.auth.permissions import (
     apply_user_permission_update,
     normalize_user_attributes,
 )
-from enterprise_rag.application.runtime import build_local_container
-from enterprise_rag.config.settings import clear_settings_cache
-from enterprise_rag.domain.auth.models import UserRecord, UserStatus
-from enterprise_rag.domain.auth.passwords import hash_password
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.users import InMemoryUserRepository
+from graph_rag.application.runtime import build_local_container
+from graph_rag.config.settings import clear_settings_cache
+from graph_rag.domain.auth.models import UserRecord, UserStatus
+from graph_rag.domain.auth.passwords import hash_password
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.users import InMemoryUserRepository
 
 
 def test_normalize_syncs_admin_flag_with_role() -> None:

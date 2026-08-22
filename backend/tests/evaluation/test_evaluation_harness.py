@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from enterprise_rag.application.evaluation import (
+from graph_rag.application.evaluation import (
     CORPUS_FILES,
     EvaluateRetrievalService,
     EvaluationPrediction,

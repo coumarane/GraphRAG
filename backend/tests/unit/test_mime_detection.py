@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.domain.storage.mime import assert_allowed_mime_type, assert_within_size_limit
-from enterprise_rag.infrastructure.intake.mime_detection import detect_mime_type
-from enterprise_rag.shared.exceptions import UnsupportedDocumentError, ValidationError
+from graph_rag.domain.storage.mime import assert_allowed_mime_type, assert_within_size_limit
+from graph_rag.infrastructure.intake.mime_detection import detect_mime_type
+from graph_rag.shared.exceptions import UnsupportedDocumentError, ValidationError
 
 
 def test_detect_pdf_and_png() -> None:

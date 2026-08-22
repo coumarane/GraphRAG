@@ -7,18 +7,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from enterprise_rag.application.ingestion.enqueue import enqueue_ingest_run
-from enterprise_rag.application.ingestion.handlers import (
+from graph_rag.application.ingestion.enqueue import enqueue_ingest_run
+from graph_rag.application.ingestion.handlers import (
     CallableStageHandler,
     default_noop_handlers,
 )
-from enterprise_rag.application.ingestion.orchestrator import (
+from graph_rag.application.ingestion.orchestrator import (
     IngestionOrchestrator,
     OrchestrationResult,
 )
-from enterprise_rag.application.ingestion.outbox_publisher import OutboxPublisher
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.ingestion import (
+from graph_rag.application.ingestion.outbox_publisher import OutboxPublisher
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.ingestion import (
     INGESTION_STAGE_ORDER,
     DeadLetterRecord,
     IngestionRunRecord,
@@ -32,12 +32,12 @@ from enterprise_rag.domain.ingestion import (
     StageStatus,
     build_persisted_stage_records,
 )
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.dead_letters import InMemoryDeadLetterStore
-from enterprise_rag.infrastructure.persistence.outbox import InMemoryOutboxStore
-from enterprise_rag.infrastructure.persistence.redis import InMemoryStreamIngestionQueue
-from enterprise_rag.infrastructure.workers import IngestionWorker
-from enterprise_rag.shared.exceptions import PermanentError, TransientError
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.dead_letters import InMemoryDeadLetterStore
+from graph_rag.infrastructure.persistence.outbox import InMemoryOutboxStore
+from graph_rag.infrastructure.persistence.redis import InMemoryStreamIngestionQueue
+from graph_rag.infrastructure.workers import IngestionWorker
+from graph_rag.shared.exceptions import PermanentError, TransientError
 
 
 def _bundle() -> tuple[TenantContext, IngestionRunRecord, list]:
@@ -117,7 +117,7 @@ async def test_worker_crash_mid_stage_leaves_message_unacked() -> None:
         kwargs["run"].status = IngestionRunStatus.RUNNING
         kwargs["stages"][0].status = StageStatus.RUNNING
         kwargs["stages"][0].attempt_count = 1
-        from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
+        from graph_rag.domain.ingestion.state_machine import IngestionProgress
 
         return OrchestrationResult(
             run_status=IngestionRunStatus.RUNNING,
@@ -241,7 +241,7 @@ async def test_pipeline_completion_is_not_reverted_by_stale_reload() -> None:
         # fetches its own freshly-deserialized copy, wholly disconnected
         # from whatever process_one() loaded before calling it.
         _ = kwargs
-        from enterprise_rag.domain.ingestion.state_machine import IngestionProgress
+        from graph_rag.domain.ingestion.state_machine import IngestionProgress
 
         fresh_run = store["run"].model_copy(update={"status": IngestionRunStatus.COMPLETED})
         fresh_stages = [
@@ -409,7 +409,7 @@ async def test_resume_from_first_incomplete_stage() -> None:
         if row.stage in {IngestionStageName.VALIDATE, IngestionStageName.HASH}:
             row.status = StageStatus.COMPLETED
             row.idempotency_key = IngestionOrchestrator  # placeholder replaced below
-    from enterprise_rag.domain.ingestion.state_machine import IngestionStateMachine
+    from graph_rag.domain.ingestion.state_machine import IngestionStateMachine
 
     for row in stages:
         if row.status is StageStatus.COMPLETED:

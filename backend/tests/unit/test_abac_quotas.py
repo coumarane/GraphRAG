@@ -7,28 +7,28 @@ from uuid import uuid4
 
 import pytest
 
-from enterprise_rag.application.authorization.engine import (
+from graph_rag.application.authorization.engine import (
     default_seed_policies,
     evaluate_policy,
 )
-from enterprise_rag.application.authorization.filters import document_is_authorized
-from enterprise_rag.application.authorization.service import (
+from graph_rag.application.authorization.filters import document_is_authorized
+from graph_rag.application.authorization.service import (
     PolicyAuthorizationService,
     resource_from_document,
     subject_from_tenant,
 )
-from enterprise_rag.application.quotas.service import InMemoryQuotaService
-from enterprise_rag.domain.authorization.models import (
+from graph_rag.application.quotas.service import InMemoryQuotaService
+from graph_rag.domain.authorization.models import (
     Action,
     PolicyDocument,
     PolicyWhenClause,
     ResourceContext,
     SubjectContext,
 )
-from enterprise_rag.domain.ingestion.records import DocumentRecord
-from enterprise_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.shared.exceptions import AuthorizationError, QuotaExceededError
+from graph_rag.domain.ingestion.records import DocumentRecord
+from graph_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.shared.exceptions import AuthorizationError, QuotaExceededError
 
 
 def _tenant(**kwargs: object) -> TenantContext:

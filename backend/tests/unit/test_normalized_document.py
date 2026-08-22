@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from enterprise_rag.domain.documents import NormalizedDocument, ParserInfo
-from enterprise_rag.domain.elements import (
+from graph_rag.domain.documents import NormalizedDocument, ParserInfo
+from graph_rag.domain.elements import (
     DocumentElement,
     ElementType,
     HeadingElement,
@@ -17,7 +17,7 @@ from enterprise_rag.domain.elements import (
     TableElement,
     TextElement,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.ids import content_sha256_hex, new_id
 from tests.unit.contract_support import assert_matches_contract
 
 _ELEMENT_ADAPTER = TypeAdapter(DocumentElement)

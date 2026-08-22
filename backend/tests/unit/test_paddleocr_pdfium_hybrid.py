@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.infrastructure.parsers.convert import dict_to_raw_result
-from enterprise_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.infrastructure.parsers.convert import dict_to_raw_result
+from graph_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw
 
 
 def _blankish_pdf_bytes() -> bytes:

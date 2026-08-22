@@ -16,17 +16,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from enterprise_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
-from enterprise_rag.application.ingestion.stage_pipeline import DocumentPipeline, PipelineWorkspace
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.domain.elements.geometry import BoundingBox
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.ingestion.handlers import StageContext
-from enterprise_rag.domain.parsing.audit import ElementProcessingStatus
-from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.memory.object_store import InMemoryObjectStore
+from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
+from graph_rag.application.ingestion.stage_pipeline import DocumentPipeline, PipelineWorkspace
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.elements.geometry import BoundingBox
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.ingestion.handlers import StageContext
+from graph_rag.domain.parsing.audit import ElementProcessingStatus
+from graph_rag.domain.parsing.normalize import normalize_parser_result
+from graph_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.memory.object_store import InMemoryObjectStore
 
 
 def _workspace() -> PipelineWorkspace:

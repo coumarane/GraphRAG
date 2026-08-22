@@ -7,16 +7,16 @@ import os
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from enterprise_rag.api.app import create_app
-from enterprise_rag.application.auth import AuthService
-from enterprise_rag.application.runtime.container import ServiceContainer
-from enterprise_rag.config.settings import clear_settings_cache
-from enterprise_rag.domain.auth.passwords import hash_password
-from enterprise_rag.domain.auth.models import UserRecord
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.ingestion.records import TenantRecord
-from enterprise_rag.infrastructure.persistence.memory import InMemoryTenantRepository
-from enterprise_rag.infrastructure.persistence.users import InMemoryUserRepository
+from graph_rag.api.app import create_app
+from graph_rag.application.auth import AuthService
+from graph_rag.application.runtime.container import ServiceContainer
+from graph_rag.config.settings import clear_settings_cache
+from graph_rag.domain.auth.passwords import hash_password
+from graph_rag.domain.auth.models import UserRecord
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.ingestion.records import TenantRecord
+from graph_rag.infrastructure.persistence.memory import InMemoryTenantRepository
+from graph_rag.infrastructure.persistence.users import InMemoryUserRepository
 
 
 @pytest.fixture

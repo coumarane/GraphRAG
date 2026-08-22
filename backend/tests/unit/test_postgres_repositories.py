@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.ingestion import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.ingestion import (
     DocumentLifecycleStatus,
     DocumentRecord,
     DocumentVersionRecord,
@@ -18,15 +18,15 @@ from enterprise_rag.domain.ingestion import (
     StageStatus,
     build_persisted_stage_records,
 )
-from enterprise_rag.domain.ingestion.records import TenantRecord
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.persistence.postgres.base import Base
-from enterprise_rag.infrastructure.persistence.postgres.repositories import (
+from graph_rag.domain.ingestion.records import TenantRecord
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.postgres.base import Base
+from graph_rag.infrastructure.persistence.postgres.repositories import (
     SqlAlchemyDocumentRepository,
     SqlAlchemyIngestionRepository,
     SqlAlchemyTenantRepository,
 )
-from enterprise_rag.shared.exceptions import TenantError
+from graph_rag.shared.exceptions import TenantError
 
 
 @pytest.fixture

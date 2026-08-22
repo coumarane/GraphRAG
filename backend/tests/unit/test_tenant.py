@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.shared.exceptions import TenantError
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.shared.exceptions import TenantError
 
 
 def test_tenant_context_frozen() -> None:

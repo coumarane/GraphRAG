@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enterprise_rag.domain.graph import (
+from graph_rag.domain.graph import (
     ALL_NODE_LABELS,
     ALL_RELATIONSHIP_TYPES,
     ExtractedRelationship,

@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.application.chunking import EmbedChunksService
-from enterprise_rag.application.retrieval import RetrieveEvidenceService
-from enterprise_rag.domain.chunks.models import ChunkBase, ChunkType
-from enterprise_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
-from enterprise_rag.domain.graph.vocabulary import (
+from graph_rag.application.chunking import EmbedChunksService
+from graph_rag.application.retrieval import RetrieveEvidenceService
+from graph_rag.domain.chunks.models import ChunkBase, ChunkType
+from graph_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
+from graph_rag.domain.graph.vocabulary import (
     SemanticNodeLabel,
     SemanticRelationshipType,
     StructuralNodeLabel,
     StructuralRelationshipType,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.retrieval import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.retrieval import (
     RetrievalFilters,
     RetrievalMode,
     RetrievalRequest,
@@ -24,15 +24,15 @@ from enterprise_rag.domain.retrieval import (
     expand_parents_and_neighbors,
     reciprocal_rank_fusion,
 )
-from enterprise_rag.domain.retrieval.assembly import chunk_to_evidence
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import FakeEmbeddingModel, FakeReranker
-from enterprise_rag.infrastructure.persistence.chunks import (
+from graph_rag.domain.retrieval.assembly import chunk_to_evidence
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import FakeEmbeddingModel, FakeReranker
+from graph_rag.infrastructure.persistence.chunks import (
     InMemoryChunkLookupStore,
     InMemoryLexicalSearchStore,
 )
-from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
 
 
 def _hash(text: str) -> str:
@@ -226,8 +226,8 @@ async def test_auto_selects_assay_modes_for_heavy_metal_content() -> None:
 
 @pytest.mark.asyncio
 async def test_heuristic_reranker_prefers_assay_over_coating() -> None:
-    from enterprise_rag.domain.models.contracts import RerankItem, RerankRequest
-    from enterprise_rag.infrastructure.models import HeuristicReranker
+    from graph_rag.domain.models.contracts import RerankItem, RerankRequest
+    from graph_rag.infrastructure.models import HeuristicReranker
 
     reranker = HeuristicReranker()
     response = await reranker.rerank(

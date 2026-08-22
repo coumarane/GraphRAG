@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import logging
 
-from enterprise_rag.shared.logging import (
+from graph_rag.shared.logging import (
     bind_context,
     clear_context,
     configure_logging,

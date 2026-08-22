@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.application.chunking import (
+from graph_rag.application.chunking import (
     EmbedChunksService,
     HierarchicalMultimodalChunker,
 )
-from enterprise_rag.config.settings import ChunkingSettings
-from enterprise_rag.domain.chunks import ChunkType
-from enterprise_rag.domain.chunks.models import ChunkBase
-from enterprise_rag.domain.chunks.vectors import VectorSearchRequest
-from enterprise_rag.domain.documents import NormalizedDocument, ParserInfo
-from enterprise_rag.domain.elements import (
+from graph_rag.config.settings import ChunkingSettings
+from graph_rag.domain.chunks import ChunkType
+from graph_rag.domain.chunks.models import ChunkBase
+from graph_rag.domain.chunks.vectors import VectorSearchRequest
+from graph_rag.domain.documents import NormalizedDocument, ParserInfo
+from graph_rag.domain.elements import (
     CaptionElement,
     EquationElement,
     HeadingElement,
@@ -22,17 +22,17 @@ from enterprise_rag.domain.elements import (
     TableElement,
     TextElement,
 )
-from enterprise_rag.domain.elements.table import TableCell
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import (
+from graph_rag.domain.elements.table import TableCell
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import (
     FakeEmbeddingModel,
     LangChainOpenAIEmbeddingModel,
     OpenAIEmbeddingModel,
 )
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
-from enterprise_rag.shared.exceptions import AuthorizationError
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.shared.exceptions import AuthorizationError
 
 
 def _hash(text: str) -> str:

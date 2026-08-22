@@ -11,11 +11,11 @@ uv run mypy src
 uv run pytest tests/unit
 
 # API (in-memory object store by default)
-uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
+uv run uvicorn graph_rag.api.app:get_app --factory --reload
 
 # CLI
-uv run enterprise-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait --output json
-uv run enterprise-rag query "Summarize the document" --tenant-id demo --mode auto --output json
+uv run graph-rag ingest ../data/examples/sample.pdf --tenant-id demo --wait --output json
+uv run graph-rag query "Summarize the document" --tenant-id demo --mode auto --output json
 ```
 
 Container images are built from `docker/` with this directory as the build context. See the repo root [README](../README.md) for the full-stack Docker Compose setup and repository layout.

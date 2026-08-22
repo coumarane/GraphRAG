@@ -1,5 +1,5 @@
 [project]
-name = "enterprise-rag-anything"
+name = "graph-rag"
 version = "0.1.0"
 description = "Production-grade multi-tenant multimodal GraphRAG platform"
 readme = "README.md"
@@ -73,24 +73,24 @@ parsers = [
   "python-magic>=0.4.27,<1",
 ]
 parsers-docling = [
-  "enterprise-rag-anything[parsers]",
+  "graph-rag[parsers]",
   "docling>=2.15,<3",
 ]
 parsers-ocr = [
-  "enterprise-rag-anything[parsers]",
+  "graph-rag[parsers]",
   "paddleocr>=2.9,<3",
   "paddlepaddle>=3.3.1",
 ]
 parsers-mineru = [
-  "enterprise-rag-anything[parsers]",
+  "graph-rag[parsers]",
   "mineru>=2.0",
 ]
 parsers-marker = [
-  "enterprise-rag-anything[parsers]",
+  "graph-rag[parsers]",
   "marker-pdf>=1.0",
 ]
 parsers-full = [
-  "enterprise-rag-anything[parsers-docling,parsers-ocr,parsers-mineru,parsers-marker]",
+  "graph-rag[parsers-docling,parsers-ocr,parsers-mineru,parsers-marker]",
 ]
 observability = [
   "opentelemetry-api>=1.29,<2",
@@ -98,22 +98,25 @@ observability = [
   "prometheus-client>=0.21,<1",
 ]
 all = [
-  "enterprise-rag-anything[api,cli,postgres,redis,minio,azure,qdrant,neo4j,llm,parsers,observability]",
+  "graph-rag[api,cli,postgres,redis,minio,azure,qdrant,neo4j,llm,parsers,observability]",
 ]
 
 [project.urls]
-Documentation = "https://github.com/local/enterprise-rag-anything"
-Repository = "https://github.com/local/enterprise-rag-anything"
+Documentation = "https://github.com/local/graph-rag"
+Repository = "https://github.com/local/graph-rag"
 
 [project.scripts]
-enterprise-rag = "enterprise_rag.cli.main:run"
+graph-rag = "graph_rag.cli.main:run"
+# Legacy alias: infra/k8s/worker/deployment.yaml still invokes `enterprise-rag`;
+# drop this only after that manifest switches to `graph-rag`.
+enterprise-rag = "graph_rag.cli.main:run"
 
 [build-system]
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/enterprise_rag"]
+packages = ["src/graph_rag"]
 
 [dependency-groups]
 dev = [
@@ -163,8 +166,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]
 "scripts/**" = ["T20"]
-"src/enterprise_rag/cli/**" = ["T20", "BLE001", "B008"]
-"src/enterprise_rag/api/routes/**" = ["B008"]
+"src/graph_rag/cli/**" = ["T20", "BLE001", "B008"]
+"src/graph_rag/api/routes/**" = ["B008"]
 "alembic/**" = ["E402", "INP001"]
 
 [tool.ruff.format]
@@ -180,7 +183,7 @@ warn_unreachable = true
 show_error_codes = true
 pretty = true
 mypy_path = "src"
-packages = ["enterprise_rag"]
+packages = ["graph_rag"]
 exclude = [
   "tests/",
   "alembic/",
@@ -202,7 +205,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-  "enterprise_rag.infrastructure.persistence.postgres.models.*",
+  "graph_rag.infrastructure.persistence.postgres.models.*",
 ]
 # SQLAlchemy declarative mappings are validated at runtime.
 disable_error_code = ["misc"]

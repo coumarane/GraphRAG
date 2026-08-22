@@ -6,13 +6,13 @@ from uuid import UUID
 
 import pytest
 
-from enterprise_rag.application.ingestion import (
+from graph_rag.application.ingestion import (
     CallableStageHandler,
     IngestionOrchestrator,
     default_noop_handlers,
 )
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.ingestion import (
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.ingestion import (
     INGESTION_STAGE_ORDER,
     DeadLetterRecord,
     IngestionRunRecord,
@@ -26,13 +26,13 @@ from enterprise_rag.domain.ingestion import (
     StageStatus,
     build_persisted_stage_records,
 )
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.workers import (
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.workers import (
     IngestionWorker,
     InMemoryDeadLetterStore,
     InMemoryIngestionTaskQueue,
 )
-from enterprise_rag.shared.exceptions import PermanentError, TransientError
+from graph_rag.shared.exceptions import PermanentError, TransientError
 
 
 def _run_bundle() -> tuple[TenantContext, IngestionRunRecord, list]:

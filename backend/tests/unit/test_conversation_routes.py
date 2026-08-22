@@ -7,14 +7,14 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from enterprise_rag.api.app import create_app
-from enterprise_rag.application.runtime import build_local_container
-from enterprise_rag.domain.ids import new_id
+from graph_rag.api.app import create_app
+from graph_rag.application.runtime import build_local_container
+from graph_rag.domain.ids import new_id
 
 
 @pytest.fixture
 def container(monkeypatch: pytest.MonkeyPatch):
-    from enterprise_rag.config.settings import clear_settings_cache
+    from graph_rag.config.settings import clear_settings_cache
 
     monkeypatch.setenv("AUTH_ENABLED", "false")
     clear_settings_cache()

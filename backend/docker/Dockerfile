@@ -55,9 +55,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=10 \
   CMD curl -fsS http://127.0.0.1:8000/api/v1/health/live || exit 1
 
-CMD ["uvicorn", "enterprise_rag.api.app:get_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "graph_rag.api.app:get_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 
 
 FROM base AS worker
 
-CMD ["enterprise-rag", "worker", "--poll-interval", "1.0"]
+CMD ["graph-rag", "worker", "--poll-interval", "1.0"]

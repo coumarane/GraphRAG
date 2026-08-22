@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
-from enterprise_rag.domain.parsing.types import ParseOptions, ParseSource, ParserName
-from enterprise_rag.infrastructure.parsers.paddleocr import PaddleOCRParser
-from enterprise_rag.domain.ids import new_id
+from graph_rag.domain.parsing.types import ParseOptions, ParseSource, ParserName
+from graph_rag.infrastructure.parsers.paddleocr import PaddleOCRParser
+from graph_rag.domain.ids import new_id
 
 
 def test_paddleocr_parser_uses_injected_convert_fn() -> None:

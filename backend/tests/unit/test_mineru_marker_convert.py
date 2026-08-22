@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from enterprise_rag.application.ingestion.local_pipeline import _stamp_hybrid_vision_provenance
-from enterprise_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.parsing.audit import ElementProcessingStatus
-from enterprise_rag.infrastructure.parsers.marker.convert import (
+from graph_rag.application.ingestion.local_pipeline import _stamp_hybrid_vision_provenance
+from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.parsing.audit import ElementProcessingStatus
+from graph_rag.infrastructure.parsers.marker.convert import (
     marker_blocks_to_payload,
     marker_markdown_to_payload,
 )
-from enterprise_rag.infrastructure.parsers.mineru.convert import (
+from graph_rag.infrastructure.parsers.mineru.convert import (
     content_list_to_payload,
     markdown_to_payload,
 )
-from enterprise_rag.infrastructure.parsers.convert import dict_to_raw_result
+from graph_rag.infrastructure.parsers.convert import dict_to_raw_result
 
 
 def test_mineru_content_list_maps_images_and_pages() -> None:

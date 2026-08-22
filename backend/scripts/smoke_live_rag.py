@@ -10,25 +10,25 @@ import os
 import sys
 from pathlib import Path
 
-from enterprise_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
-from enterprise_rag.application.generation import GenerateAnswerService, QueryDocumentsService
-from enterprise_rag.application.retrieval import RetrieveEvidenceService
-from enterprise_rag.domain.chunks.vectors import ChunkingResult
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.parsing.normalize import normalize_parser_result
-from enterprise_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
-from enterprise_rag.domain.retrieval.enums import RetrievalMode
-from enterprise_rag.domain.retrieval.models import QueryRequest
-from enterprise_rag.domain.tenant import TenantContext
-from enterprise_rag.infrastructure.models import OpenAIChatModel, OpenAIEmbeddingModel
-from enterprise_rag.infrastructure.persistence.chunks import (
+from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.generation import GenerateAnswerService, QueryDocumentsService
+from graph_rag.application.retrieval import RetrieveEvidenceService
+from graph_rag.domain.chunks.vectors import ChunkingResult
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.parsing.normalize import normalize_parser_result
+from graph_rag.domain.parsing.types import ParseSource, RawElement, RawPage, RawParserResult
+from graph_rag.domain.retrieval.enums import RetrievalMode
+from graph_rag.domain.retrieval.models import QueryRequest
+from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.models import OpenAIChatModel, OpenAIEmbeddingModel
+from graph_rag.infrastructure.persistence.chunks import (
     InMemoryChunkLookupStore,
     InMemoryLexicalSearchStore,
 )
-from enterprise_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
-from enterprise_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
-from enterprise_rag.shared.logging import configure_logging, get_logger
+from graph_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
+from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.shared.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
 

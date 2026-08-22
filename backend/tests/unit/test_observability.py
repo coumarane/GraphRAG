@@ -7,10 +7,10 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
-from enterprise_rag.api.app import create_app
-from enterprise_rag.application.runtime import build_local_container
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.infrastructure.observability import (
+from graph_rag.api.app import create_app
+from graph_rag.application.runtime import build_local_container
+from graph_rag.domain.ids import new_id
+from graph_rag.infrastructure.observability import (
     AuditEvent,
     InMemoryAuditStore,
     clear_spans,
@@ -19,8 +19,8 @@ from enterprise_rag.infrastructure.observability import (
     reset_metrics,
     start_span,
 )
-from enterprise_rag.shared.logging import configure_logging, get_logger, reset_logging_state
-from enterprise_rag.shared.redaction import redact_mapping, redact_string, redact_url
+from graph_rag.shared.logging import configure_logging, get_logger, reset_logging_state
+from graph_rag.shared.redaction import redact_mapping, redact_string, redact_url
 
 
 def setup_function() -> None:

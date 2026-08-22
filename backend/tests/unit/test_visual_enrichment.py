@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from enterprise_rag.application.ingestion.visual_enrichment import (
+from graph_rag.application.ingestion.visual_enrichment import (
     classify_visual_kind,
     collect_visual_targets,
     fit_image_for_vision,
     recommended_tool,
 )
-from enterprise_rag.domain.elements.enums import ElementType
-from enterprise_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
+from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
 
 
 def _el(

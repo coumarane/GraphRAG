@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enterprise_rag.domain.retrieval.condition_facets import (
+from graph_rag.domain.retrieval.condition_facets import (
     detect_query_features,
     extract_condition_facets,
     score_facet_alignment,

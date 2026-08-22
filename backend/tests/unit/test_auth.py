@@ -6,14 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from enterprise_rag.domain.auth.passwords import (
+from graph_rag.domain.auth.passwords import (
     hash_password,
     is_weak_jwt_secret,
     validate_password_strength,
     verify_password,
 )
-from enterprise_rag.domain.auth.tokens import issue_access_token, parse_access_token
-from enterprise_rag.shared.exceptions import AuthenticationError, ValidationError
+from graph_rag.domain.auth.tokens import issue_access_token, parse_access_token
+from graph_rag.shared.exceptions import AuthenticationError, ValidationError
 
 
 def test_password_hash_roundtrip() -> None:

@@ -22,13 +22,13 @@ Re-evaluate Python 3.14 only after MinerU, PaddleOCR, Docling and Marker publish
 
 ### UUIDv7 note
 
-``uuid.uuid7`` landed in the Python standard library in **3.14**. On Python 3.13 the domain helper ``enterprise_rag.domain.ids.new_id`` uses an RFC 9562-compatible implementation and automatically prefers the stdlib function when available.
+``uuid.uuid7`` landed in the Python standard library in **3.14**. On Python 3.13 the domain helper ``graph_rag.domain.ids.new_id`` uses an RFC 9562-compatible implementation and automatically prefers the stdlib function when available.
 
 ## Package layout
 
 | Distribution name | Import package |
 |---|---|
-| `enterprise-rag-anything` | `enterprise_rag` |
+| `graph-rag` | `graph_rag` |
 
 ## Dependency groups
 

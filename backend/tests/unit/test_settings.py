@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from enterprise_rag.config.settings import (
+from graph_rag.config.settings import (
     EnvironmentName,
     ModelImplementation,
     RetrievalMode,
@@ -15,7 +15,7 @@ from enterprise_rag.config.settings import (
     clear_settings_cache,
     load_yaml_config,
 )
-from enterprise_rag.shared.exceptions import ConfigurationError
+from graph_rag.shared.exceptions import ConfigurationError
 
 
 @pytest.fixture(autouse=True)

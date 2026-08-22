@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.infrastructure.intake.url_fetch import SafeUrlFetcher
-from enterprise_rag.shared.exceptions import ValidationError
+from graph_rag.infrastructure.intake.url_fetch import SafeUrlFetcher
+from graph_rag.shared.exceptions import ValidationError
 
 
 @pytest.fixture

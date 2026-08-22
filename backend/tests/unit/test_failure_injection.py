@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from enterprise_rag.domain.parsing.types import ParseOptions, ParserName, ParseSource
-from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
-from enterprise_rag.shared.exceptions import ParserError
-from enterprise_rag.domain.ids import new_id
+from graph_rag.domain.parsing.types import ParseOptions, ParserName, ParseSource
+from graph_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
+from graph_rag.shared.exceptions import ParserError
+from graph_rag.domain.ids import new_id
 
 
 class _FailingParser:

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from enterprise_rag.domain.citations import Citation
-from enterprise_rag.domain.documents import IngestionResult, IngestionStatus
-from enterprise_rag.domain.ids import new_id
-from enterprise_rag.domain.modality import Modality
-from enterprise_rag.domain.retrieval import QueryResponse, RetrievalMode
+from graph_rag.domain.citations import Citation
+from graph_rag.domain.documents import IngestionResult, IngestionStatus
+from graph_rag.domain.ids import new_id
+from graph_rag.domain.modality import Modality
+from graph_rag.domain.retrieval import QueryResponse, RetrievalMode
 from tests.unit.contract_support import assert_matches_contract
 
 

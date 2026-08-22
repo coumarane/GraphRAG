@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from enterprise_rag.domain.chunks import ChunkBase, ChunkType
-from enterprise_rag.domain.citations import Citation
-from enterprise_rag.domain.ids import content_sha256_hex, new_id
-from enterprise_rag.domain.modality import Modality
+from graph_rag.domain.chunks import ChunkBase, ChunkType
+from graph_rag.domain.citations import Citation
+from graph_rag.domain.ids import content_sha256_hex, new_id
+from graph_rag.domain.modality import Modality
 
 
 def test_chunk_base_validation() -> None:

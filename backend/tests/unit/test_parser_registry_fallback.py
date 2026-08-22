@@ -7,10 +7,10 @@ from uuid import uuid4
 
 import pytest
 
-from enterprise_rag.application.ingestion.local_pipeline import _parse_document_raw
-from enterprise_rag.domain.parsing.types import ParseOptions, ParserName, ParseSource
-from enterprise_rag.infrastructure.parsers.pdfium import PdfiumParser
-from enterprise_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
+from graph_rag.application.ingestion.local_pipeline import _parse_document_raw
+from graph_rag.domain.parsing.types import ParseOptions, ParserName, ParseSource
+from graph_rag.infrastructure.parsers.pdfium import PdfiumParser
+from graph_rag.infrastructure.parsers.registry import ParseDocumentService, ParserRegistry
 
 
 @pytest.mark.asyncio

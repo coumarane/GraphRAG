@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from enterprise_rag.infrastructure.intake.pdf_bytes import build_simple_pdf
+from graph_rag.infrastructure.intake.pdf_bytes import build_simple_pdf
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT.parent / "data" / "evaluation" / "corpus"

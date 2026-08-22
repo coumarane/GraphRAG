@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from enterprise_rag.domain.parsing.routing import AutomaticParserRouter, recommend_from_inspection
-from enterprise_rag.domain.parsing.types import (
+from graph_rag.domain.parsing.routing import AutomaticParserRouter, recommend_from_inspection
+from graph_rag.domain.parsing.types import (
     ParseOptions,
     ParserInspection,
     ParserName,
