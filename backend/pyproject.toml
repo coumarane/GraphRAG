@@ -100,6 +100,9 @@ observability = [
 all = [
   "graph-rag[api,cli,postgres,redis,minio,azure,qdrant,neo4j,llm,parsers,observability]",
 ]
+mcp = [
+    "mcp>=1.2,<2",
+]
 
 [project.urls]
 Documentation = "https://github.com/local/graph-rag"
@@ -231,6 +234,12 @@ module = [
 ]
 # SQLAlchemy declarative mappings are validated at runtime.
 disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = ["graph_rag.mcp.server"]
+# mcp.server.lowlevel.Server's list_tools()/call_tool() decorators aren't
+# fully typed upstream.
+disable_error_code = ["no-untyped-call", "untyped-decorator"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

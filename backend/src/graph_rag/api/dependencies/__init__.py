@@ -112,6 +112,31 @@ async def _enrich_subject(
     ).ensure_authorized()
 
 
+async def resolve_service_tenant(
+    container: ServiceContainer,
+    *,
+    tenant_id: UUID | None,
+    tenant_key: str | None,
+    principal: str | None,
+) -> TenantContext:
+    """Resolve a service-identity tenant (the ``X-Api-Service-Key`` auth path).
+
+    Factored out of :func:`get_tenant_context` so non-HTTP callers (the MCP
+    transport) can reuse the exact same resolution logic instead of
+    duplicating it.
+    """
+    resolved = await container.resolve_tenant(
+        tenant_id=tenant_id,
+        tenant_key=tenant_key,
+        principal=principal or "service",
+    )
+    return await _enrich_subject(
+        container,
+        resolved.model_copy(update={"is_service": True}),
+        is_service=True,
+    )
+
+
 async def get_tenant_context(
     request: Request,
     container: Annotated[ServiceContainer, Depends(get_container)],
@@ -154,15 +179,11 @@ async def get_tenant_context(
 
         service_key = (security.api_service_key or "").strip()
         if service_key and x_api_service_key and x_api_service_key == service_key:
-            resolved = await container.resolve_tenant(
+            enriched = await resolve_service_tenant(
+                container,
                 tenant_id=_parse_tenant_uuid(x_tenant_id),
                 tenant_key=x_tenant_key,
-                principal=x_principal or "service",
-            )
-            enriched = await _enrich_subject(
-                container,
-                resolved.model_copy(update={"is_service": True}),
-                is_service=True,
+                principal=x_principal,
             )
             return _bind_usage_context(enriched)
 
