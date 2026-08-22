@@ -19,7 +19,7 @@ Questions live in `evaluation/questions.json`.
 
 ## Metrics
 
-Implemented in `enterprise_rag.application.evaluation`:
+Implemented in `graph_rag.application.evaluation`:
 
 - retrieval hit rate
 - context precision / recall
@@ -41,5 +41,5 @@ uv run pytest tests/evaluation -m evaluation
 Regenerate synthetic PDFs:
 
 ```bash
-uv run python -c "from pathlib import Path; from enterprise_rag.infrastructure.intake.pdf_bytes import build_simple_pdf; Path('examples/sample.pdf').write_bytes(build_simple_pdf(title='Sample', lines=['hello']))"
+uv run python -c "from pathlib import Path; from graph_rag.infrastructure.intake.pdf_bytes import build_simple_pdf; Path('../data/examples/sample.pdf').write_bytes(build_simple_pdf(title='Sample', lines=['hello']))"
 ```

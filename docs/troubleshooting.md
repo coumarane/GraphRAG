@@ -2,7 +2,7 @@
 
 ## Local CLI uses in-memory stores
 
-`enterprise-rag` defaults to `build_local_container()`. Data does not persist across processes unless you wire Postgres/MinIO/Qdrant/Neo4j adapters.
+`graph-rag` defaults to `build_local_container()`. Data does not persist across processes unless you wire Postgres/MinIO/Qdrant/Neo4j adapters.
 
 ## `docker compose up` health failures
 

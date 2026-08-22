@@ -17,8 +17,8 @@ env:
   REGISTRY_HOST: harbor.safranys.com
   HARBOR_PROJECT: chatwithdocs
   IMAGE_NAME: worker-base
-  DOCKERFILE_PATH: Dockerfile.worker-base
-  BUILD_CONTEXT: .
+  DOCKERFILE_PATH: backend/docker/Dockerfile.worker-base
+  BUILD_CONTEXT: backend
   STABLE_TAG: dev
 
 permissions:

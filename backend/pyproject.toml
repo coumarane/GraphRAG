@@ -1,0 +1,229 @@
+[project]
+name = "graph-rag"
+version = "0.1.0"
+description = "Production-grade multi-tenant multimodal GraphRAG platform"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Enterprise RAG team" }]
+keywords = ["rag", "graphrag", "multimodal", "neo4j", "qdrant"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: FastAPI",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "structlog>=24.4,<26",
+  "pyyaml>=6.0.2,<7",
+  "sqlalchemy[asyncio]>=2.0.36,<3",
+  "asyncpg>=0.30,<1",
+  "alembic>=1.14,<2",
+  "minio>=7.2,<8",
+  "httpx>=0.28,<1",
+  "azure-storage-blob>=12.26,<13",
+  "azure-identity>=1.23,<2",
+  "pypdfium2>=4.30,<5",
+  "pillow>=12.3.0",
+  "pyjwt>=2.9,<3",
+  "argon2-cffi>=23,<26",
+  "email-validator>=2,<3",
+]
+
+[project.optional-dependencies]
+api = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "python-multipart>=0.0.20,<1",
+]
+cli = [
+  "typer>=0.15,<1",
+  "rich>=13.9,<15",
+]
+postgres = [
+  "sqlalchemy[asyncio]>=2.0.36,<3",
+  "asyncpg>=0.30,<1",
+  "alembic>=1.14,<2",
+]
+redis = [
+  "redis>=5.2,<6",
+]
+minio = [
+  "minio>=7.2,<8",
+]
+azure = [
+  "azure-storage-blob>=12.26,<13",
+  "azure-identity>=1.23,<2",
+]
+qdrant = [
+  "qdrant-client>=1.12,<2",
+]
+neo4j = [
+  "neo4j>=5.27,<6",
+]
+llm = [
+  "openai>=1.60,<2",
+  "langchain-openai>=0.3,<1",
+  "langchain-core>=0.3,<1",
+]
+parsers = [
+  "pypdfium2>=4.30,<5",
+  "python-magic>=0.4.27,<1",
+]
+parsers-docling = [
+  "graph-rag[parsers]",
+  "docling>=2.15,<3",
+]
+parsers-ocr = [
+  "graph-rag[parsers]",
+  "paddleocr>=2.9,<3",
+  "paddlepaddle>=3.3.1",
+]
+parsers-mineru = [
+  "graph-rag[parsers]",
+  "mineru>=2.0",
+]
+parsers-marker = [
+  "graph-rag[parsers]",
+  "marker-pdf>=1.0",
+]
+parsers-full = [
+  "graph-rag[parsers-docling,parsers-ocr,parsers-mineru,parsers-marker]",
+]
+observability = [
+  "opentelemetry-api>=1.29,<2",
+  "opentelemetry-sdk>=1.29,<2",
+  "prometheus-client>=0.21,<1",
+]
+all = [
+  "graph-rag[api,cli,postgres,redis,minio,azure,qdrant,neo4j,llm,parsers,observability]",
+]
+
+[project.urls]
+Documentation = "https://github.com/local/graph-rag"
+Repository = "https://github.com/local/graph-rag"
+
+[project.scripts]
+graph-rag = "graph_rag.cli.main:run"
+# Legacy alias: infra/k8s/worker/deployment.yaml still invokes `enterprise-rag`;
+# drop this only after that manifest switches to `graph-rag`.
+enterprise-rag = "graph_rag.cli.main:run"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/graph_rag"]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.9,<1",
+  "mypy>=1.14,<2",
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.25,<1",
+  "types-PyYAML>=6.0.12,<7",
+  "jsonschema>=4.26.0",
+  "aiosqlite>=0.20,<1",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+package = true
+# Marker/surya still declare pillow<11; Docling needs pillow 12. The APIs are
+# compatible — override so the full parser extra can install together.
+override-dependencies = [
+  "pillow>=12.3.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "N",   # pep8-naming
+  "S",   # flake8-bandit
+  "ASYNC",
+  "RUF",
+  "SIM",
+  "T20", # no print in library code
+  "PTH", # pathlib
+]
+ignore = [
+  "S101", # assert allowed in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+"scripts/**" = ["T20"]
+"src/graph_rag/cli/**" = ["T20", "BLE001", "B008"]
+"src/graph_rag/api/routes/**" = ["B008"]
+"alembic/**" = ["E402", "INP001"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+mypy_path = "src"
+packages = ["graph_rag"]
+exclude = [
+  "tests/",
+  "alembic/",
+  "scripts/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "minio.*",
+  "azure.*",
+  "qdrant_client.*",
+  "neo4j.*",
+  "magic.*",
+  "pypdfium2.*",
+  "openai.*",
+  "langchain_openai.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "graph_rag.infrastructure.persistence.postgres.models.*",
+]
+# SQLAlchemy declarative mappings are validated at runtime.
+disable_error_code = ["misc"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning",
+  "ignore::ResourceWarning",
+  "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+markers = [
+  "integration: integration tests requiring containers",
+  "evaluation: retrieval and answer evaluation suite",
+  "live_openai: tests that call live OpenAI APIs",
+]

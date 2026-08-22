@@ -1,0 +1,29 @@
+# Worker CI/production image. Expects a prebuilt worker base image.
+# syntax=docker/dockerfile:1.7
+ARG BASE_IMAGE=harbor.safranys.com/chatwithdocs/worker-base:dev
+FROM ${BASE_IMAGE} AS production
+
+WORKDIR /app
+
+COPY src ./src
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY config ./config
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers-full \
+    || uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers-docling --extra parsers-ocr --extra parsers \
+    || uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers
+
+USER app
+
+CMD ["graph-rag", "worker", "--poll-interval", "1.0"]

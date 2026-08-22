@@ -13,7 +13,7 @@ Chat history is stored in the browser (`localStorage`) per tenant key.
 cd ..
 docker compose up -d minio minio-init
 export OBJECT_STORE_BACKEND=minio
-uv run uvicorn enterprise_rag.api.app:get_app --factory --reload
+uv run uvicorn graph_rag.api.app:get_app --factory --reload
 
 # terminal 2 — UI
 cd frontend

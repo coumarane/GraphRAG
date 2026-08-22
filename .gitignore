@@ -38,7 +38,6 @@ credentials.json
 secrets/
 
 # Runtime data
-data/
 tmp/
 temp/
 *.log
@@ -56,9 +55,10 @@ neo4j-data/
 uv.lock.bak
 
 # Evaluation artifacts
-evaluation/outputs/
+/data/evaluation/outputs/
 
-sample_data/
+# Business sample documents (not committed)
+/data/samples/
 infra/keycloak_sample
 **Notes.md**
 .github/actions-config.dev.json

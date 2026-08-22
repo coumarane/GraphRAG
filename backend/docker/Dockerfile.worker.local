@@ -1,0 +1,62 @@
+# Local-only self-contained worker build. Does not depend on a pre-pushed base image.
+# syntax=docker/dockerfile:1.7
+FROM python:3.13-slim-bookworm AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends \
+      curl ca-certificates \
+      build-essential g++ gcc \
+      libgl1 libglib2.0-0 \
+    && groupadd --system --gid 1000 app \
+    && useradd --system --uid 1000 --gid app --create-home --home-dir /app app
+
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+COPY pyproject.toml README.md uv.lock ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers-full \
+    || uv sync --frozen --no-dev --no-install-project --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers-docling --extra parsers-ocr --extra parsers \
+    || uv sync --frozen --no-dev --no-install-project --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers
+
+COPY src ./src
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY config ./config
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers-full \
+    || uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers-docling --extra parsers-ocr --extra parsers \
+    || uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
+      --extra redis --extra minio --extra qdrant --extra neo4j \
+      --extra llm \
+      --extra observability --extra parsers
+
+USER app
+
+CMD ["graph-rag", "worker", "--poll-interval", "1.0"]
