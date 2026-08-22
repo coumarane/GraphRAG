@@ -95,6 +95,7 @@ Revisit only once ≥2 real third-party plugins exist.
 ### 2. Discovery mechanism — `PluginRegistry` per capability
 
 New package `application/plugins/`:
+
 - `registry.py` — generic `PluginRegistry[T]`, one instance per capability.
 - `discovery.py` — `importlib.metadata.entry_points(group=...)` wrapper, cached.
 - `descriptors.py` — the factory contract.
@@ -107,8 +108,7 @@ backend identifier (`minio`, `qdrant`, `docling`, ...) — this is what makes it
 compatible.
 
 **Factory contract**: each entry point resolves to a small factory object (not the adapter
-class directly), exposing `plugin_name`, `capability`, `trust_tier: Literal["core","verified",
-"community"]`, `build(settings: Settings) -> <ProtocolType>`, optional
+class directly), exposing `plugin_name`, `capability`, `trust_tier: Literal["core","verified", "community"]`, `build(settings: Settings) -> <ProtocolType>`, optional
 `config_model: type[BaseModel]` (validates a namespaced config dict, doubles as introspection
 schema), optional `async def healthcheck(instance) -> bool`. Same pattern OpenTelemetry
 exporters / Airflow providers use — it gives a place to hang metadata without touching adapter
@@ -140,8 +140,7 @@ PluginsSettings
 
 `_apply_flat_store_env` (already handles Postgres/MinIO/etc. the same way) gains one more
 block reading `OBJECT_STORE_BACKEND` etc. into `plugins.object_store.backend` — **env var
-names unchanged**, so the k8s secret provider class needs zero edits. `runtime.py::
-object_store_backend()` becomes a one-line shim (`get_settings().plugins.object_store.backend`)
+names unchanged**, so the k8s secret provider class needs zero edits. `runtime.py:: object_store_backend()` becomes a one-line shim (`get_settings().plugins.object_store.backend`)
 kept only because `cli/main.py` still imports it by name. The `if/elif` body in
 `build_runtime_container` collapses to
 `object_store_registry.resolve(resolved.plugins.object_store.backend).build(resolved)` — same
@@ -198,11 +197,24 @@ precedent).
 OpenAI-or-Fake becomes a real `chat_model`/`embedding_model`/`reranker` registry lookup — but
 the zero-config `Fake*` fallback for `use_live_models=False` must remain the untouched default
 (tests depend on it). New core factories wrap `infrastructure/models/openai_direct/` and
-`infrastructure/models/langchain_openai/`. **`domain/billing/openai_pricing.py` needs an
-explicit decision**, not a silent defer: either generalize to a `PricingProvider` protocol per
-provider, or explicitly document non-OpenAI providers as reporting null cost in
-`api/routes/ops.py::usage_dashboard`. Last because it's the most new code (no existing if/elif
-to generalize from) and entangled with billing/usage in ways storage/parsers aren't.
+`infrastructure/models/langchain_openai/`.
+
+**Billing is a smaller gap than it first looks — re-verified against the actual code.**
+`domain/usage/models.py::UsageEvent` already carries a free-text `provider: str` field
+alongside `model_name`, and `known_pricing: bool` already exists precisely for the "cost
+unknown" case. `application/usage/record.py::build_usage_event()` already accepts an arbitrary
+`provider` and calls `estimate_usd(model_name, ..., table=pricing)`, which already returns
+`(Decimal("0"), known=False)` for any model name not in the table — **a non-OpenAI provider
+plugin recording usage today already degrades gracefully to null-cost, no crash, no schema
+change needed.** The only real gap is that `domain/billing/openai_pricing.py`'s default table
+only has OpenAI rows, and `load_openai_pricing()` reads `config/openai_pricing.yaml` by a fixed
+path — so the table itself isn't yet plugin-discoverable. Phase 3's actual billing work is
+narrower than "resolve vendor lock": either (a) let a pricing plugin contribute additional
+`(model_name → rate)` rows into the loaded table (simplest, no new protocol), or (b) introduce
+a `PricingProvider` protocol keyed by `provider` for providers whose pricing depends on more
+than just `model_name` (e.g. per-region rates). Start with (a); only build (b) if a provider
+actually needs it. Last overall because it's still the most new registry code (no existing
+if/elif to generalize from) and touches usage/billing in ways storage/parsers don't.
 
 **Phase 4 — CLI/API extension points** (can run in parallel with 2/3, but sequencing after
 Phase 1 means at least one proven registry pattern exists first).
@@ -235,10 +247,17 @@ Phase 1 means at least one proven registry pattern exists first).
   breaker. Apply by default to `verified`/`community` tier plugins only — don't conflate
   "harden plugins" with "harden existing core adapters" (that's a separate, larger reliability
   workstream).
-- **Observability tagging**: extend `ObservabilityMiddleware` with `plugin_name`/`capability`/
-  `trust_tier` labels. `ParserSelection`'s existing `attempted_parsers`/`warnings` fields are
-  the right pattern to replicate for storage/LLM plugin provenance in ingestion-run/
-  query-response records.
+- **Observability tagging**: two concrete, already-existing hooks to extend rather than a new
+  mechanism to invent. (1) `application/usage/context.py::UsageContext` (a `ContextVar` bound
+  per-request in `api/dependencies/__init__.py::_bind_usage_context` and per-task in
+  ingestion/retrieval code via the `usage_context()` context manager) already flows into every
+  `UsageEvent` — add a `plugin_name`/`trust_tier` field here so LLM-provider plugin provenance
+  is attached to the same usage/billing records for free. (2) `structlog.contextvars`, bound by
+  `ObservabilityMiddleware` per-request — bind `plugin_name`/`capability`/`trust_tier` here too
+  so it shows up in every log line emitted while a plugin-resolved adapter is in use, not just
+  usage events. `ParserSelection`'s existing `attempted_parsers`/`warnings` fields are the right
+  pattern to replicate for storage plugin provenance in ingestion-run records (usage/log context
+  doesn't naturally cover non-LLM storage calls the way it covers metered model calls).
 - **Admin introspection**: `graph-rag plugins list` (under the new `plugin_app`) and
   `GET /ops/plugins` added to the **existing** `api/routes/ops.py` (same shape as its
   `dashboard()`/`usage_dashboard()`). Gate both through the **existing** RBAC seam —
@@ -263,7 +282,11 @@ SQLAlchemy's dialect test suite / fsspec's `AbstractFileSystem` conformance test
 ## Open Decisions to Make Explicitly (don't let these slide silently)
 
 1. **Metadata-store bundle shape** (Phase 2, item 4) — bundle dataclass vs. permanent special case.
-2. **Billing vendor-lock** (Phase 3) — generalize pricing or document OpenAI-only + null-cost fallback.
+2. **Billing pricing-table extensibility** (Phase 3) — smaller than it first looks (see Phase 3
+   above): the null-cost fallback for unrecognized `(provider, model_name)` pairs already works
+   today. The only decision is whether a pricing plugin just contributes rows to the loaded
+   table (start here) or needs a full `PricingProvider` protocol (only if a provider's pricing
+   isn't a flat per-model-name rate).
 3. **`ParseDocumentService.inspect()`'s hardcoded `docling` dependency** (Phase 1) — must become
    an overridable named slot, not silently rely on `docling` always being installed.
 4. **Deployment topology for installed plugins**: does "install a plugin" mean rebuilding the
@@ -293,8 +316,7 @@ SQLAlchemy's dialect test suite / fsspec's `AbstractFileSystem` conformance test
   (`monkeypatch.setenv` + `build_runtime_container(Settings())`) pass unchanged;
   `git diff --stat` confirms `local.py` untouched; a local `docker compose up -d --wait` smoke
   run (`Makefile`'s existing `up` target) against real MinIO/Qdrant/Neo4j/Postgres containers
-  still ingests + queries a sample doc successfully (`uv run graph-rag ingest
-  ../data/examples/sample.pdf ...` / `graph-rag query ...`, same commands already documented
+  still ingests + queries a sample doc successfully (`uv run graph-rag ingest ../data/examples/sample.pdf ...` / `graph-rag query ...`, same commands already documented
   in the README).
 - **Phase 3**: `_resolve_models()` zero-arg/`use_live_models=False` path still returns `Fake*`
   with no network calls (existing tests should catch a regression here immediately); manual
