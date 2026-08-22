@@ -7,7 +7,7 @@ import pytest
 from graph_rag.shared.exceptions import (
     CitationValidationError,
     ConfigurationError,
-    EnterpriseRagError,
+    GraphRagError,
     ParserError,
     PermanentError,
     TenantError,
@@ -18,7 +18,7 @@ from graph_rag.shared.exceptions import (
 
 
 def test_base_error_payload() -> None:
-    err = EnterpriseRagError("boom", details={"stage": "VALIDATE"})
+    err = GraphRagError("boom", details={"stage": "VALIDATE"})
     payload = err.to_dict()
     assert payload["code"] == "graph_rag_error"
     assert payload["message"] == "boom"
@@ -47,7 +47,7 @@ def test_cause_chaining() -> None:
         (CitationValidationError, "citation_validation_error"),
     ],
 )
-def test_default_codes(exc_type: type[EnterpriseRagError], code: str) -> None:
+def test_default_codes(exc_type: type[GraphRagError], code: str) -> None:
     assert exc_type("x").code == code
 
 

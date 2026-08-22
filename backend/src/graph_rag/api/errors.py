@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from graph_rag.domain.ids import new_id
-from graph_rag.shared.exceptions import EnterpriseRagError
+from graph_rag.shared.exceptions import GraphRagError
 
 
 def problem_details(
@@ -47,8 +47,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             except Exception:  # noqa: BLE001
                 pass
 
-    @app.exception_handler(EnterpriseRagError)
-    async def _enterprise_error(request: Request, exc: EnterpriseRagError) -> JSONResponse:
+    @app.exception_handler(GraphRagError)
+    async def _graph_rag_error(request: Request, exc: GraphRagError) -> JSONResponse:
         await _rollback_if_possible(request)
         correlation = request.headers.get("X-Correlation-ID")
         body = problem_details(

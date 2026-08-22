@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 
-class EnterpriseRagError(Exception):
+class GraphRagError(Exception):
     """Base error for all application failures."""
 
     code: str = "graph_rag_error"
@@ -40,7 +40,7 @@ class EnterpriseRagError(Exception):
         }
 
 
-class TransientError(EnterpriseRagError):
+class TransientError(GraphRagError):
     """Retryable failure (network blip, lock contention, rate limit)."""
 
     code = "transient_error"
@@ -54,7 +54,7 @@ class RateLimitError(TransientError):
     http_status = 429
 
 
-class PermanentError(EnterpriseRagError):
+class PermanentError(GraphRagError):
     """Non-retryable failure."""
 
     code = "permanent_error"
@@ -117,14 +117,14 @@ class ConflictError(PermanentError):
     http_status = 409
 
 
-class StorageError(EnterpriseRagError):
+class StorageError(GraphRagError):
     """Persistence adapter failure (PostgreSQL, MinIO, Qdrant, Neo4j, Redis)."""
 
     code = "storage_error"
     http_status = 500
 
 
-class ParserError(EnterpriseRagError):
+class ParserError(GraphRagError):
     """Document parser or OCR failure."""
 
     code = "parser_error"
@@ -138,28 +138,28 @@ class UnsupportedDocumentError(ParserError, PermanentError):
     http_status = 422
 
 
-class ModelError(EnterpriseRagError):
+class ModelError(GraphRagError):
     """LLM, vision, embedding or reranker failure."""
 
     code = "model_error"
     http_status = 502
 
 
-class GraphError(EnterpriseRagError):
+class GraphError(GraphRagError):
     """Knowledge-graph extraction, resolution or query failure."""
 
     code = "graph_error"
     http_status = 500
 
 
-class IngestionError(EnterpriseRagError):
+class IngestionError(GraphRagError):
     """Ingestion orchestration or stage failure."""
 
     code = "ingestion_error"
     http_status = 500
 
 
-class RetrievalError(EnterpriseRagError):
+class RetrievalError(GraphRagError):
     """Retrieval or answer-generation failure."""
 
     code = "retrieval_error"

@@ -28,7 +28,7 @@ from graph_rag.domain.retrieval.models import QueryRequest, RetrievalFilters
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import (
     AuthorizationError,
-    EnterpriseRagError,
+    GraphRagError,
     GraphError,
     ModelError,
     ParserError,
@@ -114,7 +114,7 @@ def _exit_for_error(exc: BaseException) -> int:
         return ExitCode.GRAPH
     if isinstance(exc, (AuthorizationError, TenantError)):
         return ExitCode.AUTHORIZATION
-    if isinstance(exc, EnterpriseRagError):
+    if isinstance(exc, GraphRagError):
         return ExitCode.UNEXPECTED
     return ExitCode.UNEXPECTED
 
@@ -195,7 +195,7 @@ def ingest_command(
         _emit(payload, output=output)
         if payload.get("partial"):
             raise typer.Exit(code=ExitCode.PARTIAL)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         typer.secho(exc.message, fg=typer.colors.RED, err=True)
         raise typer.Exit(code=_exit_for_error(exc)) from exc
     except Exception as exc:
@@ -298,7 +298,7 @@ def query_command(
             )
         )
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         typer.secho(exc.message, fg=typer.colors.RED, err=True)
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
@@ -344,7 +344,7 @@ def inspect_document(
             )
         )
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -398,7 +398,7 @@ def show_run(
     try:
         payload = asyncio.run(_show_run_async(run_id=run_id, tenant_id=tenant_id))
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -426,7 +426,7 @@ def resume_run(
     try:
         payload = asyncio.run(_resume_async(run_id=run_id, tenant_id=tenant_id))
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -445,7 +445,7 @@ def delete_document(
     try:
         payload = asyncio.run(_delete_async(document_id=document_id, tenant_id=tenant_id))
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -480,7 +480,7 @@ def reindex(
             _reindex_async(document_id=document_id, tenant_id=tenant_id, scope="full")
         )
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -495,7 +495,7 @@ def rebuild_vectors(
             _reindex_async(document_id=document_id, tenant_id=tenant_id, scope="vectors")
         )
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -510,7 +510,7 @@ def rebuild_graph(
             _reindex_async(document_id=document_id, tenant_id=tenant_id, scope="graph")
         )
         _emit(payload, output=output)
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
@@ -537,7 +537,7 @@ def worker(
         asyncio.run(run_worker(poll_interval_seconds=poll_interval))
     except KeyboardInterrupt:
         raise typer.Exit(code=ExitCode.SUCCESS) from None
-    except EnterpriseRagError as exc:
+    except GraphRagError as exc:
         raise typer.Exit(code=_exit_for_error(exc)) from exc
 
 
