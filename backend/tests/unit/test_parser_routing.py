@@ -32,7 +32,7 @@ def test_recommend_plain_text() -> None:
         _inspection(mime_type="text/plain"),
         filename="notes.txt",
     )
-    assert parser is ParserName.TEXT
+    assert parser == ParserName.TEXT
     assert profile is ParserProfile.FAST
     assert "text" in reason
 
@@ -42,7 +42,7 @@ def test_recommend_scanned_pdf() -> None:
         _inspection(scanned_page_ratio=0.8, mean_chars_per_page=10.0),
         filename="scan.pdf",
     )
-    assert parser is ParserName.PADDLEOCR
+    assert parser == ParserName.PADDLEOCR
     assert profile is ParserProfile.SCANNED
 
 
@@ -51,7 +51,7 @@ def test_recommend_scientific_pdf() -> None:
         _inspection(probable_formula_density=0.4, mean_chars_per_page=900.0),
         filename="paper.pdf",
     )
-    assert parser is ParserName.MINERU
+    assert parser == ParserName.MINERU
     assert profile is ParserProfile.SCIENTIFIC
 
 
@@ -60,7 +60,7 @@ def test_recommend_office_docx() -> None:
         _inspection(mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
         filename="memo.docx",
     )
-    assert parser is ParserName.DOCLING
+    assert parser == ParserName.DOCLING
     assert profile is ParserProfile.BALANCED
 
 
@@ -74,7 +74,7 @@ def test_router_override() -> None:
         ),
         filename="a.pdf",
     )
-    assert selection.primary is ParserName.MARKER
+    assert selection.primary == ParserName.MARKER
     assert selection.fallbacks == [ParserName.DOCLING]
     assert "override" in selection.reason
 
@@ -86,7 +86,7 @@ def test_router_balanced_prefers_inspection_when_disagreeing() -> None:
         options=ParseOptions(profile=ParserProfile.BALANCED),
         filename="scan.pdf",
     )
-    assert selection.primary is ParserName.PADDLEOCR
+    assert selection.primary == ParserName.PADDLEOCR
     assert ParserName.PADDLEOCR not in selection.fallbacks
 
 
@@ -98,4 +98,4 @@ def test_router_explicit_scientific_profile() -> None:
         filename="doc.pdf",
     )
     assert selection.profile is ParserProfile.SCIENTIFIC
-    assert selection.primary is ParserName.MINERU
+    assert selection.primary == ParserName.MINERU

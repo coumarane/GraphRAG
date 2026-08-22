@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from graph_rag.application.plugins.parsers import (
+    build_core_parser_instances,
+    build_parser_instances,
+    configured_inspector_name,
+    resolve_inspector_name,
+)
 from graph_rag.domain.documents.document import NormalizedDocument
 from graph_rag.domain.parsing.normalize import normalize_parser_result
 from graph_rag.domain.parsing.protocols import MultimodalDocumentParser
@@ -13,13 +19,8 @@ from graph_rag.domain.parsing.types import (
     ParserSelection,
     ParseSource,
     RawParserResult,
+    parser_key,
 )
-from graph_rag.infrastructure.parsers.docling import DoclingParser
-from graph_rag.infrastructure.parsers.marker import MarkerParser
-from graph_rag.infrastructure.parsers.mineru import MinerUParser
-from graph_rag.infrastructure.parsers.paddleocr import PaddleOCRParser
-from graph_rag.infrastructure.parsers.pdfium import PdfiumInspector, PdfiumParser
-from graph_rag.infrastructure.parsers.text import TextDocumentParser
 from graph_rag.shared.exceptions import ParserError
 from graph_rag.shared.logging import get_logger
 
@@ -27,26 +28,23 @@ logger = get_logger(__name__)
 
 
 class ParserRegistry:
-    """Named multimodal parser registry."""
+    """Named multimodal parser registry filled from plugin factories."""
 
     def __init__(
         self,
         parsers: dict[str, MultimodalDocumentParser] | None = None,
-        inspector: PdfiumInspector | None = None,
+        inspector: object | None = None,
+        *,
+        inspector_name: str | None = None,
     ) -> None:
-        inspector = inspector or PdfiumInspector()
-        self._inspector = inspector
+        del inspector  # retained for call-site compatibility; inspect uses parser slots
         self._parsers: dict[str, MultimodalDocumentParser] = parsers or {
-            ParserName.DOCLING.value: DoclingParser(inspector=inspector),
-            ParserName.MINERU.value: MinerUParser(inspector=inspector),
-            ParserName.MARKER.value: MarkerParser(inspector=inspector),
-            ParserName.PADDLEOCR.value: PaddleOCRParser(inspector=inspector),
-            ParserName.PDFIUM.value: PdfiumParser(inspector=inspector),
-            ParserName.TEXT.value: TextDocumentParser(inspector=inspector),
+            parser_key(name): adapter for name, adapter in build_core_parser_instances().items()
         }
+        self.inspector_name = inspector_name
 
     def get(self, name: ParserName | str) -> MultimodalDocumentParser:
-        key = name.value if isinstance(name, ParserName) else name
+        key = parser_key(name)
         try:
             return self._parsers[key]
         except KeyError as exc:
@@ -58,6 +56,9 @@ class ParserRegistry:
     def names(self) -> list[str]:
         return sorted(self._parsers)
 
+    def register(self, name: str, parser: MultimodalDocumentParser) -> None:
+        self._parsers[parser_key(name)] = parser
+
 
 class ParseDocumentService:
     """Inspect, route, parse with fallbacks, and normalize."""
@@ -66,17 +67,17 @@ class ParseDocumentService:
         self,
         registry: ParserRegistry | None = None,
         router: AutomaticParserRouter | None = None,
+        *,
+        inspector_name: str | None = None,
     ) -> None:
         self._registry = registry or ParserRegistry()
-        self._router = router or AutomaticParserRouter()
+        names = frozenset(self._registry.names())
+        self._router = router or AutomaticParserRouter(registered_names=names)
+        configured = inspector_name if inspector_name is not None else self._registry.inspector_name
+        self._inspector_name = configured or resolve_inspector_name(names)
 
     async def inspect(self, source: ParseSource) -> ParserInspection:
-        # Prefer a registered parser's inspector; fall back to PDFium.
-        try:
-            inspector_parser = self._registry.get(ParserName.DOCLING)
-        except ParserError:
-            return await PdfiumInspector().inspect(source)
-        return await inspector_parser.inspect(source)
+        return await self._registry.get(self._inspector_name).inspect(source)
 
     async def select_parser(
         self,
@@ -103,8 +104,9 @@ class ParseDocumentService:
         last_error: Exception | None = None
 
         for parser_name in chain:
-            parser = self._registry.get(parser_name)
-            attempted.append(parser_name.value)
+            key = parser_key(parser_name)
+            parser = self._registry.get(key)
+            attempted.append(key)
             try:
                 raw = await parser.parse(source, opts)
                 document = normalize_parser_result(raw, source)
@@ -114,11 +116,11 @@ class ParseDocumentService:
                 return document, selection, attempted
             except Exception as exc:
                 last_error = exc
-                message = f"{parser_name.value} failed: {exc}"
+                message = f"{key} failed: {exc}"
                 warnings.append(message)
                 logger.warning(
                     "parser_attempt_failed",
-                    parser=parser_name.value,
+                    parser=key,
                     error=str(exc),
                 )
                 if opts.failure_mode == "fail_fast":
@@ -137,8 +139,18 @@ class ParseDocumentService:
     async def parse_raw(
         self,
         source: ParseSource,
-        parser_name: ParserName,
+        parser_name: ParserName | str,
         options: ParseOptions | None = None,
     ) -> RawParserResult:
         parser = self._registry.get(parser_name)
         return await parser.parse(source, options or ParseOptions())
+
+
+def parser_registry_from_settings(settings: object | None = None) -> ParserRegistry:
+    """Build a registry from core + discovered parser plugins."""
+    instances = build_parser_instances(settings, discover=True)
+    inspector = resolve_inspector_name(
+        instances,
+        configured=configured_inspector_name(settings),
+    )
+    return ParserRegistry(parsers=instances, inspector_name=inspector)

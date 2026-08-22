@@ -7,7 +7,7 @@ these interfaces. Domain and application code must not import provider SDKs.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -28,6 +28,7 @@ from graph_rag.domain.models.contracts import (
 TModel = TypeVar("TModel", bound=BaseModel)
 
 
+@runtime_checkable
 class ChatModel(Protocol):
     """Text chat generation provider."""
 
@@ -36,6 +37,7 @@ class ChatModel(Protocol):
         ...
 
 
+@runtime_checkable
 class VisionModel(Protocol):
     """Vision / multimodal generation provider."""
 
@@ -44,6 +46,7 @@ class VisionModel(Protocol):
         ...
 
 
+@runtime_checkable
 class StructuredExtractor(Protocol):
     """Structured output extraction provider."""
 
@@ -56,6 +59,7 @@ class StructuredExtractor(Protocol):
         ...
 
 
+@runtime_checkable
 class EmbeddingModel(Protocol):
     """Embedding provider."""
 
@@ -72,6 +76,7 @@ class EmbeddingModel(Protocol):
         ...
 
 
+@runtime_checkable
 class Reranker(Protocol):
     """Optional reranking provider."""
 
@@ -80,6 +85,7 @@ class Reranker(Protocol):
         ...
 
 
+@runtime_checkable
 class TokenCounter(Protocol):
     """Token estimation provider."""
 

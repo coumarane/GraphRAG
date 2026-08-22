@@ -197,7 +197,7 @@ async def test_parse_service_fallback_chain() -> None:
         source,
         ParseOptions(parser_override=ParserName.DOCLING, fallback_parsers=[ParserName.MARKER]),
     )
-    assert selection.primary is ParserName.DOCLING
+    assert selection.primary == ParserName.DOCLING
     assert attempted == ["docling", "marker"]
     assert document.parser_info.parser_name == "marker"
     assert document.parser_info.attempted_parsers == attempted

@@ -94,3 +94,27 @@ def test_openai_env_mapping(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.models.api_key is not None
     assert settings.models.api_key.get_secret_value() == "sk-test"
     assert settings.models.embedding_model == "text-embedding-3-small"
+
+
+def test_plugins_settings_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "default.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "app": {"environment": "development"},
+                "plugins": {
+                    "enabled": True,
+                    "allow_core_override": False,
+                    "object_store": {"backend": "memory"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "minio")
+    monkeypatch.setenv("VECTOR_STORE_BACKEND", "qdrant")
+    settings = Settings.from_config_dir(tmp_path, environment="development", env_file=None)
+    assert settings.plugins.enabled is True
+    assert settings.plugins.allow_core_override is False
+    assert settings.plugins.object_store.backend == "minio"
+    assert settings.plugins.vector_store.backend == "qdrant"
+    assert settings.plugins.allowlist is None
