@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from uuid import UUID
@@ -116,6 +117,65 @@ _CHART_TEXT_HINTS = (
     "silkyflake",
     "nir protection",
 )
+
+
+_EXACT_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.\-]{2,}")
+
+
+def _looks_like_exact_token(token: str) -> bool:
+    """Code/identifier-shaped tokens (chunk_overlap, v1.2, SKU-1234) -- not prose words."""
+    has_symbol = any(char in token for char in "_.-")
+    has_mixed_letters_and_digits = any(char.isdigit() for char in token) and any(
+        char.isalpha() for char in token
+    )
+    return has_symbol or has_mixed_letters_and_digits
+
+
+def _boost_exact_token_matches(
+    evidence: list[RetrievedEvidence],
+    question: str,
+) -> list[RetrievedEvidence]:
+    """Promote chunks containing a verbatim code/identifier-like query token.
+
+    Semantic search alone can dilute an exact lookup (a chunk ID, version
+    string, part number) with topically-similar neighbors that don't actually
+    contain the token being searched for. Boosts rather than hard-filters, to
+    stay consistent with this module's other boost-and-resort adjustments
+    (``_boost_tabular_evidence``, ``_boost_chart_evidence``) rather than
+    dropping evidence outright.
+    """
+    if not evidence:
+        return evidence
+    candidates = {
+        token
+        for token in _EXACT_TOKEN_PATTERN.findall(question)
+        if _looks_like_exact_token(token)
+    }
+    if not candidates:
+        return evidence
+
+    matched_any = False
+    boosted: list[RetrievedEvidence] = []
+    for item in evidence:
+        haystack = f"{item.text or ''} {item.document_name or ''}".casefold()
+        if not any(token.casefold() in haystack for token in candidates):
+            boosted.append(item)
+            continue
+        matched_any = True
+        components = dict(item.score_components)
+        components["exact_token_match"] = 1.5
+        boosted.append(
+            item.model_copy(
+                update={
+                    "score": float(item.score or 0.0) + 1.5,
+                    "score_components": components,
+                }
+            )
+        )
+    if not matched_any:
+        return evidence
+    boosted.sort(key=lambda row: float(row.score or 0.0), reverse=True)
+    return boosted
 
 
 def _boost_tabular_evidence(
@@ -483,6 +543,7 @@ class RetrieveEvidenceService:
 
         fused = _boost_tabular_evidence(fused, analysis)
         fused = _boost_chart_evidence(fused, analysis)
+        fused = _boost_exact_token_matches(fused, request.question)
 
         chunk_map = await self._load_chunk_map(tenant, fused)
         fused = _align_condition_facets(fused, analysis, chunk_map)
