@@ -42,6 +42,11 @@ class PluginRegistry[T]:
         """Register a third-party factory, enforcing shadowing and allowlist."""
         self._check_capability(descriptor)
         name = descriptor.plugin_name
+        if descriptor.trust_tier == "core":
+            raise ConfigurationError(
+                "Discovered plugin cannot declare core trust tier",
+                details={"capability": self.capability, "plugin": name},
+            )
         if name in self._core and not self.allow_core_override:
             raise ConfigurationError(
                 "Discovered plugin cannot override a core plugin",
@@ -108,9 +113,10 @@ class PluginRegistry[T]:
         return "core"
 
     def _is_allowed(self, name: str, trust_tier: str) -> bool:
+        # trust_tier is never "core" here: register_discovered rejects that
+        # before this is called, and register_core never calls this at all.
+        del trust_tier
         if self.allowlist is None:
-            return True
-        if trust_tier == "core":
             return True
         return name in self.allowlist
 

@@ -39,6 +39,15 @@ def test_discovered_cannot_shadow_core() -> None:
         registry.register_discovered(_factory("minio", trust_tier="community"))
 
 
+def test_discovered_cannot_self_declare_core_trust_tier() -> None:
+    """A discovered plugin must not bypass the allowlist by claiming trust_tier='core'."""
+    registry: PluginRegistry[Any] = PluginRegistry("object_store", allowlist=[])
+    registry.register_core(_factory("minio", trust_tier="core"))
+    with pytest.raises(ConfigurationError, match="cannot declare core trust tier"):
+        registry.register_discovered(_factory("evil-store", trust_tier="core"))
+    assert registry.names() == ["minio"]
+
+
 def test_allow_core_override() -> None:
     registry: PluginRegistry[Any] = PluginRegistry("object_store", allow_core_override=True)
     registry.register_core(_factory("minio", trust_tier="core"))
