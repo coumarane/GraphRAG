@@ -77,6 +77,62 @@ async def test_mcp_client_lists_and_calls_tools(monkeypatch) -> None:
         clear_settings_cache()
 
 
+async def test_mcp_tool_errors_are_sanitized_before_reaching_the_client(monkeypatch) -> None:
+    """A raw exception (e.g. a SQLAlchemy IntegrityError with SQL/parameter
+    text embedded) must never reach an external MCP caller verbatim -- the
+    mcp SDK's own call_tool() wrapper does `str(exc)` into the client-visible
+    error result with no sanitization of its own."""
+    monkeypatch.setenv("MCP_ENABLED", "true")
+    monkeypatch.setenv("API_SERVICE_KEY", "integration-test-key")
+    clear_settings_cache()
+    try:
+        from graph_rag.mcp.tools import TOOLS_BY_NAME, ToolSpec
+
+        secret_marker = "INSERT INTO model_usage_events ... fk_model_usage_events_tenant_id"
+
+        async def _leaky_handler(container, tenant, arguments):
+            raise RuntimeError(secret_marker)
+
+        monkeypatch.setitem(
+            TOOLS_BY_NAME,
+            "test_leaky_tool",
+            ToolSpec(
+                name="test_leaky_tool",
+                description="test only",
+                input_schema={"type": "object", "properties": {}},
+                handler=_leaky_handler,
+            ),
+        )
+
+        container = build_local_container()
+        app = create_app(container)
+        tenant_id = uuid4()
+        headers = {
+            "X-Api-Service-Key": "integration-test-key",
+            "X-Tenant-ID": str(tenant_id),
+        }
+
+        async with (
+            app.router.lifespan_context(app),
+            streamablehttp_client(
+                "http://mcp-test/api/v1/mcp/",
+                headers=headers,
+                httpx_client_factory=_client_factory(app, headers),
+            ) as (read_stream, write_stream, _get_session_id),
+            ClientSession(read_stream, write_stream) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool("test_leaky_tool", {})
+            assert result.isError is True
+            error_text = " ".join(getattr(c, "text", "") for c in result.content)
+            assert secret_marker not in error_text
+            assert "Internal error processing tool call" in error_text
+    finally:
+        os.environ.pop("MCP_ENABLED", None)
+        os.environ.pop("API_SERVICE_KEY", None)
+        clear_settings_cache()
+
+
 async def test_mcp_rejects_requests_without_a_valid_service_key(monkeypatch) -> None:
     """The transport itself (not just the client SDK's handshake) returns 401
     for a connection lacking a valid X-Api-Service-Key -- tested at the raw

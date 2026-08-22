@@ -17,6 +17,10 @@ from mcp.server.lowlevel import Server
 from graph_rag.application.runtime.container import ServiceContainer
 from graph_rag.mcp import auth
 from graph_rag.mcp.tools import TOOLS, TOOLS_BY_NAME
+from graph_rag.shared.exceptions import GraphRagError
+from graph_rag.shared.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def build_mcp_server(container: ServiceContainer) -> Server[Any, Any]:
@@ -36,6 +40,19 @@ def build_mcp_server(container: ServiceContainer) -> Server[Any, Any]:
         if spec is None:
             raise ValueError(f"Unknown tool: {name}")
         tenant = auth.current_tenant()
-        return await spec.handler(container, tenant, arguments)
+        try:
+            return await spec.handler(container, tenant, arguments)
+        except GraphRagError as exc:
+            # .message is already the safe, user-facing text used for the
+            # REST API's problem-details body (api/errors.py) -- reuse it.
+            logger.warning("mcp_tool_call_failed", tool=name, code=exc.code, error=exc.message)
+            raise RuntimeError(f"{exc.code}: {exc.message}") from None
+        except Exception:
+            # The SDK's own call_tool() wrapper does `str(exc)` verbatim into
+            # the client-visible error result -- never let an arbitrary
+            # exception's message (SQL text, stack internals, ...) reach an
+            # external MCP caller. Full detail goes to the server log only.
+            logger.exception("mcp_tool_call_unhandled_error", tool=name)
+            raise RuntimeError("Internal error processing tool call") from None
 
     return server
