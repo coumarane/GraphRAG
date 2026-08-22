@@ -14,6 +14,7 @@ from uuid import UUID
 from graph_rag.application.authorization.gate import require_action
 from graph_rag.application.runtime.container import ServiceContainer
 from graph_rag.application.usage.context import usage_context
+from graph_rag.config.settings import get_settings
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.modality import Modality
@@ -54,6 +55,27 @@ def _filters_from_args(arguments: dict[str, Any]) -> RetrievalFilters:
     )
 
 
+def _arg_or_default(arguments: dict[str, Any], key: str, default: Any) -> Any:
+    value = arguments.get(key)
+    return default if value is None else value
+
+
+def _common_request_kwargs(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Field defaults fall back to config, not hardcoded literals, so a
+    tenant's configured retrieval defaults (the config composer's Retrieval
+    card) apply here the same as they do for the HTTP API."""
+    defaults = get_settings().retrieval
+    return {
+        "question": arguments["question"],
+        "mode": RetrievalMode(_arg_or_default(arguments, "mode", defaults.default_mode.value)),
+        "filters": _filters_from_args(arguments),
+        "top_k": int(_arg_or_default(arguments, "top_k", defaults.top_k)),
+        "graph_depth": int(_arg_or_default(arguments, "graph_depth", defaults.graph_depth)),
+        "include_graph_paths": bool(arguments.get("include_graph_paths", False)),
+        "rerank": bool(_arg_or_default(arguments, "rerank", defaults.rerank)),
+    }
+
+
 async def query_documents(
     container: ServiceContainer,
     tenant: TenantContext,
@@ -68,15 +90,7 @@ async def query_documents(
         with usage_context(tenant_id=tenant.tenant_id, query_id=new_id(), user_id=tenant.user_id):
             outcome = await container.require_query().query(
                 tenant,
-                QueryRequest(
-                    question=arguments["question"],
-                    mode=RetrievalMode(arguments.get("mode", "auto")),
-                    filters=_filters_from_args(arguments),
-                    top_k=int(arguments.get("top_k", 12)),
-                    graph_depth=int(arguments.get("graph_depth", 2)),
-                    include_graph_paths=bool(arguments.get("include_graph_paths", False)),
-                    rerank=bool(arguments.get("rerank", True)),
-                ),
+                QueryRequest(**_common_request_kwargs(arguments)),
             )
     await container.commit_db()
     return outcome.response.model_dump(mode="json")
@@ -93,15 +107,7 @@ async def retrieve_evidence(
         with usage_context(tenant_id=tenant.tenant_id, query_id=new_id(), user_id=tenant.user_id):
             outcome = await container.require_retrieve().retrieve(
                 tenant,
-                RetrievalRequest(
-                    question=arguments["question"],
-                    mode=RetrievalMode(arguments.get("mode", "auto")),
-                    filters=_filters_from_args(arguments),
-                    top_k=int(arguments.get("top_k", 12)),
-                    graph_depth=int(arguments.get("graph_depth", 2)),
-                    include_graph_paths=bool(arguments.get("include_graph_paths", False)),
-                    rerank=bool(arguments.get("rerank", True)),
-                ),
+                RetrievalRequest(**_common_request_kwargs(arguments)),
             )
     await container.commit_db()
     return outcome.result.model_dump(mode="json")

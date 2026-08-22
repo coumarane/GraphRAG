@@ -11,6 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.api.dependencies import ContainerDep, TenantDep
 from graph_rag.application.authorization.gate import require_action
+from graph_rag.application.config_composer import (
+    ConfigPreviewRequest,
+    ConfigPreviewResponse,
+    CurrentConfigResponse,
+    build_current_config,
+    preview_config_change,
+)
 from graph_rag.application.plugins.catalog import PluginCatalog, build_plugin_catalog
 from graph_rag.config.settings import get_settings
 from graph_rag.domain.authorization.models import Action
@@ -166,6 +173,28 @@ async def list_plugins(tenant: TenantDep, container: ContainerDep) -> PluginCata
     """List registered and allowlist-blocked plugins for operators."""
     require_action(container.require_authorization(), tenant, Action.ADMIN_PLUGINS)
     return build_plugin_catalog(get_settings())
+
+
+@router.get("/config-composer", response_model=CurrentConfigResponse)
+async def get_config_composer(tenant: TenantDep, container: ContainerDep) -> CurrentConfigResponse:
+    """Current effective chunking/retrieval config for operators to compose from."""
+    require_action(container.require_authorization(), tenant, Action.ADMIN_SETTINGS)
+    return build_current_config(get_settings())
+
+
+@router.post("/config-composer/preview", response_model=ConfigPreviewResponse)
+async def preview_config_composer(
+    tenant: TenantDep,
+    container: ContainerDep,
+    body: ConfigPreviewRequest,
+) -> ConfigPreviewResponse:
+    """Validate a proposed chunking/retrieval override and render a YAML diff.
+
+    Never writes to disk or to the running process's settings -- the operator
+    copies the diff into a PR through the normal review/CI/ArgoCD path.
+    """
+    require_action(container.require_authorization(), tenant, Action.ADMIN_SETTINGS)
+    return preview_config_change(get_settings(), body)
 
 
 class UsageDashboardResponse(BaseModel):

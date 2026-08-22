@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from graph_rag.config.settings import get_settings
 from graph_rag.domain.modality import Modality
 from graph_rag.domain.retrieval.enums import RetrievalMode
 from graph_rag.domain.retrieval.models import (
@@ -178,15 +179,17 @@ class RetrievalSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1)
-    mode: RetrievalMode = RetrievalMode.AUTO
+    mode: RetrievalMode = Field(default_factory=lambda: get_settings().retrieval.default_mode)
     document_ids: list[UUID] = Field(default_factory=list)
     modalities: list[Modality] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     security_labels: list[str] = Field(default_factory=list)
-    top_k: int = Field(default=12, ge=1, le=100)
-    graph_depth: int = Field(default=2, ge=0, le=10)
+    top_k: int = Field(default_factory=lambda: get_settings().retrieval.top_k, ge=1, le=100)
+    graph_depth: int = Field(
+        default_factory=lambda: get_settings().retrieval.graph_depth, ge=0, le=10
+    )
     include_graph_paths: bool = False
-    rerank: bool = True
+    rerank: bool = Field(default_factory=lambda: get_settings().retrieval.rerank)
 
 
 class RetrievalSearchResponse(BaseModel):
@@ -203,15 +206,17 @@ class QueryApiRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1)
-    mode: RetrievalMode = RetrievalMode.AUTO
+    mode: RetrievalMode = Field(default_factory=lambda: get_settings().retrieval.default_mode)
     document_ids: list[UUID] = Field(default_factory=list)
     modalities: list[Modality] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     security_labels: list[str] = Field(default_factory=list)
-    top_k: int = Field(default=12, ge=1, le=100)
-    graph_depth: int = Field(default=2, ge=0, le=10)
+    top_k: int = Field(default_factory=lambda: get_settings().retrieval.top_k, ge=1, le=100)
+    graph_depth: int = Field(
+        default_factory=lambda: get_settings().retrieval.graph_depth, ge=0, le=10
+    )
     include_graph_paths: bool = False
-    rerank: bool = True
+    rerank: bool = Field(default_factory=lambda: get_settings().retrieval.rerank)
     answer_model_override: str | None = None
     conversation_id: UUID | None = None
     conversation_history: list[dict[str, str]] = Field(

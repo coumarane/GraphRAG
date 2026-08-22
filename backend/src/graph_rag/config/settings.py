@@ -245,9 +245,9 @@ class ChunkingSettings(BaseModel):
     """Hierarchical multimodal chunking defaults."""
 
     strategy: str = "multimodal_hierarchical"
-    parent_target_tokens: int = 2500
-    child_target_tokens: int = 600
-    overlap_tokens: int = 80
+    parent_target_tokens: int = Field(default=2500, ge=1, le=32_000)
+    child_target_tokens: int = Field(default=600, ge=1, le=32_000)
+    overlap_tokens: int = Field(default=80, ge=0, le=8_000)
     preserve_tables: bool = True
     preserve_equations: bool = True
     preserve_figure_context: bool = True
@@ -260,8 +260,10 @@ class RetrievalSettings(BaseModel):
     """Default retrieval behaviour."""
 
     default_mode: RetrievalMode = RetrievalMode.AUTO
-    top_k: int = 12
-    graph_depth: int = 2
+    # Bounds mirror api/schemas/common.py's RetrievalSearchRequest/QueryApiRequest
+    # fields, which fall back to these settings -- keep them in sync.
+    top_k: int = Field(default=12, ge=1, le=100)
+    graph_depth: int = Field(default=2, ge=0, le=10)
     rerank: bool = True
 
 
