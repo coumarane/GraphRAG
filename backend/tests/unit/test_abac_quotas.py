@@ -290,3 +290,4 @@ def test_admin_bypass() -> None:
     tenant = _tenant(attributes={"admin": True})
     subject = subject_from_tenant(tenant)
     assert authz.authorize(subject=subject, action=Action.ADMIN_USERS).allowed
+    assert authz.authorize(subject=subject, action=Action.ADMIN_PLUGINS).allowed

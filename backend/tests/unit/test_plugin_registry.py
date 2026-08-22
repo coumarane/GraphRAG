@@ -51,6 +51,7 @@ def test_empty_allowlist_keeps_core_only() -> None:
     registry.register_core(_factory("pdfium", capability="parser", trust_tier="core"))
     registry.register_discovered(_factory("echo", capability="parser", trust_tier="community"))
     assert registry.names() == ["pdfium"]
+    assert list(registry.blocked()) == ["echo"]
 
 
 def test_none_allowlist_accepts_discovered() -> None:
@@ -66,6 +67,7 @@ def test_explicit_allowlist_enables_named_plugin() -> None:
     registry.register_discovered(_factory("echo", capability="parser", trust_tier="community"))
     registry.register_discovered(_factory("other", capability="parser", trust_tier="community"))
     assert registry.names() == ["echo", "pdfium"]
+    assert list(registry.blocked()) == ["other"]
 
 
 def test_unknown_name_lists_available() -> None:

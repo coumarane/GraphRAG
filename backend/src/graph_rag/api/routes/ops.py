@@ -10,6 +10,10 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.api.dependencies import ContainerDep, TenantDep
+from graph_rag.application.authorization.gate import require_action
+from graph_rag.application.plugins.catalog import PluginCatalog, build_plugin_catalog
+from graph_rag.config.settings import get_settings
+from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.usage.models import (
     CapabilitySpendRow,
     DailySpendRow,
@@ -155,6 +159,13 @@ async def dashboard(tenant: TenantDep, container: ContainerDep) -> OpsDashboardR
         tenant_key=tenant.tenant_key,
         tenant_label=tenant_label,
     )
+
+
+@router.get("/plugins", response_model=PluginCatalog)
+async def list_plugins(tenant: TenantDep, container: ContainerDep) -> PluginCatalog:
+    """List registered and allowlist-blocked plugins for operators."""
+    require_action(container.require_authorization(), tenant, Action.ADMIN_PLUGINS)
+    return build_plugin_catalog(get_settings())
 
 
 class UsageDashboardResponse(BaseModel):

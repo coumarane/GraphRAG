@@ -31,6 +31,7 @@ class PluginRegistry[T]:
         self.enabled = enabled
         self._core: dict[str, PluginDescriptor] = {}
         self._discovered: dict[str, PluginDescriptor] = {}
+        self._blocked: dict[str, PluginDescriptor] = {}
 
     def register_core(self, descriptor: PluginDescriptor) -> None:
         """Register a built-in factory. Last writer for a core name wins."""
@@ -51,7 +52,9 @@ class PluginRegistry[T]:
                 },
             )
         if not self._is_allowed(name, descriptor.trust_tier):
+            self._blocked[name] = descriptor
             return
+        self._blocked.pop(name, None)
         self._discovered[name] = descriptor
 
     def load_entry_points(self, group: str) -> None:
@@ -93,6 +96,16 @@ class PluginRegistry[T]:
 
     def descriptors(self) -> Mapping[str, PluginDescriptor]:
         return self.merged()
+
+    def blocked(self) -> Mapping[str, PluginDescriptor]:
+        """Discovered factories skipped by the allowlist (not in ``merged()``)."""
+        return dict(self._blocked)
+
+    def origin_of(self, name: str) -> str:
+        """Return ``core`` or ``discovered`` for a registered or blocked name."""
+        if name in self._discovered or name in self._blocked:
+            return "discovered"
+        return "core"
 
     def _is_allowed(self, name: str, trust_tier: str) -> bool:
         if self.allowlist is None:

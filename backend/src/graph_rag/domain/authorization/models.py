@@ -25,6 +25,7 @@ class Action(StrEnum):
     ADMIN_POLICIES = "admin.policies"
     ADMIN_QUOTAS = "admin.quotas"
     ADMIN_TENANT = "admin.tenant"
+    ADMIN_PLUGINS = "admin.plugins"
 
 
 class SubjectContext(BaseModel):

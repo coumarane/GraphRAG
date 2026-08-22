@@ -246,4 +246,10 @@ def default_seed_policies() -> list[PolicyDocument]:
             description="Admin tenant",
             when=[PolicyWhenClause(attr="subject.attributes.admin", op="bool_true")],
         ),
+        PolicyDocument(
+            effect="allow",
+            action="admin.plugins",
+            description="Admin plugins",
+            when=[PolicyWhenClause(attr="subject.attributes.admin", op="bool_true")],
+        ),
     ]

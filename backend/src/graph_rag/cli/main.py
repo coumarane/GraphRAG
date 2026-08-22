@@ -45,6 +45,13 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+plugin_app = typer.Typer(
+    name="plugins",
+    help="Inspect installed plugins",
+    no_args_is_help=True,
+    add_completion=False,
+)
+app.add_typer(plugin_app, name="plugins")
 logger = get_logger(__name__)
 
 _CONTAINER: ServiceContainer | None = None
@@ -140,6 +147,36 @@ def main_callback(
     log_level: str = typer.Option("WARNING", "--log-level"),
 ) -> None:
     configure_logging(level=log_level, stream=sys.stderr)
+
+
+@plugin_app.command("list")
+def plugins_list_command(
+    output: str = typer.Option("json", "--output", help="json|text"),
+) -> None:
+    """List registered plugins and configured backend selections."""
+    from graph_rag.application.plugins.catalog import build_plugin_catalog
+    from graph_rag.config.settings import get_settings
+
+    catalog = build_plugin_catalog(get_settings())
+    payload = catalog.model_dump(mode="json")
+    if output == "json":
+        typer.echo(json.dumps(payload, default=str, indent=2))
+        return
+    typer.echo(
+        f"enabled={payload['enabled']} allow_core_override={payload['allow_core_override']} "
+        f"allowlist={payload['allowlist']}"
+    )
+    for selection in payload["selections"]:
+        typer.echo(
+            f"selection {selection['capability']} {selection['role']}={selection['name']}"
+        )
+    for item in payload["items"]:
+        state = "enabled" if item["enabled"] else "blocked"
+        install = "installed" if item["installed"] else "missing"
+        typer.echo(
+            f"{item['capability']}/{item['plugin_name']} "
+            f"{item['trust_tier']} {item['origin']} {state} {install}"
+        )
 
 
 @app.command("ingest")

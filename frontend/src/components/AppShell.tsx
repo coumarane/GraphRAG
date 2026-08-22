@@ -13,6 +13,7 @@ import {
   Menu,
   MessageSquare,
   Network,
+  Puzzle,
   Search,
   Settings,
   Upload,
@@ -72,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/ops", label: "Observability", icon: Activity },
       { href: "/usage", label: "Usage", icon: CircleDollarSign },
+      { href: "/plugins", label: "Plugins", icon: Puzzle, adminOnly: true },
       { href: "/users", label: "Users", icon: Users, adminOnly: true },
       { href: "/settings", label: "Configuration", icon: Settings },
     ],
