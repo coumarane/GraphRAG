@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
       --extra llm \
-      --extra observability
+      --extra observability --extra mcp
 
 COPY src ./src
 COPY alembic ./alembic
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra api --extra cli --extra postgres \
       --extra redis --extra minio --extra qdrant --extra neo4j \
       --extra llm \
-      --extra observability
+      --extra observability --extra mcp
 
 USER app
 
