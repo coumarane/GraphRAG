@@ -107,6 +107,7 @@ class ServiceContainer:
     auth_service: Any | None = None
     authorization: Any | None = None
     quotas: Any | None = None
+    parser_registry: Any | None = None
 
     def require_authorization(self) -> Any:
         if self.authorization is None:
@@ -143,7 +144,7 @@ class ServiceContainer:
             return
         try:
             await session.rollback()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def require_register_source(self) -> RegisterSourceService:

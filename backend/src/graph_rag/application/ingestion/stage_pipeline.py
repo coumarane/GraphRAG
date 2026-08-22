@@ -12,7 +12,6 @@ from graph_rag.application.chunking import EmbedChunksService, HierarchicalMulti
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from graph_rag.application.ingestion.handlers import CallableStageHandler
 from graph_rag.application.ingestion.local_pipeline import (
-    _STRUCTURED_PARSERS,
     ProcessRegisteredDocumentService,
     _parse_document_raw,
     _stamp_hybrid_vision_provenance,
@@ -25,6 +24,7 @@ from graph_rag.application.ingestion.orchestrator import (
 )
 from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
 from graph_rag.application.ingestion.visual_enrichment import collect_visual_targets
+from graph_rag.application.plugins.parsers import is_structured_parser
 from graph_rag.application.usage.context import usage_context
 from graph_rag.config.settings import get_settings
 from graph_rag.domain.chunks.models import ChunkBase
@@ -49,9 +49,10 @@ from graph_rag.domain.parsing.audit import (
     StageRunStatus,
 )
 from graph_rag.domain.parsing.normalize import normalize_parser_result
-from graph_rag.domain.parsing.types import ParserName, ParseSource, RawParserResult
+from graph_rag.domain.parsing.types import ParseSource, RawParserResult
 from graph_rag.domain.storage.protocols import version_prefix
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.parsers.registry import ParseDocumentService
 from graph_rag.shared.exceptions import NotFoundError, PermanentError
 from graph_rag.shared.logging import get_logger
 
@@ -266,7 +267,7 @@ class DocumentPipeline:
             w.selected_parser = stored.get("selected_parser")
             return StageOutcome(status=StageOutcomeStatus.COMPLETED)
         requested = w.run.parser_requested if w.run else None
-        selected = ParserName.DOCLING.value
+        selected = "docling"
         reason = "selection_occurs_at_parse"
         if requested and requested not in {"auto", None}:
             selected = str(requested)
@@ -298,6 +299,9 @@ class DocumentPipeline:
             version_id=context.version_id,
             parser_requested=w.run.parser_requested,
             max_pages=w.service.max_pages,
+            parse_service=w.service.parse_service
+            if isinstance(w.service.parse_service, ParseDocumentService)
+            else None,
         )
         w.raw = outcome.raw
         w.attempted = outcome.attempted
@@ -778,7 +782,7 @@ class DocumentPipeline:
                 "Cannot finalize without normalized document", code="missing_normalized"
             )
         used_parser = w.used_parser or (w.raw.parser_name if w.raw else "unknown")
-        parser_quality_ok = used_parser in _STRUCTURED_PARSERS
+        parser_quality_ok = is_structured_parser(used_parser)
         vision_complete = w.vision_failed == 0
         w.needs_review = not parser_quality_ok or not vision_complete
         if w.raw is not None:

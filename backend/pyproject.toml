@@ -111,6 +111,28 @@ graph-rag = "graph_rag.cli.main:run"
 # drop this only after that manifest switches to `graph-rag`.
 enterprise-rag = "graph_rag.cli.main:run"
 
+[project.entry-points."graph_rag.object_store"]
+
+[project.entry-points."graph_rag.vector_store"]
+
+[project.entry-points."graph_rag.graph_store"]
+
+[project.entry-points."graph_rag.metadata_store"]
+
+[project.entry-points."graph_rag.ingest_queue"]
+
+[project.entry-points."graph_rag.parser"]
+
+[project.entry-points."graph_rag.chat_model"]
+
+[project.entry-points."graph_rag.embedding_model"]
+
+[project.entry-points."graph_rag.reranker"]
+
+[project.entry-points."graph_rag.cli_plugins"]
+
+[project.entry-points."graph_rag.api_routers"]
+
 [build-system]
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"

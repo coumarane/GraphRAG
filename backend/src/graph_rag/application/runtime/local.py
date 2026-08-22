@@ -149,6 +149,15 @@ def _resolve_models(
     )
 
 
+def _parse_service_from_registry(parser_registry: Any | None) -> Any | None:
+    if parser_registry is None:
+        return None
+    from graph_rag.infrastructure.parsers.registry import ParseDocumentService
+
+    inspector_name = getattr(parser_registry, "inspector_name", None)
+    return ParseDocumentService(registry=parser_registry, inspector_name=inspector_name)
+
+
 def build_local_container(
     *,
     max_upload_bytes: int = 50_000_000,
@@ -170,6 +179,7 @@ def build_local_container(
     max_pages: int = 2_000,
     on_commit: Callable[[], Awaitable[None]] | None = None,
     enable_semantic_graph: bool = True,
+    parser_registry: Any | None = None,
 ) -> ServiceContainer:
     """Wire adapters for tests, CLI, and local/dev API.
 
@@ -290,6 +300,7 @@ def build_local_container(
         vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "0") or "0"),
         semantic_graph=enable_semantic_graph,
         on_commit=on_commit,
+        parse_service=_parse_service_from_registry(parser_registry),
     )
 
     def chunk_ids_for_version(
@@ -343,6 +354,7 @@ def build_local_container(
         process_ingestion=process,
         auto_process_ingest=auto_process_ingest,
         ready_checks=[lambda: True],
+        parser_registry=parser_registry,
     )
     from graph_rag.application.authorization.service import PolicyAuthorizationService
     from graph_rag.application.quotas.service import InMemoryQuotaService

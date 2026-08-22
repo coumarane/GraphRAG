@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from graph_rag.domain.parsing.types import (
     ParseOptions,
@@ -12,6 +12,7 @@ from graph_rag.domain.parsing.types import (
 )
 
 
+@runtime_checkable
 class DocumentInspector(Protocol):
     """Inspect a document before parser selection."""
 
@@ -25,6 +26,7 @@ class DocumentInspector(Protocol):
         ...
 
 
+@runtime_checkable
 class MultimodalDocumentParser(Protocol):
     """Parser adapter protocol. Adapters must not write to databases."""
 

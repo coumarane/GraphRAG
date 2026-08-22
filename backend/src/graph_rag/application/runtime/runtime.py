@@ -19,6 +19,15 @@ from graph_rag.domain.ingestion.protocols import (
 from graph_rag.infrastructure.persistence.minio import MinioObjectStore
 
 
+def _build_parser_registry(settings: Settings) -> Any:
+    from graph_rag.application.plugins.parsers import validate_parsing_profile_primaries
+    from graph_rag.infrastructure.parsers.registry import parser_registry_from_settings
+
+    registry = parser_registry_from_settings(settings)
+    validate_parsing_profile_primaries(settings.parsing.profiles, registry.names())
+    return registry
+
+
 def object_store_backend() -> str:
     """Return configured object-store backend name (``memory``, ``minio``, or ``azure_blob``)."""
     return os.environ.get("OBJECT_STORE_BACKEND", "memory").strip().lower() or "memory"
@@ -189,6 +198,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         on_commit=on_commit,
         enable_semantic_graph=os.environ.get("SEMANTIC_GRAPH", "true").strip().lower()
         not in {"0", "false", "no"},
+        parser_registry=_build_parser_registry(resolved),
     )
     if ready_checks:
         container.ready_checks = list(container.ready_checks) + ready_checks

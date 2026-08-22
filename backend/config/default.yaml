@@ -134,3 +134,18 @@ worker:
   heartbeat_stale_seconds: 90.0
   reclaim_idle_seconds: 120.0
   outbox_poll_seconds: 1.0
+
+plugins:
+  enabled: true
+  allow_core_override: false
+  object_store:
+    backend: memory
+  vector_store:
+    backend: memory
+  graph_store:
+    backend: memory
+  metadata_store:
+    backend: memory
+  ingest_queue:
+    backend: ""
+  config: {}

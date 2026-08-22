@@ -21,6 +21,10 @@ from graph_rag.application.ingestion.visual_enrichment import (
     prompt_for_target,
     render_visual_png,
 )
+from graph_rag.application.plugins.parsers import (
+    is_structured_parser,
+    parser_is_installed,
+)
 from graph_rag.application.usage.context import usage_context
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.chunks.vectors import ChunkingResult
@@ -54,11 +58,11 @@ from graph_rag.domain.parsing.normalize import normalize_parser_result
 from graph_rag.domain.parsing.types import (
     OcrMode,
     ParseOptions,
-    ParserName,
     ParserProfile,
     ParseSource,
     RawElement,
     RawParserResult,
+    parser_key,
 )
 from graph_rag.domain.retrieval.condition_facets import (
     extract_condition_facets,
@@ -69,7 +73,6 @@ from graph_rag.domain.retrieval.condition_facets import (
 from graph_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from graph_rag.domain.storage.protocols import ObjectStore
 from graph_rag.domain.tenant import TenantContext
-from graph_rag.infrastructure.parsers.availability import parser_is_installed
 from graph_rag.infrastructure.parsers.pdfium.extractor import (
     extract_pdf_raw as _extract_pdf_raw,
 )
@@ -91,16 +94,6 @@ extract_pdf_raw = _extract_pdf_raw
 extract_text_raw = _extract_text_raw
 
 logger = get_logger(__name__)
-
-_STRUCTURED_PARSERS = frozenset(
-    {
-        ParserName.DOCLING.value,
-        ParserName.MINERU.value,
-        ParserName.MARKER.value,
-        ParserName.PADDLEOCR.value,
-        ParserName.TEXT.value,
-    }
-)
 
 
 @dataclass
@@ -216,16 +209,13 @@ Rules:
 """
 
 
-def _parse_parser_name(value: str | None) -> ParserName | None:
+def _parse_parser_name(value: str | None) -> str | None:
     if not value:
         return None
     lowered = value.strip().casefold()
     if lowered in {"", "auto"}:
         return None
-    try:
-        return ParserName(lowered)
-    except ValueError:
-        return None
+    return lowered
 
 
 def _failure_category(exc: Exception) -> str:
@@ -278,6 +268,7 @@ async def _parse_document_raw(
     version_id: UUID,
     parser_requested: str | None,
     max_pages: int,
+    parse_service: ParseDocumentService | None = None,
 ) -> DocumentParseOutcome:
     """Parse via registry routing with pdfium always available as final fallback."""
     source = ParseSource(
@@ -295,42 +286,41 @@ async def _parse_document_raw(
         ocr_mode=OcrMode.AUTO,
         failure_mode="fallback",
     )
-    service = ParseDocumentService()
+    service = parse_service or ParseDocumentService()
     attempted: list[str] = []
     attempts: list[ParserAttemptOutcome] = []
-    selected = ParserName.DOCLING.value
+    selected = "docling"
     reason = "default enterprise parser"
     try:
         selection = await service.select_parser(source, options)
-        selected = selection.primary.value
+        selected = parser_key(selection.primary)
         reason = selection.reason
-        chain = [selection.primary, *selection.fallbacks]
-        if ParserName.PDFIUM not in chain:
-            chain.append(ParserName.PDFIUM)
+        chain = [parser_key(item) for item in (selection.primary, *selection.fallbacks)]
+        if "pdfium" not in chain:
+            chain.append("pdfium")
         last_error: Exception | None = None
         for parser_name in chain:
-            attempted.append(parser_name.value)
+            attempted.append(parser_name)
             started = time.perf_counter()
             try:
                 if (
-                    parser_name is not ParserName.PDFIUM
-                    and parser_name is not ParserName.TEXT
-                    and not parser_is_installed(parser_name.value)
+                    parser_name not in {"pdfium", "text"}
+                    and not parser_is_installed(parser_name)
                 ):
                     raise ConfigurationError(
-                        f"Optional dependency for {parser_name.value} is not installed",
-                        details={"parser": parser_name.value},
+                        f"Optional dependency for {parser_name} is not installed",
+                        details={"parser": parser_name},
                     )
                 raw = await service.parse_raw(source, parser_name, options)
                 duration_ms = (time.perf_counter() - started) * 1000.0
-                if not raw.elements and parser_name is not ParserName.PDFIUM:
+                if not raw.elements and parser_name != "pdfium":
                     raise ParserError(
                         "Parser returned no elements",
-                        details={"parser": parser_name.value},
+                        details={"parser": parser_name},
                     )
                 attempts.append(
                     ParserAttemptOutcome(
-                        parser_name=parser_name.value,
+                        parser_name=parser_name,
                         success=True,
                         duration_ms=duration_ms,
                         element_count=len(raw.elements),
@@ -357,7 +347,7 @@ async def _parse_document_raw(
                 last_error = exc
                 attempts.append(
                     ParserAttemptOutcome(
-                        parser_name=parser_name.value,
+                        parser_name=parser_name,
                         success=False,
                         duration_ms=duration_ms,
                         failure_category=_failure_category(exc),
@@ -366,7 +356,7 @@ async def _parse_document_raw(
                 )
                 logger.warning(
                     "ingest_parser_attempt_failed",
-                    parser=parser_name.value,
+                    parser=parser_name,
                     error=str(exc),
                     failure_category=_failure_category(exc),
                 )
@@ -1002,6 +992,7 @@ class ProcessRegisteredDocumentService:
     vision_max_pages: int = 0
     semantic_graph: bool = True
     on_commit: object | None = None
+    parse_service: object | None = None
 
     async def _flush(self) -> None:
         """Commit mid-ingest so an OOM/kill cannot leave the document stuck."""
@@ -1125,6 +1116,9 @@ class ProcessRegisteredDocumentService:
                 version_id=run.version_id,
                 parser_requested=run.parser_requested,
                 max_pages=self.max_pages,
+                parse_service=self.parse_service
+                if isinstance(self.parse_service, ParseDocumentService)
+                else None,
             )
             raw = outcome.raw
             attempted = outcome.attempted
@@ -1483,7 +1477,7 @@ class ProcessRegisteredDocumentService:
                 )
                 audit.mark_downstream(graph_index=True)
 
-            parser_quality_ok = used_parser in _STRUCTURED_PARSERS
+            parser_quality_ok = is_structured_parser(used_parser)
             vision_complete = vision_failed == 0
             needs_review = not parser_quality_ok or not vision_complete
             if needs_review:

@@ -18,7 +18,7 @@ Claude Code agent — once the decision is made to proceed.
   guarantees for a live, deployed system, not preferences.
 - Run the repo's existing quality gates before considering any phase complete:
   `make format-check lint typecheck unit evaluation compose-config` (or `make acceptance`),
-  from `backend/`.
+  from the **repo root** (that is where `Makefile` lives; not `backend/`).
 - If, on re-reading, any claim here turns out to be stale or wrong, fix your understanding from
   the live code — don't implement against an assumption this document made that no longer holds.
 
@@ -45,9 +45,10 @@ hardcoded**, in three different ways, in three different places:
    `domain/parsing/routing.py::DEFAULT_ROUTE_PROFILES` hardcodes fallback chains. Adding a
    parser touches all three.
 3. **LLM providers** — `application/runtime/local.py::_resolve_models()` isn't even an
-   if/elif — it's a binary OpenAI-or-`Fake*` choice. Only `infrastructure/models/openai_direct/`
-   exists as a real adapter. `domain/billing/openai_pricing.py` is an OpenAI-only cost table
-   (vendor lock-in in billing too).
+   if/elif — it's a binary OpenAI-or-`Fake*` choice. The live chat path is
+   `infrastructure/models/openai_direct/` only; `langchain_openai/` is embeddings-only.
+   `domain/billing/openai_pricing.py` is an OpenAI-only cost table (see Phase 3 — usage
+   already degrades to null-cost for unknown models).
 
 None of this is throwaway code — it's disciplined, well-tested (ports-and-adapters, DI via a
 plain `ServiceContainer` dataclass, a clean FastAPI `Depends` seam via `ContainerDep`/
@@ -71,9 +72,18 @@ working identically** — this is a backward-compatibility requirement, not a st
 Confirmed in tests: `application/runtime/local.py::build_local_container(**kwargs)` (~19
 keyword-only params, all `None`-defaulted, `x or InMemoryX()` fallback pattern) must stay
 callable with **zero args, zero I/O, zero plugin discovery** —
-`tests/unit/test_runtime_object_store.py` and the rest of the unit suite depend on this. The
-plugin registry sits only in front of `build_runtime_container()`, never inside
-`build_local_container()`.
+`tests/unit/test_runtime_object_store.py` and the rest of the unit suite depend on this.
+
+**Discovery vs injection (resolved):** `importlib.metadata` discovery and
+`PluginRegistry.resolve()` run **only** in `build_runtime_container()`. They must never
+run inside `build_local_container()`. It is allowed — and required — for
+`build_runtime_container()` to **pass already-built plugin instances in as kwargs**
+(the same pattern it already uses for `object_store` / `vector_store` / `graph_store`).
+Adding new optional kwargs to `build_local_container` (`parser_registry`, `chunk_store`,
+`lexical_store`, …) with in-memory defaults is injection, not discovery, and does **not**
+violate this constraint. `git diff --stat` showing a `local.py` kwargs addition is expected
+when a new injectable slot is introduced; `git diff` showing `entry_points(` or a registry
+lookup inside `local.py` is a constraint violation.
 
 ---
 
@@ -158,40 +168,82 @@ documentation. Does not touch `runtime.py`/`local.py`/`ParserRegistry`. **Done w
 is unit-tested against a fake capability group, `Settings.plugins` round-trips through YAML+env
 like the other sub-models, full existing test suite passes unchanged.
 
-**Phase 1 — Parsers (do first: lowest blast radius).** `ParserRegistry.__init__`'s 6 parsers
-become core factory entries; `ParserName` loosens from a closed gate to an open string key
-(enum kept as a convenience alias); `DEFAULT_ROUTE_PROFILES` becomes registry-aware
-(unregistered parser in a profile → `ConfigurationError` at startup, not a `KeyError`
-mid-ingestion). **Must also fix**: `ParseDocumentService.inspect()`
-(`infrastructure/parsers/registry.py`) currently hardcodes
-`self._registry.get(ParserName.DOCLING)` for its inspection step, independent of the
-routing/fallback chain — this is a second hidden coupling to a specific built-in name that
-Phase 1 needs to make an explicit, overridable registry slot rather than leaving it masked.
-**Done when**: a 7th parser installs via a `graph_rag.parser` entry point + a new profile in
-`config/*.yaml` with zero edits to `registry.py`/`types.py`/`routing.py`; existing 6 parsers
-behave identically; CI green.
+**Phase 1 — Parsers (do first: lowest blast radius).** This phase *does* edit
+`registry.py` / `types.py` / `routing.py` (and the ingest pipelines below). The
+"zero core-file edits" bar applies **after** Phase 1 lands, to a *7th* parser.
+
+- `ParserRegistry.__init__`'s 6 parsers become core factory entries (hardcoded dict in
+  `application/plugins/`, not packaging metadata). Empty-registry construction remains
+  valid for tests that inject their own dict.
+- `ParserName` loosens from a closed gate to an open string key (enum kept as a convenience
+  alias for the six built-ins). `auto` stays a host sentinel.
+- `DEFAULT_ROUTE_PROFILES` becomes registry-aware: an unregistered name in an *enabled*
+  YAML/default profile → `ConfigurationError` at **runtime-container startup**, not a
+  `KeyError` mid-ingestion. Disabled / not-installed parsers in a fallback chain are
+  skipped with a warning (so optional extras like MinerU do not fail boot).
+- **Parser injection (resolved):** today
+  `application/ingestion/local_pipeline.py` constructs `ParseDocumentService()` with no
+  args, which builds the hardcoded six-parser registry and **ignores anything
+  `build_runtime_container()` discovered**. Phase 1 must:
+  1. Discover/build the parser registry in `build_runtime_container()` only.
+  2. Pass it into `build_local_container(parser_registry=...)`.
+  3. Hang it on `ServiceContainer` and have `ProcessRegisteredDocumentService` /
+     `ParseDocumentService` use that instance. `ParseDocumentService()` with no args
+     remains the unit-test default (six core factories, no entry-point scan).
+- **Also stop treating these as closed vocabularies** (a 7th parser must not require
+  edits here after Phase 1): `infrastructure/parsers/availability.py`
+  (`_MODULE_BY_PARSER` / `_EXTRA_BY_PARSER`), `application/ingestion/local_pipeline.py`
+  (`_STRUCTURED_PARSERS`, `ParserName.DOCLING` / `PDFIUM` branches), and
+  `application/ingestion/stage_pipeline.py` (same). Availability and "structured vs
+  fallback" flags move onto the parser factory descriptor (`requires.modules`,
+  `provides.parser.structured: bool`).
+- **Inspector slot (resolved — keep compatible behavior):** do **not** fail loud when
+  Docling is missing. `ParseDocumentService.inspect()` today does
+  `get(ParserName.DOCLING)` and, on `ParserError`, silently uses `PdfiumInspector()`.
+  Make that an explicit overridable slot whose **default is `pdfium`** (always bundled).
+  If Docling is registered, prefer its `inspect()` when the caller has not set
+  `plugins.config.parser.inspector`. A *configured* inspector name that is not
+  registered is a loud `ConfigurationError` at startup. A missing Docling extra with
+  the default slot must keep working (Pdfium inspect), so existing six-parser behavior
+  stays identical.
+
+**Done when**: a 7th parser installs via a `graph_rag.parser` entry point + a new profile
+in `config/*.yaml` with **no further edits** to `registry.py` / `types.py` / `routing.py`
+/ `availability.py` / `local_pipeline.py` / `stage_pipeline.py`; worker ingest actually
+uses that parser (not only a unit test against a hand-built `ParserRegistry`); existing
+6 parsers behave identically including Pdfium inspect fallback; CI green.
 
 **Phase 2 — Storage/queue backends, one group at a time**, in order: `object_store` →
 `vector_store` → `graph_store` → `metadata_store` → `ingest_queue`. Each is independently
 shippable since they're already separate `if/elif` blocks on separate env vars.
 
-- `object_store`/`vector_store`/`graph_store` are clean 1:1 "factory returns one instance" swaps.
-- `metadata_store` (Postgres) is the hard one: the branch also builds a shared `AsyncSession`,
-  an `asyncio.Lock`, and 8 repositories wrapped in `LockedAsyncProxy`, plus wires
-  `on_commit`/`ready_checks` as side effects — it doesn't fit the one-factory-one-instance
-  shape. **Decide explicitly** (don't let this slide): either model it as a factory returning a
-  typed `MetadataStoreBundle` dataclass (recommended, for consistency with the other four), or
-  keep it a permanently special-cased non-registry path and document why.
+- `object_store` and `graph_store` are clean 1:1 "factory returns one instance" swaps.
+- **`vector_store` is a bundle, not a 1:1 swap (resolved).**
+  `build_local_container()` currently does `isinstance(vectors, QdrantChunkVectorStore)`
+  to wire `QdrantChunkLookupStore` + `QdrantHydratingLexicalStore`. A third-party
+  `ChunkVectorStore` that only returns the vector protocol will search and then fail
+  hydration. The `graph_rag.vector_store` factory therefore returns a
+  `VectorStoreBundle` dataclass: `vectors: ChunkVectorStore`, `chunks: ChunkLookupStore`,
+  `lexical: LexicalSearchStore`. Core `qdrant` and `memory` factories fill all three.
+  `build_runtime_container()` passes them as kwargs into `build_local_container`
+  (`vector_store=`, plus new `chunk_store=` / `lexical_store=`). The `isinstance(Qdrant…)`
+  branch is then deleted. That `local.py` kwargs change is **in scope for the
+  `vector_store` sub-step** and does not count as putting discovery inside `local.py`.
+- `metadata_store` (Postgres) is the other bundle: the branch also builds a shared
+  `AsyncSession`, an `asyncio.Lock`, and 8 repositories wrapped in `LockedAsyncProxy`,
+  plus wires `on_commit`/`ready_checks` as side effects. **Resolved: use a typed
+  `MetadataStoreBundle` dataclass** for consistency with `VectorStoreBundle`. Do not
+  leave it as a permanent special-cased non-registry path.
 - `ingest_queue` reuses the already-isolated `_wire_ingest_queue()` — lowest risk of the
   remaining two since it receives `raw_session`/`db_lock` as already-built params rather than
   owning that machinery.
 
 **Done when** (per sub-step): the env var resolves through `PluginRegistry`; existing
-`monkeypatch.setenv(...)` + `build_runtime_container(Settings())` tests pass unchanged;
-**`local.py` is never touched by any diff in this phase** (verify via `git diff --stat` showing
-no `local.py` line); `infrastructure/workers/main.py::run_worker()` needs no changes (it only
-calls `build_runtime_container(settings)` — confirmed already centralized correctly, a good
-precedent).
+`tests/unit/test_runtime_object_store.py`-style tests (`monkeypatch.setenv` +
+`build_runtime_container(Settings())`) pass unchanged; `local.py` contains **no**
+`entry_points(` / registry lookup (kwargs additions are OK; verify with `git diff`);
+`infrastructure/workers/main.py::run_worker()` needs no changes (it only calls
+`build_runtime_container(settings)` — confirmed already centralized correctly).
 
 **Phase 3 — LLM providers (do last: greenfield, most entangled).** `_resolve_models()`'s binary
 OpenAI-or-Fake becomes a real `chat_model`/`embedding_model`/`reranker` registry lookup — but
@@ -251,8 +303,10 @@ Phase 1 means at least one proven registry pattern exists first).
   mechanism to invent. (1) `application/usage/context.py::UsageContext` (a `ContextVar` bound
   per-request in `api/dependencies/__init__.py::_bind_usage_context` and per-task in
   ingestion/retrieval code via the `usage_context()` context manager) already flows into every
-  `UsageEvent` — add a `plugin_name`/`trust_tier` field here so LLM-provider plugin provenance
-  is attached to the same usage/billing records for free. (2) `structlog.contextvars`, bound by
+  `UsageEvent`. `UsageEvent` is `extra="forbid"` and has **no** `plugin_name` / `trust_tier`
+  today — adding them only on `UsageContext` does not persist them. Phase 5 must: add the
+  fields to `UsageContext`, copy them in `build_usage_event()`, add them to `UsageEvent`,
+  and migrate the Postgres usage table. (2) `structlog.contextvars`, bound by
   `ObservabilityMiddleware` per-request — bind `plugin_name`/`capability`/`trust_tier` here too
   so it shows up in every log line emitted while a plugin-resolved adapter is in use, not just
   usage events. `ParserSelection`'s existing `attempted_parsers`/`warnings` fields are the right
@@ -279,26 +333,40 @@ SQLAlchemy's dialect test suite / fsspec's `AbstractFileSystem` conformance test
 
 ---
 
-## Open Decisions to Make Explicitly (don't let these slide silently)
+## Resolved decisions (do not re-open during implementation)
 
-1. **Metadata-store bundle shape** (Phase 2, item 4) — bundle dataclass vs. permanent special case.
-2. **Billing pricing-table extensibility** (Phase 3) — smaller than it first looks (see Phase 3
-   above): the null-cost fallback for unrecognized `(provider, model_name)` pairs already works
-   today. The only decision is whether a pricing plugin just contributes rows to the loaded
-   table (start here) or needs a full `PricingProvider` protocol (only if a provider's pricing
-   isn't a flat per-model-name rate).
-3. **`ParseDocumentService.inspect()`'s hardcoded `docling` dependency** (Phase 1) — must become
-   an overridable named slot, not silently rely on `docling` always being installed.
-4. **Deployment topology for installed plugins**: does "install a plugin" mean rebuilding the
-   worker-base image (edits to `Dockerfile.worker-base` + the `build-and-push-*-image.yml`
-   workflows, slow ArgoCD cycle) or a runtime pip install from a private index (faster, but
-   breaks the current digest-pinned-image immutability model)? Resolve this before Phase 2
-   ships, since it changes what "third-party plugin" operationally means for this specific
-   deployment.
-5. **Entry-point discovery cost** — `importlib.metadata.entry_points()` scans all installed
-   distributions' metadata at process start; benchmark against current API/worker cold-start
-   times before Phase 0 ships (mitigated by `lru_cache`, but worth measuring given the
-   worker-base image already bundles several heavy parser extras).
+1. **Parser injection** — discovery only in `build_runtime_container()`; pass
+   `parser_registry=` into `build_local_container` / `ServiceContainer`; ingest must not
+   call `ParseDocumentService()` with no args on the worker path. See Hard constraint #2
+   and Phase 1.
+2. **Inspector default** — slot default is `pdfium` (compatible with today's silent
+   fallback). Prefer Docling inspect when that parser is registered. Loud failure only
+   when a *configured* inspector name is missing. Do not change default inspect to
+   fail-loud when Docling is absent.
+3. **Vector store shape** — `VectorStoreBundle` (`vectors` + `chunks` + `lexical`), not
+   a single `ChunkVectorStore`. Delete the `isinstance(QdrantChunkVectorStore)` branch
+   once kwargs exist. `local.py` kwargs additions are allowed; discovery inside
+   `local.py` is not.
+4. **Metadata store shape** — `MetadataStoreBundle` dataclass (same pattern as vector).
+5. **Billing** — Phase 3 starts by letting a pricing plugin contribute
+   `(model_name → rate)` rows to the loaded table. Do not build a `PricingProvider`
+   protocol unless a vendor's pricing is not a flat per-model-name rate. Null-cost for
+   unknown models already works.
+6. **Usage provenance** — `plugin_name` / `trust_tier` must land on `UsageContext`,
+   `UsageEvent`, `build_usage_event()`, and the Postgres usage table. Context-only is
+   not enough.
+
+## Open decisions (resolve before the named phase ships)
+
+1. **Deployment topology for installed plugins** (before Phase 2): does "install a
+   plugin" mean rebuilding the worker-base image (edits to `Dockerfile.worker-base` +
+   the `build-and-push-*-image.yml` workflows, slow ArgoCD cycle) or a runtime pip
+   install from a private index (faster, but breaks the current digest-pinned-image
+   immutability model)? This changes what "third-party plugin" operationally means.
+2. **Entry-point discovery cost** (before Phase 0): `importlib.metadata.entry_points()`
+   scans all installed distributions' metadata at process start; benchmark against
+   current API/worker cold-start times (mitigated by `lru_cache`, but worth measuring
+   given the worker-base image already bundles several heavy parser extras).
 
 ---
 
@@ -308,16 +376,20 @@ SQLAlchemy's dialect test suite / fsspec's `AbstractFileSystem` conformance test
   `pytest tests/unit` suite green (proves zero behavior change); `Settings.plugins` round-trip
   test (YAML + env override, mirroring existing `PostgresSettings`/`MinioSettings` tests).
 - **Phase 1**: existing parser tests (`tests/unit/test_parser_normalize.py`,
-  `test_parser_routing.py`) green unchanged; new test registering a fake 7th parser via a stub
-  entry point and confirming it's selectable by name with no core-file edits; confirm
-  `ParseDocumentService.inspect()`'s new inspector slot defaults to `docling` when installed
-  and fails loud (not silently falls back) when the override target is missing.
-- **Phase 2**: per sub-step, existing `tests/unit/test_runtime_*.py`-style tests
+  `test_parser_routing.py`, `test_parser_registry_fallback.py`) green unchanged; new test
+  registering a fake 7th parser via a stub entry point **and** a `build_runtime_container`
+  path that injects it into ingest (not only a hand-built `ParserRegistry`); confirm
+  `inspect()` defaults to Pdfium when Docling is unregistered, prefers Docling when
+  registered, and raises `ConfigurationError` at startup only if
+  `plugins.config.parser.inspector` names a missing plugin.
+- **Phase 2**: per sub-step, `tests/unit/test_runtime_object_store.py`-style tests
   (`monkeypatch.setenv` + `build_runtime_container(Settings())`) pass unchanged;
-  `git diff --stat` confirms `local.py` untouched; a local `docker compose up -d --wait` smoke
-  run (`Makefile`'s existing `up` target) against real MinIO/Qdrant/Neo4j/Postgres containers
-  still ingests + queries a sample doc successfully (`uv run graph-rag ingest ../data/examples/sample.pdf ...` / `graph-rag query ...`, same commands already documented
-  in the README).
+  `local.py` has no discovery calls (kwargs for bundles OK); vector-store sub-step
+  proves a non-Qdrant stub bundle still hydrates chunks via its own `ChunkLookupStore`;
+  a local `docker compose up -d --wait` smoke run (`Makefile`'s existing `up` target,
+  repo root) against real MinIO/Qdrant/Neo4j/Postgres containers still ingests + queries
+  a sample doc (`uv run graph-rag ingest ../data/examples/sample.pdf ...` /
+  `graph-rag query ...`, same commands already documented in the README).
 - **Phase 3**: `_resolve_models()` zero-arg/`use_live_models=False` path still returns `Fake*`
   with no network calls (existing tests should catch a regression here immediately); manual
   smoke test with a real `OPENAI_API_KEY` confirming the OpenAI plugin path still answers a

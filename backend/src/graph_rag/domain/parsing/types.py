@@ -14,7 +14,11 @@ from graph_rag.domain.types import JsonValue
 
 
 class ParserName(StrEnum):
-    """Known parser adapter names."""
+    """Convenience aliases for first-party parser names.
+
+    Routing and overrides accept any registered string key. These members are
+    not a closed gate for third-party parsers.
+    """
 
     AUTO = "auto"
     DOCLING = "docling"
@@ -23,6 +27,12 @@ class ParserName(StrEnum):
     PADDLEOCR = "paddleocr"
     PDFIUM = "pdfium"
     TEXT = "text"
+
+
+def parser_key(name: ParserName | str) -> str:
+    """Normalize a parser name or enum member to a lowercase registry key."""
+    value = name.value if isinstance(name, ParserName) else str(name)
+    return value.strip().lower()
 
 
 class ParserProfile(StrEnum):
@@ -72,12 +82,12 @@ class ParseOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile: ParserProfile = ParserProfile.BALANCED
-    parser_override: ParserName | None = None
+    parser_override: ParserName | str | None = None
     ocr_mode: OcrMode = OcrMode.AUTO
     ocr_language: str = "en"
     ocr_min_confidence: float = Field(default=0.70, ge=0.0, le=1.0)
     failure_mode: str = "fallback"
-    fallback_parsers: list[ParserName] = Field(default_factory=list)
+    fallback_parsers: list[ParserName | str] = Field(default_factory=list)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
@@ -112,7 +122,7 @@ class ParserInspection(BaseModel):
     column_count_estimate: int | None = Field(default=None, ge=1)
     detected_language: str | None = None
     recommended_profile: ParserProfile = ParserProfile.BALANCED
-    recommended_parser: ParserName = ParserName.DOCLING
+    recommended_parser: str = ParserName.DOCLING.value
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
@@ -170,8 +180,8 @@ class ParserSelection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    primary: ParserName
-    fallbacks: list[ParserName] = Field(default_factory=list)
+    primary: str
+    fallbacks: list[str] = Field(default_factory=list)
     profile: ParserProfile
     reason: str
     inspection: ParserInspection | None = None

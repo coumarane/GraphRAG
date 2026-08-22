@@ -49,6 +49,26 @@ class OcrMode(StrEnum):
     NEVER = "never"
 
 
+class BackendSelection(BaseModel):
+    """Named backend chosen for a plugin capability."""
+
+    backend: str = "memory"
+
+
+class PluginsSettings(BaseModel):
+    """Plugin discovery, allowlist, and backend selection."""
+
+    enabled: bool = True
+    allow_core_override: bool = False
+    allowlist: list[str] | None = None
+    object_store: BackendSelection = Field(default_factory=BackendSelection)
+    vector_store: BackendSelection = Field(default_factory=BackendSelection)
+    graph_store: BackendSelection = Field(default_factory=BackendSelection)
+    metadata_store: BackendSelection = Field(default_factory=BackendSelection)
+    ingest_queue: BackendSelection = Field(default_factory=lambda: BackendSelection(backend=""))
+    config: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
 class ParserFailureMode(StrEnum):
     """Parser failure handling policy."""
 
@@ -381,6 +401,7 @@ class Settings(BaseSettings):
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     concurrency: ConcurrencySettings = Field(default_factory=ConcurrencySettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    plugins: PluginsSettings = Field(default_factory=PluginsSettings)
 
     config_dir: Path = Path("config")
 
@@ -580,6 +601,28 @@ def _apply_flat_store_env(init_data: dict[str, Any]) -> None:
         security["api_service_key"] = os.environ["API_SERVICE_KEY"]
     if security:
         init_data["security"] = security
+
+    _apply_plugin_backend_env(init_data)
+
+
+def _apply_plugin_backend_env(init_data: dict[str, Any]) -> None:
+    """Map OBJECT_STORE_BACKEND-style env vars into ``plugins.*.backend``."""
+    plugins = dict(init_data.get("plugins") or {})
+    for field, env_name in (
+        ("object_store", "OBJECT_STORE_BACKEND"),
+        ("vector_store", "VECTOR_STORE_BACKEND"),
+        ("graph_store", "GRAPH_STORE_BACKEND"),
+        ("metadata_store", "METADATA_STORE_BACKEND"),
+        ("ingest_queue", "INGEST_QUEUE_BACKEND"),
+    ):
+        raw = os.environ.get(env_name)
+        if raw is None or raw.strip() == "":
+            continue
+        nested = dict(plugins.get(field) or {})
+        nested["backend"] = raw.strip().lower()
+        plugins[field] = nested
+    if plugins:
+        init_data["plugins"] = plugins
 
 
 @lru_cache(maxsize=1)
