@@ -241,6 +241,18 @@ class MultimodalSettings(BaseModel):
     maximum_context_tokens: int = 1800
 
 
+class DocumentIntelligenceSettings(BaseModel):
+    """Structured field extraction feature toggle.
+
+    Global for now: no per-tenant settings resolution layer exists yet for
+    any capability, so this mirrors ``OcrSettings``/``MultimodalSettings``
+    rather than inventing tenant scoping ahead of that infrastructure.
+    """
+
+    enabled: bool = True
+    default_provider: str = "internal"
+
+
 class ChunkingSettings(BaseModel):
     """Hierarchical multimodal chunking defaults."""
 
@@ -398,6 +410,9 @@ class Settings(BaseSettings):
     parsing: ParsingSettings = Field(default_factory=ParsingSettings)
     ocr: OcrSettings = Field(default_factory=OcrSettings)
     multimodal: MultimodalSettings = Field(default_factory=MultimodalSettings)
+    document_intelligence: DocumentIntelligenceSettings = Field(
+        default_factory=DocumentIntelligenceSettings
+    )
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)

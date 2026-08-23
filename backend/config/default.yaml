@@ -83,6 +83,10 @@ multimodal:
   context_after_elements: 3
   maximum_context_tokens: 1800
 
+document_intelligence:
+  enabled: true
+  default_provider: internal
+
 chunking:
   strategy: multimodal_hierarchical
   parent_target_tokens: 2500

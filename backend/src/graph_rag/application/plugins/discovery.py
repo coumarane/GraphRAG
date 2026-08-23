@@ -17,6 +17,7 @@ PLUGIN_ENTRY_POINT_GROUPS: dict[str, str] = {
     "reranker": "graph_rag.reranker",
     "cli_plugins": "graph_rag.cli_plugins",
     "api_routers": "graph_rag.api_routers",
+    "document_intelligence": "graph_rag.document_intelligence",
 }
 
 

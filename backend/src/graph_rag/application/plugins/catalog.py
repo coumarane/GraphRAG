@@ -8,6 +8,10 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.application.plugins.descriptors import TrustTier
+from graph_rag.application.plugins.document_intelligence import (
+    DOCUMENT_INTELLIGENCE_CAPABILITY,
+    document_intelligence_plugin_registry,
+)
 from graph_rag.application.plugins.parsers import (
     CORE_PARSER_DESCRIPTORS,
     PARSER_CAPABILITY,
@@ -126,6 +130,10 @@ def build_plugin_catalog(
     resolved = dict(registries or {})
     if PARSER_CAPABILITY not in resolved:
         resolved[PARSER_CAPABILITY] = parser_plugin_registry(settings=settings)
+    if DOCUMENT_INTELLIGENCE_CAPABILITY not in resolved:
+        resolved[DOCUMENT_INTELLIGENCE_CAPABILITY] = document_intelligence_plugin_registry(
+            settings=settings
+        )
 
     selections = _selections(settings, resolved.get(PARSER_CAPABILITY))
     selected_by_capability: dict[str, set[str]] = {}
@@ -302,9 +310,7 @@ def _build_discoverable(
         key = (str(known["capability"]), str(known["plugin_name"]))
         if key in by_key:
             continue
-        if any(
-            row.capability == key[0] and row.plugin_name == key[1] for row in rows
-        ):
+        if any(row.capability == key[0] and row.plugin_name == key[1] for row in rows):
             continue
         # MCP slot is only "to discover" when the server is not enabled yet.
         if key == ("mcp", "mcp"):
@@ -339,9 +345,7 @@ def _selections(
             selection = getattr(plugins, capability, None)
             backend = str(getattr(selection, "backend", "") or "").strip()
             if backend:
-                rows.append(
-                    PluginSelection(capability=capability, name=backend, role="backend")
-                )
+                rows.append(PluginSelection(capability=capability, name=backend, role="backend"))
 
     if parser_registry is not None:
         registered = parser_registry.names()
