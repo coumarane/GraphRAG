@@ -8,6 +8,9 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.deletion import DeleteDocumentService, ReindexDocumentService
+from graph_rag.application.document_intelligence.providers.internal import (
+    InternalExtractionProvider,
+)
 from graph_rag.application.generation import GenerateAnswerService, QueryDocumentsService
 from graph_rag.application.ingestion import RegisterSourceService
 from graph_rag.application.ingestion.local_pipeline import ProcessRegisteredDocumentService
@@ -19,6 +22,7 @@ from graph_rag.domain.conversation.protocols import (
     ChatProjectRepository,
 )
 from graph_rag.domain.document_intelligence.protocols import (
+    DocumentExtractionRepository,
     DocumentIntelligenceModelRepository,
 )
 from graph_rag.domain.graph.protocols import GraphStore
@@ -52,6 +56,7 @@ from graph_rag.infrastructure.persistence.chunks.lexical_qdrant import (
 from graph_rag.infrastructure.persistence.memory import (
     InMemoryChatConversationRepository,
     InMemoryChatProjectRepository,
+    InMemoryDocumentExtractionRepository,
     InMemoryDocumentIntelligenceModelRepository,
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
@@ -176,6 +181,8 @@ def build_local_container(
     chat_project_repo: ChatProjectRepository | None = None,
     chat_conversation_repo: ChatConversationRepository | None = None,
     document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None,
+    document_intelligence_provider: InternalExtractionProvider | None = None,
+    document_extraction_repo: DocumentExtractionRepository | None = None,
     parsing_audit_repo: ParsingAuditRepository | None = None,
     usage_repo: UsageRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
@@ -207,6 +214,7 @@ def build_local_container(
     document_intelligence_model_repo = (
         document_intelligence_model_repo or InMemoryDocumentIntelligenceModelRepository()
     )
+    document_extraction_repo = document_extraction_repo or InMemoryDocumentExtractionRepository()
     parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
     usage_repo = usage_repo or InMemoryUsageRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
@@ -241,6 +249,9 @@ def build_local_container(
         chat = chat_model or FakeChatModel(
             text='{"answer":"No indexed evidence yet.","citation_ids":[]}'
         )
+    document_intelligence_provider = document_intelligence_provider or InternalExtractionProvider(
+        embedding_model=embedder
+    )
     extractor = structured_extractor
     if extractor is None and use_live_models:
         from graph_rag.infrastructure.models.openai_direct import ChatStructuredExtractor
@@ -302,6 +313,8 @@ def build_local_container(
         chat_model=chat,
         structured_extractor=extractor,
         parsing_audit_repo=parsing_audit_repo,
+        document_intelligence_provider=document_intelligence_provider,
+        document_extraction_repo=document_extraction_repo,
         max_pages=max_pages,
         vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "0") or "0"),
         semantic_graph=enable_semantic_graph,

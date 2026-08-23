@@ -8,6 +8,8 @@ from graph_rag.domain.conversation.records import (
     ChatProjectRecord,
 )
 from graph_rag.domain.document_intelligence.records import (
+    DocumentExtractedFieldRecord,
+    DocumentExtractionRunRecord,
     DocumentIntelligenceModelFieldRecord,
     DocumentIntelligenceModelRecord,
 )
@@ -30,6 +32,8 @@ from graph_rag.infrastructure.persistence.postgres.models import (
     ChatConversationModel,
     ChatMessageModel,
     ChatProjectModel,
+    DocumentExtractedFieldModel,
+    DocumentExtractionRunModel,
     DocumentIntelligenceModelFieldModel,
     DocumentIntelligenceModelModel,
     DocumentModel,
@@ -245,6 +249,51 @@ def document_intelligence_model_to_record(
         is_builtin=model.is_builtin,
         created_by_user_id=model.created_by_user_id,
         fields=[document_intelligence_model_field_to_record(field) for field in fields],
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def document_extraction_run_to_record(
+    model: DocumentExtractionRunModel,
+) -> DocumentExtractionRunRecord:
+    return DocumentExtractionRunRecord(
+        run_id=model.run_id,
+        tenant_id=model.tenant_id,
+        document_id=model.document_id,
+        version_id=model.version_id,
+        ingestion_run_id=model.ingestion_run_id,
+        model_id=model.model_id,
+        model_key=model.model_key,
+        provider=model.provider,
+        plugin_version=model.plugin_version,
+        status=model.status,
+        fingerprint=model.fingerprint,
+        selected_fields=list(model.selected_fields_json or []),
+        error_code=model.error_code,
+        error_message=model.error_message,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def document_extracted_field_to_record(
+    model: DocumentExtractedFieldModel,
+) -> DocumentExtractedFieldRecord:
+    return DocumentExtractedFieldRecord(
+        extracted_field_id=model.extracted_field_id,
+        tenant_id=model.tenant_id,
+        run_id=model.run_id,
+        name=model.name,
+        value=model.value_json,
+        normalized_value=model.normalized_value_json,
+        confidence=model.confidence,
+        confidence_band=model.confidence_band,
+        page=model.page,
+        source_text=model.source_text,
+        bounding_box=model.bounding_box_json,
+        extraction_method=model.extraction_method,
+        model_name=model.model_name,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

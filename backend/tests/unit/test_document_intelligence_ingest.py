@@ -1,4 +1,4 @@
-"""Document Intelligence ingest-contract + no-op stage tests (Phase 3)."""
+"""Document Intelligence ingest-contract + no-op stage tests (Phase 3-4)."""
 
 from __future__ import annotations
 
@@ -8,16 +8,45 @@ import pytest
 from fastapi.testclient import TestClient
 
 from graph_rag.api.app import create_app
+from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
+from graph_rag.application.ingestion.register_source import RegisterSourceRequest
 from graph_rag.application.ingestion.stage_pipeline import DocumentPipeline, PipelineWorkspace
 from graph_rag.application.runtime import build_local_container
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.ingestion.handlers import StageContext, StageOutcomeStatus
 from graph_rag.domain.ingestion.stages import IngestionStageName
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.memory.document_intelligence import (
+    InMemoryDocumentExtractionRepository,
+)
 
 
 @pytest.mark.asyncio
-async def test_document_intelligence_stage_handler_always_skips() -> None:
+async def test_document_intelligence_stage_skips_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Globally disabled short-circuits before touching the workspace/service at all.
+
+    ``document_intelligence`` is sourced from YAML (``config/default.yaml``),
+    which pydantic-settings' default source priority applies *before* env
+    vars -- so an env var override alone doesn't flip it for a test. Patching
+    the module-level ``get_settings`` this stage actually calls is the
+    reliable way to force it off here.
+    """
+    from graph_rag.config.settings import get_settings
+
+    real_settings = get_settings()
+    disabled_settings = real_settings.model_copy(
+        update={
+            "document_intelligence": real_settings.document_intelligence.model_copy(
+                update={"enabled": False}
+            )
+        }
+    )
+    monkeypatch.setattr(
+        "graph_rag.application.ingestion.stage_pipeline.get_settings",
+        lambda: disabled_settings,
+    )
     workspace = PipelineWorkspace(service=None)  # type: ignore[arg-type]
     pipeline = DocumentPipeline(workspace)
     context = StageContext(
@@ -28,7 +57,7 @@ async def test_document_intelligence_stage_handler_always_skips() -> None:
         content_hash="hash",
         config_fingerprint="fp",
     )
-    outcome = await pipeline.stage_skip_document_intelligence(context)
+    outcome = await pipeline.stage_extract_document_intelligence(context)
     assert outcome.status is StageOutcomeStatus.SKIPPED
 
 
@@ -139,3 +168,43 @@ def test_ingest_without_document_intelligence_is_unaffected(
     )
     assert run.status_code == 200
     assert len(run.json()["stages"]) == 23
+
+
+@pytest.mark.asyncio
+async def test_end_to_end_pipeline_persists_extraction_results(tmp_path: Path) -> None:
+    """Full register -> process pipeline run, asserted against a held repo reference."""
+    sample = Path("../data/examples/sample.pdf")
+    if not sample.exists():
+        pytest.skip("../data/examples/sample.pdf missing")
+
+    dest = tmp_path / "sample.pdf"
+    dest.write_bytes(sample.read_bytes())
+
+    extraction_repo = InMemoryDocumentExtractionRepository()
+    container = build_local_container(
+        auto_process_ingest=True,
+        document_extraction_repo=extraction_repo,
+    )
+    tenant = await container.resolve_tenant(tenant_key="document-intelligence-e2e")
+
+    result = await container.require_register_source().execute(
+        tenant,
+        RegisterSourceRequest(
+            local_path=str(dest),
+            title="Sample",
+            document_intelligence=DocumentIntelligenceIngestOptions(
+                enabled=True, model_id="layout"
+            ),
+        ),
+    )
+    await container.require_process_ingestion().execute(tenant, result.ingestion_run_id)
+
+    runs = await extraction_repo.list_runs_for_version(
+        tenant, result.document_id, result.version_id
+    )
+    assert len(runs) == 1
+    assert runs[0].model_key == "layout"
+    assert runs[0].status in {"completed", "completed_with_warnings"}
+
+    fields = await extraction_repo.list_fields_for_run(tenant, runs[0].run_id)
+    assert any(field.name == "page_count" for field in fields)

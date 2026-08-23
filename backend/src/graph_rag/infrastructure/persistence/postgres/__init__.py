@@ -4,6 +4,7 @@ from graph_rag.infrastructure.persistence.postgres.base import Base
 from graph_rag.infrastructure.persistence.postgres.repositories import (
     SqlAlchemyChatConversationRepository,
     SqlAlchemyChatProjectRepository,
+    SqlAlchemyDocumentExtractionRepository,
     SqlAlchemyDocumentIntelligenceModelRepository,
     SqlAlchemyDocumentRepository,
     SqlAlchemyIngestionRepository,
@@ -27,6 +28,7 @@ __all__ = [
     "LockedAsyncProxy",
     "SqlAlchemyChatConversationRepository",
     "SqlAlchemyChatProjectRepository",
+    "SqlAlchemyDocumentExtractionRepository",
     "SqlAlchemyDocumentIntelligenceModelRepository",
     "SqlAlchemyDocumentRepository",
     "SqlAlchemyIngestionRepository",

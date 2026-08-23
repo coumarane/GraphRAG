@@ -9,6 +9,13 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.document_intelligence.models import (
+    DocumentExtractionRunStatus,
+    DocumentIntelligenceExtractionRequest,
+    DocumentIntelligenceIngestOptions,
+)
+from graph_rag.application.document_intelligence.providers import INTERNAL_PROVIDER_VERSION
+from graph_rag.application.document_intelligence.resolution import resolve_requested_fields
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from graph_rag.application.ingestion.handlers import CallableStageHandler
 from graph_rag.application.ingestion.local_pipeline import (
@@ -29,9 +36,13 @@ from graph_rag.application.usage.context import usage_context
 from graph_rag.config.settings import get_settings
 from graph_rag.domain.chunks.models import ChunkBase
 from graph_rag.domain.chunks.vectors import ChunkingResult, ChunkVectorRecord
+from graph_rag.domain.document_intelligence.records import (
+    DocumentExtractedFieldRecord,
+    DocumentExtractionRunRecord,
+)
 from graph_rag.domain.documents.document import NormalizedDocument
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
-from graph_rag.domain.ids import content_sha256_hex, deterministic_id
+from graph_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
 from graph_rag.domain.ingestion.handlers import StageContext, StageOutcome, StageOutcomeStatus
 from graph_rag.domain.ingestion.records import ParserAttemptRecord
 from graph_rag.domain.ingestion.retry import RetryPolicy
@@ -150,7 +161,7 @@ class DocumentPipeline:
             IngestionStageName.ENRICH_EQUATIONS: self.stage_skip_optional,
             IngestionStageName.BUILD_CONTEXT: self.stage_skip_optional,
             IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE: (
-                self.stage_skip_document_intelligence
+                self.stage_extract_document_intelligence
             ),
             IngestionStageName.CHUNK: self.stage_chunk,
             IngestionStageName.EMBED: self.stage_embed,
@@ -614,12 +625,156 @@ class DocumentPipeline:
             status=StageOutcomeStatus.SKIPPED, warning="community summarization disabled"
         )
 
-    async def stage_skip_document_intelligence(self, context: StageContext) -> StageOutcome:
-        """Always-skip stub: no extraction chain exists yet (Document Intelligence Phase 3+)."""
-        _ = context
-        return StageOutcome(
-            status=StageOutcomeStatus.SKIPPED, warning="document intelligence not implemented yet"
+    async def stage_extract_document_intelligence(self, context: StageContext) -> StageOutcome:
+        """Cheap-tier (no LLM/vision) field extraction; never fails the run.
+
+        A bad ``model_id`` or extraction gap is recorded on the extraction
+        run row and surfaced as a stage warning, never as
+        ``StageOutcomeStatus.FAILED`` -- that status halts the entire
+        ingestion run (blocks chunk/embed/graph indexing), and Document
+        Intelligence is optional enrichment, same tier as
+        ``BUILD_CONTEXT``/``ENRICH_TABLES``.
+        """
+        if not get_settings().document_intelligence.enabled:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED,
+                warning="document_intelligence disabled globally",
+            )
+        await self.ensure_loaded(context)
+        w = self.w
+        raw_options = (w.run.metadata or {}).get("document_intelligence") if w.run else None
+        if not raw_options:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED, warning="document_intelligence not requested"
+            )
+        options = DocumentIntelligenceIngestOptions.model_validate(raw_options)
+        if not options.enabled:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED,
+                warning="document_intelligence disabled for this upload",
+            )
+        provider = w.service.document_intelligence_provider
+        repo = w.service.document_extraction_repo
+        if provider is None or repo is None:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED,
+                warning="document_intelligence provider/repository not configured",
+            )
+        if w.normalized is None:
+            raise PermanentError(
+                "NORMALIZE must complete before EXTRACT_DOCUMENT_INTELLIGENCE",
+                code="missing_normalized",
+            )
+
+        # Idempotency on retry: keyed by ingestion_run_id, NOT (tenant,
+        # document, version) like parse_raw/normalized are -- DI options are
+        # a per-run user choice, not a pure function of the document bytes,
+        # so two runs against the same version could legitimately request
+        # different models/fields.
+        cache_name = f"document_intelligence_{context.ingestion_run_id.hex}"
+        cached = await w.load_json(cache_name)
+        if cached is not None:
+            return StageOutcome.model_validate(cached)
+
+        resolution = resolve_requested_fields(options)
+        if not resolution.fields:
+            await repo.create_run(
+                context.tenant,
+                DocumentExtractionRunRecord(
+                    run_id=new_id(),
+                    tenant_id=context.tenant.tenant_id,
+                    document_id=context.document_id,
+                    version_id=context.version_id,
+                    ingestion_run_id=context.ingestion_run_id,
+                    model_key=resolution.model_key,
+                    provider="internal",
+                    plugin_version=INTERNAL_PROVIDER_VERSION,
+                    status=DocumentExtractionRunStatus.FAILED.value,
+                    selected_fields=list(options.selected_fields or []),
+                    error_code="model_unresolved",
+                    error_message="; ".join(resolution.warnings) or "no fields resolved",
+                ),
+            )
+            await w.service._flush()
+            outcome = StageOutcome(
+                status=StageOutcomeStatus.COMPLETED_WITH_WARNINGS,
+                warning=f"document_intelligence: could not resolve model {options.model_id!r}",
+            )
+            await w.save_json(cache_name, outcome.model_dump(mode="json"))
+            return outcome
+
+        result = await provider.extract(
+            DocumentIntelligenceExtractionRequest(
+                document=w.normalized,
+                fields=resolution.fields,
+                model_name=resolution.model_name,
+            )
         )
+        run_status = (
+            DocumentExtractionRunStatus.COMPLETED_WITH_WARNINGS
+            if result.unresolved_field_names
+            else DocumentExtractionRunStatus.COMPLETED
+        )
+        created_run = await repo.create_run(
+            context.tenant,
+            DocumentExtractionRunRecord(
+                run_id=new_id(),
+                tenant_id=context.tenant.tenant_id,
+                document_id=context.document_id,
+                version_id=context.version_id,
+                ingestion_run_id=context.ingestion_run_id,
+                model_key=resolution.model_key,
+                provider="internal",
+                plugin_version=INTERNAL_PROVIDER_VERSION,
+                status=run_status.value,
+                selected_fields=[field.name for field in resolution.fields],
+            ),
+        )
+        if result.fields:
+            await repo.add_extracted_fields(
+                context.tenant,
+                created_run.run_id,
+                [
+                    DocumentExtractedFieldRecord(
+                        extracted_field_id=new_id(),
+                        tenant_id=context.tenant.tenant_id,
+                        run_id=created_run.run_id,
+                        name=field.name,
+                        value=field.value,
+                        normalized_value=field.normalized_value,
+                        confidence=field.confidence,
+                        confidence_band=field.confidence_band.value,
+                        page=field.page,
+                        source_text=field.source_text,
+                        bounding_box=field.bounding_box.model_dump(mode="json")
+                        if field.bounding_box
+                        else None,
+                        extraction_method=field.extraction_method.value,
+                        model_name=field.model_name,
+                    )
+                    for field in result.fields
+                ],
+            )
+        await w.service._flush()
+        warning = (
+            (
+                f"document_intelligence: {len(result.fields)}/{len(resolution.fields)} fields "
+                f"extracted; missing={result.unresolved_field_names}"
+            )
+            if result.unresolved_field_names
+            else None
+        )
+        outcome = StageOutcome(
+            status=(
+                StageOutcomeStatus.COMPLETED_WITH_WARNINGS
+                if warning
+                else StageOutcomeStatus.COMPLETED
+            ),
+            warning=warning,
+            elements_processed=len(result.fields) or None,
+        )
+        await w.save_json(cache_name, outcome.model_dump(mode="json"))
+        return outcome
 
     async def stage_enrich_images(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)

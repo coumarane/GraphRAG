@@ -12,6 +12,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from graph_rag.domain.documents.document import NormalizedDocument
+from graph_rag.domain.elements.geometry import BoundingBox
+from graph_rag.domain.types import JsonValue
+
 
 class FieldType(StrEnum):
     """Value shape of one extracted/extractable field."""
@@ -80,3 +84,95 @@ class DocumentIntelligenceIngestOptions(BaseModel):
     model_id: str | None = None
     selected_fields: list[str] | None = None
     custom_fields: list[ModelFieldSpec] | None = None
+
+
+class ConfidenceBand(StrEnum):
+    """Coarse confidence tier surfaced to callers, independent of provider."""
+
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+def confidence_band(value: float) -> ConfidenceBand:
+    if value >= 0.90:
+        return ConfidenceBand.HIGH
+    if value >= 0.70:
+        return ConfidenceBand.MEDIUM
+    return ConfidenceBand.LOW
+
+
+class ExtractionMethod(StrEnum):
+    """How one field's value was produced.
+
+    ``LLM``/``VISION`` are declared now (the ``extraction_method`` column
+    already accepts any string) but are never produced by this phase's
+    cheap-tier chain -- reserved for a later phase.
+    """
+
+    STRUCTURED_PARSER = "STRUCTURED_PARSER"
+    RULES = "RULES"
+    TABLE_EXTRACTION = "TABLE_EXTRACTION"
+    EMBEDDING_SEMANTIC = "EMBEDDING_SEMANTIC"
+    LLM = "LLM"
+    VISION = "VISION"
+
+
+class DocumentExtractionRunStatus(StrEnum):
+    """Vocabulary for the ``document_extraction_runs.status`` column."""
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    COMPLETED_WITH_WARNINGS = "completed_with_warnings"
+    FAILED = "failed"
+
+
+class ExtractedFieldResult(BaseModel):
+    """One field's extracted value, with full provenance.
+
+    No confidence floor exists anywhere on this type or in how it's produced
+    -- a low-confidence result is a valid ``ExtractedFieldResult``, never
+    filtered. Only a field with zero candidates across every tier is omitted
+    from a result entirely (there's no way to represent "no value" as a row
+    anyway -- the persisted ``value_json`` column is ``NOT NULL``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    value: JsonValue
+    normalized_value: JsonValue | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    confidence_band: ConfidenceBand
+    extraction_method: ExtractionMethod
+    page: int | None = None
+    source_text: str | None = None
+    bounding_box: BoundingBox | None = None
+    model_name: str | None = None
+
+
+class DocumentIntelligenceExtractionRequest(BaseModel):
+    """Input to a provider's extraction chain.
+
+    Named with the ``DocumentIntelligence`` prefix rather than a bare
+    ``ExtractionRequest`` -- ``graph_rag.domain.models.contracts
+    .ExtractionRequest`` already exists for the unrelated LLM-based
+    ``StructuredExtractor``, and a same-name/different-shape type here would
+    be a landmine for anyone importing both.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    document: NormalizedDocument
+    fields: list[ModelFieldSpec] = Field(min_length=1)
+    model_name: str | None = None
+
+
+class DocumentIntelligenceExtractionResult(BaseModel):
+    """Output of a provider's extraction chain for one document."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[ExtractedFieldResult] = Field(default_factory=list)
+    requested_field_names: list[str] = Field(default_factory=list)
+    unresolved_field_names: list[str] = Field(default_factory=list)

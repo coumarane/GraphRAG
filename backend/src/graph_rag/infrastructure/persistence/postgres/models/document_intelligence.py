@@ -115,6 +115,7 @@ class DocumentExtractionRunModel(Base, TimestampMixin, TenantOwnedMixin):
         ),
         nullable=True,
     )
+    model_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="internal")
     plugin_version: Mapped[str] = mapped_column(String(32), nullable=False, default="0.0.0")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")

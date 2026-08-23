@@ -5,6 +5,7 @@ from graph_rag.infrastructure.persistence.postgres.repositories.conversations im
     SqlAlchemyChatProjectRepository,
 )
 from graph_rag.infrastructure.persistence.postgres.repositories.document_intelligence import (
+    SqlAlchemyDocumentExtractionRepository,
     SqlAlchemyDocumentIntelligenceModelRepository,
 )
 from graph_rag.infrastructure.persistence.postgres.repositories.documents import (
@@ -18,6 +19,7 @@ from graph_rag.infrastructure.persistence.postgres.repositories.ingestion import
 __all__ = [
     "SqlAlchemyChatConversationRepository",
     "SqlAlchemyChatProjectRepository",
+    "SqlAlchemyDocumentExtractionRepository",
     "SqlAlchemyDocumentIntelligenceModelRepository",
     "SqlAlchemyDocumentRepository",
     "SqlAlchemyIngestionRepository",

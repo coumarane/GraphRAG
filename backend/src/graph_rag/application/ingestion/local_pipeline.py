@@ -14,6 +14,9 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.document_intelligence.providers.internal import (
+    InternalExtractionProvider,
+)
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
 from graph_rag.application.ingestion.visual_enrichment import (
@@ -28,6 +31,7 @@ from graph_rag.application.plugins.parsers import (
 from graph_rag.application.usage.context import usage_context
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.chunks.vectors import ChunkingResult
+from graph_rag.domain.document_intelligence.protocols import DocumentExtractionRepository
 from graph_rag.domain.elements.enums import ElementType
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
@@ -303,10 +307,7 @@ async def _parse_document_raw(
             attempted.append(parser_name)
             started = time.perf_counter()
             try:
-                if (
-                    parser_name not in {"pdfium", "text"}
-                    and not parser_is_installed(parser_name)
-                ):
+                if parser_name not in {"pdfium", "text"} and not parser_is_installed(parser_name):
                     raise ConfigurationError(
                         f"Optional dependency for {parser_name} is not installed",
                         details={"parser": parser_name},
@@ -583,9 +584,7 @@ async def _vision_enrich_pages(
     ``max_pages <= 0`` means no cap (every visual target). Returns
     ``(extra_elements, enriched_page_numbers, target_count, failed_count)``.
     """
-    vision_targets = [
-        target for target in collect_visual_targets(raw) if target.tool == "vision"
-    ]
+    vision_targets = [target for target in collect_visual_targets(raw) if target.tool == "vision"]
     if max_pages > 0:
         vision_targets = vision_targets[:max_pages]
     if not vision_targets:
@@ -621,9 +620,7 @@ async def _vision_enrich_pages(
                             ChatMessage(
                                 role=MessageRole.USER,
                                 content=[
-                                    TextContentPart(
-                                        text=prompt_for_target(target, _VISION_PROMPT)
-                                    ),
+                                    TextContentPart(text=prompt_for_target(target, _VISION_PROMPT)),
                                     ImageBytesContentPart(data=png, mime_type="image/png"),
                                 ],
                             )
@@ -644,9 +641,7 @@ async def _vision_enrich_pages(
                         kind=target.kind,
                         error=str(exc),
                     )
-                    raw.warnings.append(
-                        f"vision_failed_{target.kind}_page_{target.page_number}"
-                    )
+                    raw.warnings.append(f"vision_failed_{target.kind}_page_{target.page_number}")
                     payload = {}
                 else:
                     await asyncio.sleep(1.5 * (attempt + 1))
@@ -751,8 +746,7 @@ async def _vision_enrich_pages(
                         )
                         gap_lines.append(
                             f"- {category or 'category'}: {leader or 'n/a'} "
-                            f"({strength or 'unspecified'})"
-                            + (f" — {note}" if note else "")
+                            f"({strength or 'unspecified'})" + (f" — {note}" if note else "")
                         )
                 values_block = ""
                 if values_md:
@@ -847,7 +841,9 @@ async def _vision_enrich_pages(
                     tables = [
                         *tables,
                         {
-                            "caption": str(figure.get("title") or summary or f"Page {page_number} chart").strip(),
+                            "caption": str(
+                                figure.get("title") or summary or f"Page {page_number} chart"
+                            ).strip(),
                             "markdown": values_md,
                         },
                     ]
@@ -988,6 +984,8 @@ class ProcessRegisteredDocumentService:
     chat_model: ChatModel | None = None
     structured_extractor: StructuredExtractor | None = None
     parsing_audit_repo: ParsingAuditRepository | None = None
+    document_intelligence_provider: InternalExtractionProvider | None = None
+    document_extraction_repo: DocumentExtractionRepository | None = None
     max_pages: int = 2_000
     vision_max_pages: int = 0
     semantic_graph: bool = True
@@ -1086,9 +1084,7 @@ class ProcessRegisteredDocumentService:
             ingestion_run_id=ingestion_run_id,
         )
         try:
-            data = await self.object_store.get_bytes(
-                tenant, object_key=version.original_object_key
-            )
+            data = await self.object_store.get_bytes(tenant, object_key=version.original_object_key)
             filename = version.source_filename or Path(version.original_object_key).name
             mime = (version.mime_type or "").lower()
             embed_name = resolve_model_label(self.embedding_model)
@@ -1138,8 +1134,8 @@ class ProcessRegisteredDocumentService:
                         failure_category=attempt.failure_category,
                         warnings=[],
                         metadata={
-                "error": attempt.error or "",
-                "element_count": attempt.element_count,
+                            "error": attempt.error or "",
+                            "element_count": attempt.element_count,
                             "selected_parser": selected_parser,
                         },
                     ),
@@ -1212,9 +1208,7 @@ class ProcessRegisteredDocumentService:
                     bbox=bbox,
                     section_path=list(element.section_path),
                     confidence_score=element.parser_confidence,
-                    confidence_source=(
-                        "parser" if element.parser_confidence is not None else None
-                    ),
+                    confidence_source=("parser" if element.parser_confidence is not None else None),
                 )
                 page = audit.ensure_page(page_no)
                 audit._pages[page_no] = page.model_copy(
@@ -1250,9 +1244,7 @@ class ProcessRegisteredDocumentService:
             )
 
             vision_needed = [
-                target
-                for target in collect_visual_targets(raw)
-                if target.tool == "vision"
+                target for target in collect_visual_targets(raw) if target.tool == "vision"
             ]
             vision_target_count = len(vision_needed)
             vision_failed = 0
@@ -1387,11 +1379,7 @@ class ProcessRegisteredDocumentService:
             audit.stage_started("CHUNK", tool="HierarchicalMultimodalChunker")
             chunks = HierarchicalMultimodalChunker().chunk(normalized)
             all_chunks = list(chunks.all_chunks)
-            doc_title = (
-                (document.title or "").strip()
-                if document is not None
-                else ""
-            ) or filename
+            doc_title = ((document.title or "").strip() if document is not None else "") or filename
             stamped: list = []
             for chunk in all_chunks:
                 meta = dict(chunk.metadata)
@@ -1461,12 +1449,8 @@ class ProcessRegisteredDocumentService:
                             document_id=str(run.document_id),
                         )
                         raw.warnings.append(f"semantic_graph_failed:{type(graph_exc).__name__}")
-                        projected = StructuralGraphBuilder().build(
-                            normalized, chunking_result
-                        )
-                        graph_counts = await self.graph_store.upsert_graph(
-                            tenant, projected
-                        )
+                        projected = StructuralGraphBuilder().build(normalized, chunking_result)
+                        graph_counts = await self.graph_store.upsert_graph(tenant, projected)
                 else:
                     projected = StructuralGraphBuilder().build(normalized, chunking_result)
                     graph_counts = await self.graph_store.upsert_graph(tenant, projected)
