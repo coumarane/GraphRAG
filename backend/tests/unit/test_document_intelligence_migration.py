@@ -9,6 +9,7 @@ so ``upgrade()``/``downgrade()`` run for real, without needing Postgres.
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from types import ModuleType
 
@@ -56,3 +57,18 @@ def test_migration_upgrade_creates_all_tables_then_downgrade_drops_them() -> Non
         tables = set(sa.inspect(connection).get_table_names())
         for name in _NEW_TABLES:
             assert name not in tables
+
+
+def test_migration_identifier_names_fit_postgres_limit() -> None:
+    """SQLite silently accepts >63 char identifiers; Postgres does not.
+
+    The up/down test above ran clean against SQLite despite two constraint
+    names exceeding Postgres's 63-char limit -- caught only when the
+    migration actually ran against Postgres in CI. This static check closes
+    that gap without needing a real Postgres connection.
+    """
+    text = _MIGRATION_PATH.read_text()
+    names = re.findall(r'name="([^"]+)"', text)
+    assert names
+    too_long = [name for name in names if len(name) > 63]
+    assert not too_long, f"Postgres identifier limit (63 chars) exceeded: {too_long}"

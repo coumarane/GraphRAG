@@ -163,7 +163,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["model_id"],
             ["document_intelligence_models.model_id"],
-            name="fk_document_intelligence_model_fields_model_id_document_intelligence_models",
+            name="fk_document_intelligence_model_fields_model_id",
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("field_id", name="pk_document_intelligence_model_fields"),
@@ -229,7 +229,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["model_id"],
             ["document_intelligence_models.model_id"],
-            name="fk_document_extraction_runs_model_id_document_intelligence_models",
+            name="fk_document_extraction_runs_model_id",
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("run_id", name="pk_document_extraction_runs"),

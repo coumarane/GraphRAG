@@ -71,7 +71,11 @@ class DocumentIntelligenceModelFieldModel(Base, TimestampMixin, TenantOwnedMixin
 
     field_id: Mapped[UUID] = mapped_column(primary_key=True, default=new_id)
     model_id: Mapped[UUID] = mapped_column(
-        ForeignKey("document_intelligence_models.model_id", ondelete="CASCADE"),
+        ForeignKey(
+            "document_intelligence_models.model_id",
+            ondelete="CASCADE",
+            name="fk_document_intelligence_model_fields_model_id",
+        ),
         nullable=False,
         index=True,
     )
@@ -104,7 +108,11 @@ class DocumentExtractionRunModel(Base, TimestampMixin, TenantOwnedMixin):
         index=True,
     )
     model_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("document_intelligence_models.model_id", ondelete="SET NULL"),
+        ForeignKey(
+            "document_intelligence_models.model_id",
+            ondelete="SET NULL",
+            name="fk_document_extraction_runs_model_id",
+        ),
         nullable=True,
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="internal")
