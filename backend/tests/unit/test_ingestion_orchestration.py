@@ -218,4 +218,4 @@ async def test_worker_processes_queue_and_persists_dead_letter() -> None:
     assert len(listed) == 1
     assert isinstance(listed[0], DeadLetterRecord)
     assert store["run"].status is IngestionRunStatus.FAILED
-    assert len(INGESTION_STAGE_ORDER) == 22
+    assert len(INGESTION_STAGE_ORDER) == 23

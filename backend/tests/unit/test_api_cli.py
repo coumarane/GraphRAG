@@ -96,7 +96,7 @@ def test_ingest_upload_and_get_document(client, container, tenant_headers, tmp_p
     )
     assert run.status_code == 200
     assert run.json()["status"] == "pending"
-    assert len(run.json()["stages"]) == 22
+    assert len(run.json()["stages"]) == 23
 
     latest = client.get(
         f"/api/v1/documents/{document_id}/ingestion-runs/latest",

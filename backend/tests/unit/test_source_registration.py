@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from graph_rag.application.document_intelligence.models import (
+    DocumentIntelligenceIngestOptions,
+)
 from graph_rag.application.ingestion import RegisterSourceRequest, RegisterSourceService
 from graph_rag.domain.ids import content_sha256_hex, new_id
 from graph_rag.domain.storage.protocols import StoredObject
@@ -138,3 +141,57 @@ async def test_register_source_stores_original(session: AsyncSession, tmp_path: 
     assert forced.duplicate_version is False
     assert forced.version_id != result.version_id
     assert forced.document_id == result.document_id
+
+
+@pytest.mark.asyncio
+async def test_register_source_without_document_intelligence_leaves_metadata_empty(
+    session: AsyncSession, tmp_path: Path
+) -> None:
+    """Omitting the field must behave identically to before it existed."""
+    path = tmp_path / "plain.pdf"
+    path.write_bytes(b"%PDF-1.7\nplain\n")
+    service = RegisterSourceService(
+        tenant_repo=SqlAlchemyTenantRepository(session),
+        document_repo=SqlAlchemyDocumentRepository(session),
+        ingestion_repo=SqlAlchemyIngestionRepository(session),
+        object_store=InMemoryObjectStore(),
+        source_loader=DefaultSourceLoader(max_upload_bytes=10_000),
+    )
+    tenant = TenantContext(tenant_id=new_id(), tenant_key="demo")
+    result = await service.execute(tenant, RegisterSourceRequest(local_path=str(path)))
+    await session.commit()
+
+    run = await SqlAlchemyIngestionRepository(session).get_run(tenant, result.ingestion_run_id)
+    assert run is not None
+    assert run.metadata == {}
+
+
+@pytest.mark.asyncio
+async def test_register_source_stores_document_intelligence_options_in_run_metadata(
+    session: AsyncSession, tmp_path: Path
+) -> None:
+    path = tmp_path / "with-options.pdf"
+    path.write_bytes(b"%PDF-1.7\nwith options\n")
+    service = RegisterSourceService(
+        tenant_repo=SqlAlchemyTenantRepository(session),
+        document_repo=SqlAlchemyDocumentRepository(session),
+        ingestion_repo=SqlAlchemyIngestionRepository(session),
+        object_store=InMemoryObjectStore(),
+        source_loader=DefaultSourceLoader(max_upload_bytes=10_000),
+    )
+    tenant = TenantContext(tenant_id=new_id(), tenant_key="demo")
+    options = DocumentIntelligenceIngestOptions(enabled=True, model_id="sds")
+    result = await service.execute(
+        tenant,
+        RegisterSourceRequest(local_path=str(path), document_intelligence=options),
+    )
+    await session.commit()
+
+    run = await SqlAlchemyIngestionRepository(session).get_run(tenant, result.ingestion_run_id)
+    assert run is not None
+    assert run.metadata["document_intelligence"] == {
+        "enabled": True,
+        "model_id": "sds",
+        "selected_fields": None,
+        "custom_fields": None,
+    }

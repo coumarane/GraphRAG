@@ -149,6 +149,9 @@ class DocumentPipeline:
             IngestionStageName.ENRICH_TABLES: self.stage_skip_optional,
             IngestionStageName.ENRICH_EQUATIONS: self.stage_skip_optional,
             IngestionStageName.BUILD_CONTEXT: self.stage_skip_optional,
+            IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE: (
+                self.stage_skip_document_intelligence
+            ),
             IngestionStageName.CHUNK: self.stage_chunk,
             IngestionStageName.EMBED: self.stage_embed,
             IngestionStageName.INDEX_VECTOR: self.stage_index_vector,
@@ -609,6 +612,13 @@ class DocumentPipeline:
         _ = context
         return StageOutcome(
             status=StageOutcomeStatus.SKIPPED, warning="community summarization disabled"
+        )
+
+    async def stage_skip_document_intelligence(self, context: StageContext) -> StageOutcome:
+        """Always-skip stub: no extraction chain exists yet (Document Intelligence Phase 3+)."""
+        _ = context
+        return StageOutcome(
+            status=StageOutcomeStatus.SKIPPED, warning="document intelligence not implemented yet"
         )
 
     async def stage_enrich_images(self, context: StageContext) -> StageOutcome:

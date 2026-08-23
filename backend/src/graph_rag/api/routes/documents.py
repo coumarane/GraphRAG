@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import Response
+from pydantic import ValidationError as PydanticValidationError
 
 from graph_rag.api.dependencies import ContainerDep, TenantDep
 from graph_rag.api.schemas import (
@@ -25,6 +27,9 @@ from graph_rag.api.schemas import (
 )
 from graph_rag.application.authorization.filters import filter_authorized_documents
 from graph_rag.application.authorization.gate import ensure_document_read, require_action
+from graph_rag.application.document_intelligence.models import (
+    DocumentIntelligenceIngestOptions,
+)
 from graph_rag.application.ingestion.register_source import RegisterSourceRequest
 from graph_rag.application.runtime.container import ServiceContainer
 from graph_rag.domain.authorization.models import Action
@@ -39,6 +44,23 @@ from graph_rag.shared.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def _parse_document_intelligence_options(
+    raw: str | None,
+) -> DocumentIntelligenceIngestOptions | None:
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValidationError("document_intelligence must be a JSON object") from exc
+    try:
+        return DocumentIntelligenceIngestOptions.model_validate(payload)
+    except PydanticValidationError as exc:
+        raise ValidationError(
+            "document_intelligence is invalid", details={"errors": exc.errors()}
+        ) from exc
 
 
 async def _run_local_ingest(
@@ -69,13 +91,13 @@ async def ingest_document(
     tags: str | None = Form(default=None),
     security_labels: str | None = Form(default=None),
     force_new_version: bool = Form(default=False),
+    document_intelligence: str | None = Form(default=None),
 ) -> IngestAcceptedResponse:
     container.metrics["requests_total"] = container.metrics.get("requests_total", 0) + 1
     service = container.require_register_source()
     tag_list = [part.strip() for part in (tags or "").split(",") if part.strip()]
-    label_list = [
-        part.strip() for part in (security_labels or "").split(",") if part.strip()
-    ]
+    label_list = [part.strip() for part in (security_labels or "").split(",") if part.strip()]
+    document_intelligence_options = _parse_document_intelligence_options(document_intelligence)
 
     tmp_path: Path | None = None
     try:
@@ -98,6 +120,7 @@ async def ingest_document(
                 security_labels=label_list,
                 parser_requested=parser_requested,
                 force_new_version=force_new_version,
+                document_intelligence=document_intelligence_options,
             ),
         )
     finally:
@@ -111,10 +134,7 @@ async def ingest_document(
             tenant,
             result.ingestion_run_id,
         )
-    elif (
-        container.outbox_store is not None
-        and not result.duplicate_version
-    ):
+    elif container.outbox_store is not None and not result.duplicate_version:
         from graph_rag.application.ingestion.enqueue import enqueue_ingest_ids
 
         run = await container.require_ingestion_repo().get_run(tenant, result.ingestion_run_id)

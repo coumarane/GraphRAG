@@ -17,7 +17,7 @@ from graph_rag.shared.exceptions import IngestionError
 
 
 def test_pipeline_has_twenty_two_stages() -> None:
-    assert len(INGESTION_STAGE_ORDER) == 22
+    assert len(INGESTION_STAGE_ORDER) == 23
     assert INGESTION_STAGE_ORDER[0] is IngestionStageName.VALIDATE
     assert INGESTION_STAGE_ORDER[-1] is IngestionStageName.FINALIZE
 
@@ -118,6 +118,6 @@ def test_build_persisted_stage_records_count() -> None:
         tenant_id=new_id(),
         ingestion_run_id=new_id(),
     )
-    assert len(records) == 22
+    assert len(records) == 23
     assert records[0].stage is IngestionStageName.VALIDATE
     assert records[0].status is StageStatus.PENDING

@@ -119,7 +119,7 @@ async def test_ingestion_run_and_stages_roundtrip(session: AsyncSession) -> None
     loaded = await ingestions.get_run(ctx, run_id)
     assert loaded is not None
     listed = await ingestions.list_stages(ctx, run_id)
-    assert len(listed) == 22
+    assert len(listed) == 23
     assert listed[0].stage is IngestionStageName.VALIDATE
 
     stage = listed[0]

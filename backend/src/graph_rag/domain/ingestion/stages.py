@@ -22,6 +22,7 @@ class IngestionStageName(StrEnum):
     ENRICH_TABLES = "ENRICH_TABLES"
     ENRICH_EQUATIONS = "ENRICH_EQUATIONS"
     BUILD_CONTEXT = "BUILD_CONTEXT"
+    EXTRACT_DOCUMENT_INTELLIGENCE = "EXTRACT_DOCUMENT_INTELLIGENCE"
     CHUNK = "CHUNK"
     EMBED = "EMBED"
     INDEX_VECTOR = "INDEX_VECTOR"
@@ -106,6 +107,7 @@ STAGE_WEIGHTS: dict[IngestionStageName, float] = {
     IngestionStageName.ENRICH_TABLES: 6,
     IngestionStageName.ENRICH_EQUATIONS: 4,
     IngestionStageName.BUILD_CONTEXT: 2,
+    IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE: 1,
     IngestionStageName.CHUNK: 4,
     IngestionStageName.EMBED: 6,
     IngestionStageName.INDEX_VECTOR: 4,

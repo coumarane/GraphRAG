@@ -64,3 +64,19 @@ class DocumentIntelligenceModel(BaseModel):
     version: str = "1.0"
     is_builtin: bool = False
     fields: list[ModelFieldSpec] = Field(default_factory=list)
+
+
+class DocumentIntelligenceIngestOptions(BaseModel):
+    """Per-upload extraction request, carried in ``IngestionRunRecord.metadata``.
+
+    Phase 3 only threads this through to storage -- the always-skip stub
+    stage does not read it yet. ``enabled=False`` (the default) is what an
+    upload that never sends this block looks like once parsed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    model_id: str | None = None
+    selected_fields: list[str] | None = None
+    custom_fields: list[ModelFieldSpec] | None = None

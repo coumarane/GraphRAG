@@ -5,6 +5,7 @@ from graph_rag.application.document_intelligence.catalog import (
     builtin_model_by_key,
 )
 from graph_rag.application.document_intelligence.models import (
+    DocumentIntelligenceIngestOptions,
     FieldType,
     ModelFieldSpec,
     ModelType,
@@ -12,6 +13,7 @@ from graph_rag.application.document_intelligence.models import (
 
 __all__ = [
     "BUILTIN_DOCUMENT_INTELLIGENCE_MODELS",
+    "DocumentIntelligenceIngestOptions",
     "FieldType",
     "ModelFieldSpec",
     "ModelType",
