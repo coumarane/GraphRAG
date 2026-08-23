@@ -90,6 +90,9 @@ JSON shape varies by client and version, so check that client's current MCP docs
 you'll be providing: the URL (`.../api/v1/mcp/`, trailing slash) and the four headers from the
 auth table above as static request headers for that server entry.
 
+Admins can also open **Operations → Plugins** in the web UI: `GET /api/v1/ops/mcp` powers an
+MCP card with the live tool list and one-click Cursor / Claude config snippets.
+
 ## Known limitations
 
 - No per-call multi-tenancy — one client connection is scoped to one tenant for its lifetime.

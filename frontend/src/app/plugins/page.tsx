@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchSession, readCachedSession } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type TrustTier = "core" | "verified" | "community";
@@ -24,6 +26,17 @@ type PluginItem = {
   modules: string[];
   structured: boolean;
   selected: boolean;
+  install_hint: string | null;
+};
+
+type DiscoverablePlugin = {
+  plugin_name: string;
+  capability: string;
+  trust_tier: TrustTier;
+  status: "missing_extra" | "blocked" | "not_registered";
+  extra: string | null;
+  install_hint: string;
+  docs_url: string | null;
 };
 
 type PluginCatalog = {
@@ -32,6 +45,20 @@ type PluginCatalog = {
   allowlist: string[] | null;
   selections: PluginSelection[];
   items: PluginItem[];
+  discoverable: DiscoverablePlugin[];
+};
+
+type McpToolInfo = {
+  name: string;
+  description: string;
+};
+
+type McpOpsStatus = {
+  enabled: boolean;
+  endpoint: string;
+  tools: McpToolInfo[];
+  auth_headers_required: string[];
+  notes: string[];
 };
 
 function capabilityLabel(raw: string): string {
@@ -48,6 +75,8 @@ function capabilityLabel(raw: string): string {
       return "Metadata store";
     case "ingest_queue":
       return "Ingest queue";
+    case "mcp":
+      return "MCP";
     default:
       return raw.replaceAll("_", " ");
   }
@@ -76,11 +105,81 @@ function tierVariant(tier: TrustTier) {
   return "warning" as const;
 }
 
+function statusLabel(status: DiscoverablePlugin["status"]): string {
+  switch (status) {
+    case "blocked":
+      return "blocked";
+    case "missing_extra":
+      return "extra missing";
+    default:
+      return "not registered";
+  }
+}
+
+function mcpPublicUrl(endpoint: string): string {
+  const base =
+    (typeof process !== "undefined" &&
+      process.env.NEXT_PUBLIC_RAG_API_URL?.replace(/\/$/, "")) ||
+    "https://YOUR_API_HOST";
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  return `${base}${path}`;
+}
+
+function cursorMcpConfig(url: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        graphrag: {
+          url,
+          headers: {
+            "X-Api-Service-Key": "YOUR_API_SERVICE_KEY",
+            "X-Tenant-Key": "demo",
+            "X-Principal": "cursor-operator",
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+function claudeMcpConfig(url: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        graphrag: {
+          type: "http",
+          url,
+          headers: {
+            "X-Api-Service-Key": "YOUR_API_SERVICE_KEY",
+            "X-Tenant-Key": "demo",
+            "X-Principal": "claude-desktop",
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function PluginsPage() {
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [catalog, setCatalog] = useState<PluginCatalog | null>(null);
+  const [mcp, setMcp] = useState<McpOpsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -91,22 +190,28 @@ export default function PluginsPage() {
         return;
       }
       try {
-        const res = await fetch("/api/ops/plugins", { credentials: "include" });
-        if (res.status === 403) {
+        const [pluginsRes, mcpRes] = await Promise.all([
+          fetch("/api/ops/plugins", { credentials: "include" }),
+          fetch("/api/ops/mcp", { credentials: "include" }),
+        ]);
+        if (pluginsRes.status === 403 || mcpRes.status === 403) {
           setAllowed(false);
           setError("Admin access required");
           return;
         }
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
+        if (!pluginsRes.ok) {
+          const body = await pluginsRes.json().catch(() => ({}));
           setError(
             typeof body.detail === "string"
               ? body.detail
-              : `Unable to load plugins (${res.status})`,
+              : `Unable to load plugins (${pluginsRes.status})`,
           );
           return;
         }
-        setCatalog((await res.json()) as PluginCatalog);
+        setCatalog((await pluginsRes.json()) as PluginCatalog);
+        if (mcpRes.ok) {
+          setMcp((await mcpRes.json()) as McpOpsStatus);
+        }
         setAllowed(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load plugins");
@@ -133,6 +238,16 @@ export default function PluginsPage() {
     }));
   }, [catalog]);
 
+  const profilePrimary = catalog?.selections.find(
+    (row) => row.role === "profile_primary",
+  );
+
+  async function onCopy(label: string, text: string) {
+    const ok = await copyText(text);
+    setCopied(ok ? label : "failed");
+    window.setTimeout(() => setCopied(null), 2000);
+  }
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -151,20 +266,35 @@ export default function PluginsPage() {
     );
   }
 
+  const mcpUrl = mcpPublicUrl(mcp?.endpoint || "/api/v1/mcp/");
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Plugins</h1>
-        <p className="text-sm text-muted">
-          Installed factories in this process. Install and allowlist stay in
-          packaging and YAML, not this page.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Plugins</h1>
+          <p className="text-sm text-muted">
+            Installed factories in this process. Install and allowlist stay in
+            packaging and YAML, not this page.
+          </p>
+        </div>
+        <Button asChild variant="secondary" size="sm">
+          <Link href="/pipeline-builder">Open Pipeline Builder</Link>
+        </Button>
       </div>
       {error ? (
         <Card className="border-danger/40">
           <CardContent className="pt-5 text-sm text-danger">{error}</CardContent>
         </Card>
       ) : null}
+
+      <div className="flex flex-wrap gap-2 text-xs text-muted">
+        <span>Trust tiers:</span>
+        <Badge variant="default">core</Badge>
+        <Badge variant="success">verified</Badge>
+        <Badge variant="warning">community</Badge>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
@@ -193,6 +323,7 @@ export default function PluginsPage() {
           </CardContent>
         </Card>
       </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Active selections</CardTitle>
@@ -210,37 +341,180 @@ export default function PluginsPage() {
                   <p className="font-medium">{capabilityLabel(row.capability)}</p>
                   <p className="text-xs text-muted">{roleLabel(row.role)}</p>
                 </div>
-                <code className="text-xs">{row.name}</code>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs">{row.name}</code>
+                  {row.role === "profile_primary" ? (
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href="/pipeline-builder">Edit defaults</Link>
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          )}
+          {profilePrimary ? (
+            <p className="text-xs text-muted">
+              Default parser profile primary is{" "}
+              <code>{profilePrimary.name}</code>. Chunking and retrieval knobs
+              live in Pipeline Builder.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Discover</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {(catalog?.discoverable || []).length === 0 ? (
+            <p className="text-muted">
+              Nothing to discover — all registered plugins are installed and
+              allowed.
+            </p>
+          ) : (
+            (catalog?.discoverable || []).map((row) => (
+              <div
+                key={`${row.capability}-${row.plugin_name}-${row.status}`}
+                className="rounded-lg border border-border px-3 py-3"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{row.plugin_name}</span>
+                  <Badge variant="muted">{capabilityLabel(row.capability)}</Badge>
+                  <Badge variant={tierVariant(row.trust_tier)}>{row.trust_tier}</Badge>
+                  <Badge
+                    variant={
+                      row.status === "blocked"
+                        ? "muted"
+                        : row.status === "missing_extra"
+                          ? "warning"
+                          : "default"
+                    }
+                  >
+                    {statusLabel(row.status)}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-muted">{row.install_hint}</p>
+                {row.extra ? (
+                  <p className="mt-1 text-xs text-muted">
+                    Extra: <code>{row.extra}</code>
+                  </p>
+                ) : null}
               </div>
             ))
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>MCP server</CardTitle>
+            <Badge variant={mcp?.enabled ? "success" : "warning"}>
+              {mcp?.enabled ? "enabled" : "disabled"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          {!mcp ? (
+            <p className="text-muted">Unable to load MCP status.</p>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <p>
+                  Endpoint: <code>{mcp.endpoint}</code>
+                </p>
+                <p className="text-xs text-muted">
+                  Public URL for clients: <code>{mcpUrl}</code>
+                </p>
+                <p className="text-xs text-muted">
+                  Required headers: {mcp.auth_headers_required.join(", ")}
+                </p>
+              </div>
+              {(mcp.notes || []).length > 0 ? (
+                <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
+                  {mcp.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void onCopy("cursor", cursorMcpConfig(mcpUrl))}
+                >
+                  {copied === "cursor" ? "Copied Cursor config" : "Copy Cursor config"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void onCopy("claude", claudeMcpConfig(mcpUrl))}
+                >
+                  {copied === "claude" ? "Copied Claude config" : "Copy Claude config"}
+                </Button>
+                {copied === "failed" ? (
+                  <span className="text-xs text-danger">Clipboard unavailable</span>
+                ) : null}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[28rem] text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="pb-2 pr-3 font-medium">Tool</th>
+                      <th className="pb-2 font-medium">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mcp.tools.map((tool) => (
+                      <tr key={tool.name} className="border-t border-border">
+                        <td className="py-2 pr-3 font-mono text-xs">{tool.name}</td>
+                        <td className="py-2 text-muted">{tool.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {grouped.map((group) => (
         <Card key={group.capability}>
           <CardHeader>
             <CardTitle>{capabilityLabel(group.capability)}</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-left text-sm">
+            <table className="w-full min-w-[40rem] text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-muted">
                 <tr>
                   <th className="pb-2 pr-3 font-medium">Name</th>
                   <th className="pb-2 pr-3 font-medium">Trust</th>
                   <th className="pb-2 pr-3 font-medium">Origin</th>
                   <th className="pb-2 pr-3 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Extra</th>
+                  <th className="pb-2 font-medium">Hint</th>
                 </tr>
               </thead>
               <tbody>
                 {group.items.map((item) => (
-                  <tr key={`${item.capability}-${item.plugin_name}`} className="border-t border-border">
+                  <tr
+                    key={`${item.capability}-${item.plugin_name}`}
+                    className="border-t border-border align-top"
+                  >
                     <td className="py-2.5 pr-3">
                       <span className="font-medium">{item.plugin_name}</span>
                       {item.selected ? (
                         <Badge className="ml-2" variant="success">
                           selected
                         </Badge>
+                      ) : null}
+                      {item.extra ? (
+                        <p className="mt-1 text-xs text-muted">
+                          extra <code>{item.extra}</code>
+                        </p>
                       ) : null}
                     </td>
                     <td className="py-2.5 pr-3">
@@ -256,8 +530,8 @@ export default function PluginsPage() {
                         <Badge variant="warning">extra missing</Badge>
                       )}
                     </td>
-                    <td className="py-2.5 text-muted">
-                      {item.extra || (item.structured ? "structured" : "—")}
+                    <td className="py-2.5 text-xs text-muted">
+                      {item.install_hint || (item.structured ? "structured" : "—")}
                     </td>
                   </tr>
                 ))}

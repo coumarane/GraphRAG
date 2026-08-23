@@ -177,6 +177,13 @@ def plugins_list_command(
             f"{item['capability']}/{item['plugin_name']} "
             f"{item['trust_tier']} {item['origin']} {state} {install}"
         )
+        if item.get("install_hint"):
+            typer.echo(f"  hint: {item['install_hint']}")
+    for row in payload.get("discoverable") or []:
+        typer.echo(
+            f"discoverable {row['capability']}/{row['plugin_name']} "
+            f"{row['status']}: {row['install_hint']}"
+        )
 
 
 @app.command("ingest")
