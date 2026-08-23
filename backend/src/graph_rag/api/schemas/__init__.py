@@ -33,6 +33,13 @@ from graph_rag.api.schemas.conversations import (
     ChatProjectResponse,
     ChatProjectUpdateRequest,
 )
+from graph_rag.api.schemas.document_intelligence import (
+    DocumentIntelligenceModelCreateRequest,
+    DocumentIntelligenceModelFieldCreateRequest,
+    DocumentIntelligenceModelListResponse,
+    DocumentIntelligenceModelResponse,
+    ModelFieldResponse,
+)
 
 __all__ = [
     "AssetResponse",
@@ -48,6 +55,10 @@ __all__ = [
     "ChunkListResponse",
     "ChunkPreviewItem",
     "DeletionAcceptedResponse",
+    "DocumentIntelligenceModelCreateRequest",
+    "DocumentIntelligenceModelFieldCreateRequest",
+    "DocumentIntelligenceModelListResponse",
+    "DocumentIntelligenceModelResponse",
     "DocumentListResponse",
     "DocumentResponse",
     "ElementItem",
@@ -58,6 +69,7 @@ __all__ = [
     "HealthResponse",
     "IngestAcceptedResponse",
     "IngestionRunResponse",
+    "ModelFieldResponse",
     "QueryApiRequest",
     "QueryApiResponse",
     "ReprocessAcceptedResponse",

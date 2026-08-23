@@ -18,6 +18,9 @@ from graph_rag.domain.conversation.protocols import (
     ChatConversationRepository,
     ChatProjectRepository,
 )
+from graph_rag.domain.document_intelligence.protocols import (
+    DocumentIntelligenceModelRepository,
+)
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ingestion.protocols import (
     DocumentRepository,
@@ -49,6 +52,7 @@ from graph_rag.infrastructure.persistence.chunks.lexical_qdrant import (
 from graph_rag.infrastructure.persistence.memory import (
     InMemoryChatConversationRepository,
     InMemoryChatProjectRepository,
+    InMemoryDocumentIntelligenceModelRepository,
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
     InMemoryObjectStore,
@@ -171,6 +175,7 @@ def build_local_container(
     ingestion_repo: IngestionRepository | None = None,
     chat_project_repo: ChatProjectRepository | None = None,
     chat_conversation_repo: ChatConversationRepository | None = None,
+    document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None,
     parsing_audit_repo: ParsingAuditRepository | None = None,
     usage_repo: UsageRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
@@ -199,6 +204,9 @@ def build_local_container(
             if isinstance(chat_conversation_repo, InMemoryChatConversationRepository)
             else None
         )
+    document_intelligence_model_repo = (
+        document_intelligence_model_repo or InMemoryDocumentIntelligenceModelRepository()
+    )
     parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
     usage_repo = usage_repo or InMemoryUsageRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
@@ -252,12 +260,10 @@ def build_local_container(
         ready = [
             item
             for item in items
-            if item.status
-            in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}
+            if item.status in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}
         ]
         return [
-            item.document_id
-            for item in filter_authorized_documents(authorization, tenant, ready)
+            item.document_id for item in filter_authorized_documents(authorization, tenant, ready)
         ]
 
     async def document_titles(tenant: TenantContext) -> dict[UUID, str]:
@@ -339,6 +345,7 @@ def build_local_container(
         ingestion_repo=ingestion_repo,
         chat_project_repo=chat_project_repo,
         chat_conversation_repo=chat_conversation_repo,
+        document_intelligence_model_repo=document_intelligence_model_repo,
         object_store=object_store,
         register_source=register,
         retrieve=retrieve,

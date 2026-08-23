@@ -26,6 +26,9 @@ from graph_rag.domain.deletion.stages import (
     DeletionOperationStatus,
     ReindexScope,
 )
+from graph_rag.domain.document_intelligence.protocols import (
+    DocumentIntelligenceModelRepository,
+)
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ids import deterministic_id, new_id
 from graph_rag.domain.ingestion.protocols import (
@@ -78,6 +81,7 @@ class ServiceContainer:
     ingestion_repo: IngestionRepository | None = None
     chat_project_repo: ChatProjectRepository | None = None
     chat_conversation_repo: ChatConversationRepository | None = None
+    document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None
     object_store: ObjectStore | None = None
     register_source: RegisterSourceService | None = None
     retrieve: RetrieveEvidenceService | None = None
@@ -171,6 +175,11 @@ class ServiceContainer:
         if self.chat_conversation_repo is None:
             raise ConfigurationError("Chat conversation repository is not configured")
         return self.chat_conversation_repo
+
+    def require_document_intelligence_model_repo(self) -> DocumentIntelligenceModelRepository:
+        if self.document_intelligence_model_repo is None:
+            raise ConfigurationError("Document Intelligence model repository is not configured")
+        return self.document_intelligence_model_repo
 
     def require_parsing_audit_repo(self) -> Any:
         if self.parsing_audit_repo is None:
