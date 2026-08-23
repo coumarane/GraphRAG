@@ -1,10 +1,26 @@
 # Plugin/Extension Architecture — Proposal
 
-**Status: proposed, not started.** No code from this document has been written yet. This is
-a design + phased rollout plan for turning the backend into an enterprise-grade plugin
-platform (pluggable storage backends, parsers, and LLM providers), produced from a full-repo
-architecture review. It is meant to be picked up and executed later — by a human or by a
-Claude Code agent — once the decision is made to proceed.
+**Status: partially landed.** Phase 0 (registry scaffolding) and Phase 1 (parser
+plugins) are in tree, plus admin introspection (`GET /ops/plugins`,
+`graph-rag plugins list`) and an MCP tool server (`/api/v1/mcp/`). The Pipeline
+Builder (config composer) covers GitOps-safe chunking/retrieval edits. Later
+phases (storage/LLM registries, resilience, conformance) remain open.
+
+### OpenRAG mapping (do not re-litigate)
+
+OpenRAG embeds **Langflow** for the visual node canvas (Agent + OpenSearch + MCP
+Tools + “Discover more components”). GraphRAG does **not** vendor that canvas.
+GraphRAG equivalents:
+
+| OpenRAG / Langflow | GraphRAG |
+|---|---|
+| Component inventory / trust | `/plugins` + `GET /ops/plugins` |
+| Discover more components | Discover section + `install_hint` / `discoverable` on the catalog |
+| Agent tools | MCP server (`docs/mcp-server.md`) + admin MCP card on `/plugins` |
+| Flow/settings knobs | Pipeline Builder (`/pipeline-builder`, config composer diffs) |
+
+Do not embed Langflow or copy `lfx` custom components unless that decision is
+made separately as a large infra commitment.
 
 ## For an agent resuming this work
 
@@ -319,6 +335,8 @@ Phase 1 means at least one proven registry pattern exists first).
   added to `domain/authorization/models.py::Action` (confirmed pattern: sits alongside
   `ADMIN_USERS`/`ADMIN_POLICIES`/`ADMIN_QUOTAS`/`ADMIN_TENANT`, value `"admin.plugins"`). Do
   not invent a parallel authz path.
+  **Landed:** catalog includes `install_hint` + `discoverable`; `GET /ops/mcp` exposes tool
+  list and connect hints for the admin Plugins page.
 
 **Phase 6 — Conformance testing**, started as soon as Phase 1 is stable (cheapest — no network
 mocking for `text`/`pdfium`), extended per capability as Phases 2-3 land. New

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
@@ -20,6 +21,7 @@ from graph_rag.cli.main import app as cli_app
 from graph_rag.config.settings import clear_settings_cache
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.mcp.tools import TOOLS
 
 
 def _parser_factory(
@@ -69,11 +71,44 @@ def test_catalog_includes_blocked_discovered_plugin() -> None:
     assert by_name["pdfium"].selected is True
     assert by_name["echo"].enabled is False
     assert by_name["echo"].origin == "discovered"
+    assert by_name["echo"].install_hint is not None
+    assert "allowlist" in by_name["echo"].install_hint
     assert catalog.allowlist == []
+    discoverable_names = {row.plugin_name for row in catalog.discoverable}
+    assert "echo" in discoverable_names
     capabilities = {(row.capability, row.role, row.name) for row in catalog.selections}
     assert ("object_store", "backend", "minio") in capabilities
     assert ("parser", "inspector", "pdfium") in capabilities
     assert ("parser", "profile_primary", "pdfium") in capabilities
+
+
+def test_catalog_install_hint_for_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry: PluginRegistry[Any] = PluginRegistry("parser", allowlist=None)
+    registry.register_core(
+        PluginDescriptor(
+            plugin_name="docling",
+            capability="parser",
+            trust_tier="core",
+            builder=lambda _settings: "built",
+            extra="parsers-docling",
+            modules=("docling_missing_mod_xyz",),
+            structured=True,
+        )
+    )
+    monkeypatch.delenv("MCP_ENABLED", raising=False)
+    catalog = build_plugin_catalog(
+        SimpleNamespace(plugins=None, parsing=None),
+        registries={"parser": registry},
+    )
+    item = next(row for row in catalog.items if row.plugin_name == "docling")
+    assert item.installed is False
+    assert item.install_hint is not None
+    assert "parsers-docling" in item.install_hint
+    assert any(
+        row.plugin_name == "docling" and row.status == "missing_extra"
+        for row in catalog.discoverable
+    )
+    assert any(row.plugin_name == "mcp" for row in catalog.discoverable)
 
 
 def test_cli_plugins_list_includes_core_parsers() -> None:
@@ -129,3 +164,38 @@ def test_ops_plugins_requires_admin() -> None:
 
 def test_admin_plugins_action_exists() -> None:
     assert Action.ADMIN_PLUGINS.value == "admin.plugins"
+
+
+def test_ops_mcp_requires_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_ENABLED", "false")
+    clear_settings_cache()
+    try:
+        member = _override_client(admin=False)
+        denied = member.get("/api/v1/ops/mcp")
+        assert denied.status_code == 403, denied.text
+
+        admin = _override_client(admin=True)
+        allowed = admin.get("/api/v1/ops/mcp")
+        assert allowed.status_code == 200, allowed.text
+        body = allowed.json()
+        assert body["enabled"] is False
+        assert body["endpoint"] == "/api/v1/mcp/"
+        names = {tool["name"] for tool in body["tools"]}
+        assert names == {tool.name for tool in TOOLS}
+        assert "X-Api-Service-Key" in body["auth_headers_required"]
+    finally:
+        clear_settings_cache()
+
+
+def test_ops_mcp_reports_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_ENABLED", "true")
+    clear_settings_cache()
+    try:
+        admin = _override_client(admin=True)
+        response = admin.get("/api/v1/ops/mcp")
+        assert response.status_code == 200, response.text
+        assert response.json()["enabled"] is True
+    finally:
+        monkeypatch.delenv("MCP_ENABLED", raising=False)
+        clear_settings_cache()
+

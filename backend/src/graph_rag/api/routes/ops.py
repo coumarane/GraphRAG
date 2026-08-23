@@ -19,6 +19,7 @@ from graph_rag.application.config_composer import (
     preview_config_change,
 )
 from graph_rag.application.plugins.catalog import PluginCatalog, build_plugin_catalog
+from graph_rag.application.plugins.mcp_ops import McpOpsStatus, build_mcp_ops_status
 from graph_rag.config.settings import get_settings
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.usage.models import (
@@ -173,6 +174,13 @@ async def list_plugins(tenant: TenantDep, container: ContainerDep) -> PluginCata
     """List registered and allowlist-blocked plugins for operators."""
     require_action(container.require_authorization(), tenant, Action.ADMIN_PLUGINS)
     return build_plugin_catalog(get_settings())
+
+
+@router.get("/mcp", response_model=McpOpsStatus)
+async def mcp_status(tenant: TenantDep, container: ContainerDep) -> McpOpsStatus:
+    """List MCP tools and connect hints for operators."""
+    require_action(container.require_authorization(), tenant, Action.ADMIN_PLUGINS)
+    return build_mcp_ops_status()
 
 
 @router.get("/config-composer", response_model=CurrentConfigResponse)
