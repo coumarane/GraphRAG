@@ -14,6 +14,6 @@ resources:
 - httproute.yaml
 
 images:
-- digest: sha256:eff90603f9e265282432af997b113a3e29f98a9c931a859e20044c80185f4a0e
+- digest: sha256:20beee6e32bea9853f3ac9c61416d2536e4f8db8117783cebe9ea1a7bd96755c
   name: harbor.safranys.com/chatwithdocs/web
   newName: harbor.safranys.com/chatwithdocs/web
