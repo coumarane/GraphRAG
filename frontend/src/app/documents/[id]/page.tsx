@@ -7,6 +7,7 @@ import { readTenantKey } from "@/components/AppShell";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
 import { DocumentExtractionResults } from "@/components/DocumentExtractionResults";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
+import { DocumentPageViewer } from "@/components/DocumentPageViewer";
 import { DocumentParseReport } from "@/components/DocumentParseReport";
 import { DocumentIntelligencePanel } from "@/components/document-intelligence/DocumentIntelligencePanel";
 import type {
@@ -54,7 +55,7 @@ type Chunk = {
   token_count: number;
 };
 
-type Tab = "original" | "indexed" | "report" | "extractions";
+type Tab = "original" | "pages" | "indexed" | "report" | "extractions";
 
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
@@ -352,6 +353,7 @@ export default function DocumentDetailPage() {
         {(
           [
             ["original", "Original preview"],
+            ["pages", "Parsed content"],
             ["indexed", `Indexed text (${chunkTotal})`],
             ["report", "Parse report"],
             ["extractions", "Extracted fields"],
@@ -374,6 +376,10 @@ export default function DocumentDetailPage() {
 
       {tab === "original" && documentId ? (
         <DocumentOriginalPreview documentId={documentId} />
+      ) : null}
+
+      {tab === "pages" && documentId ? (
+        <DocumentPageViewer documentId={documentId} chunks={chunks} />
       ) : null}
 
       {tab === "indexed" ? <DocumentChunkViz chunks={chunks} /> : null}
