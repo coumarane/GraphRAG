@@ -1,13 +1,17 @@
-"""Cheap-tier (no LLM/vision) Document Intelligence extraction chain.
+"""Document Intelligence extraction chain: cheap tiers, then LLM, then vision.
 
 Per field, cheapest-first: STRUCTURED_PARSER -> RULES -> TABLE_EXTRACTION,
 first non-``None`` result wins. Whatever remains unresolved gets one batched
-EMBEDDING_SEMANTIC pass across the whole document. LLM/vision tiers are a
-later phase.
+EMBEDDING_SEMANTIC pass across the whole document, then one batched LLM pass
+over document text, then a per-page VISION pass (only when a chat model,
+raw parser result, and document bytes are all available) -- each of the
+three batched tiers narrows ``remaining`` further, cheapest first.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 from datetime import datetime
 from typing import Any
@@ -21,11 +25,24 @@ from graph_rag.application.document_intelligence.models import (
     ModelFieldSpec,
     confidence_band,
 )
+from graph_rag.application.ingestion.visual_enrichment import (
+    collect_visual_targets,
+    render_visual_png,
+)
 from graph_rag.domain.documents.document import NormalizedDocument
 from graph_rag.domain.elements.enums import ElementType
 from graph_rag.domain.elements.models import DocumentElement, TableElement
 from graph_rag.domain.elements.table import TableCell, TableData
-from graph_rag.domain.models.protocols import EmbeddingModel
+from graph_rag.domain.models.contracts import (
+    ChatMessage,
+    GenerationRequest,
+    ImageBytesContentPart,
+    MessageRole,
+    ModelRole,
+    TextContentPart,
+)
+from graph_rag.domain.models.protocols import ChatModel, EmbeddingModel
+from graph_rag.domain.parsing.types import RawParserResult
 from graph_rag.domain.types import JsonValue
 from graph_rag.shared.logging import get_logger
 
@@ -46,6 +63,23 @@ _SCHEMA_FIELDS = frozenset({"title", "page_count", "language"})
 MAX_EMBEDDING_CANDIDATES = 200
 EMBEDDING_MATCH_FLOOR = 0.35
 EMBEDDING_CONFIDENCE_CAP = 0.85
+
+LLM_CONFIDENCE_CAP = 0.80
+LLM_CONFIDENCE_DEFAULT = 0.65
+LLM_UNGROUNDED_CAP = 0.55
+LLM_CONTEXT_CHAR_BUDGET = 12_000
+
+VISION_CONFIDENCE_CAP = 0.60
+VISION_CONFIDENCE_DEFAULT = 0.45
+
+_FIELD_JSON_CONTRACT = (
+    "Respond with ONLY a JSON object of this exact shape (no markdown fences, no extra text):\n"
+    '{"fields": {"<field_name>": {"value": <value-or-null>, "confidence": <0.0-1.0-or-null>, '
+    '"source_text": "<verbatim quote-or-null>"}}}\n'
+    "Use null for value when the field is not present or you are not confident. "
+    "Never invent a value."
+)
+_JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")
 
 _DATE_CANDIDATE_RE = re.compile(
     r"\d{4}-\d{2}-\d{2}"
@@ -186,8 +220,9 @@ def _coerce_value(raw: str, field_type: FieldType) -> tuple[JsonValue, float] | 
     if not text:
         return None
     if field_type in (FieldType.TABLE, FieldType.OBJECT):
-        # TABLE is Tier 3's job; OBJECT needs an LLM (unreachable this phase --
-        # no built-in model uses it, so this is a deliberate gap, not an oversight).
+        # TABLE is Tier 3's job; OBJECT needs an LLM to produce a nested
+        # structure -- handled by _normalize_tiered_value in the LLM/Vision
+        # tiers, never by this string-only coercion path.
         return None
     if field_type == FieldType.STRING:
         return (text, 0.60) if len(text) <= 300 else None
@@ -470,19 +505,312 @@ async def _embedding_semantic_tier(
     return found
 
 
-INTERNAL_PROVIDER_VERSION = "0.4.0"
+def _document_text_excerpt(document: NormalizedDocument) -> str:
+    parts: list[str] = []
+    total = 0
+    for element in _ordered_elements(document):
+        text = (
+            element.table.markdown
+            if isinstance(element, TableElement)
+            else (element.normalized_content or element.raw_content)
+        )
+        if not text:
+            continue
+        parts.append(text)
+        total += len(text)
+        if total >= LLM_CONTEXT_CHAR_BUDGET:
+            break
+    return "\n".join(parts)[:LLM_CONTEXT_CHAR_BUDGET]
+
+
+def _field_spec_lines(fields: list[ModelFieldSpec]) -> str:
+    return "\n".join(
+        f"- {field.name} ({field.label}, type={field.field_type.value})" for field in fields
+    )
+
+
+def _system_prompt() -> str:
+    return (
+        "You extract structured field values from a document. Only use information "
+        "present in the provided content. Never invent or guess a value -- return "
+        "null when a field is not present or you are not confident."
+    )
+
+
+def _user_prompt(fields: list[ModelFieldSpec], context_label: str, context: str) -> str:
+    return (
+        f"Fields to extract:\n{_field_spec_lines(fields)}\n\n"
+        f"{context_label}:\n{context}\n\n"
+        f"{_FIELD_JSON_CONTRACT}"
+    )
+
+
+def _parse_field_json(text: str) -> dict[str, Any]:
+    """Forgiving JSON extraction, mirroring ``local_pipeline.py::_parse_vision_json``.
+
+    Written fresh here rather than imported -- that function is private to
+    ``local_pipeline.py``, not meant for cross-module reuse (same reasoning
+    that led the embedding tier to write its own ``cosine_similarity`` rather
+    than import ``qdrant/memory.py``'s private ``_dot``).
+    """
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    payload: Any = None
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = _JSON_OBJECT_RE.search(cleaned)
+        if match:
+            try:
+                payload = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                payload = None
+    if not isinstance(payload, dict):
+        return {}
+    fields = payload.get("fields")
+    return fields if isinstance(fields, dict) else payload
+
+
+def _entry_parts(entry: Any) -> tuple[Any, Any, Any]:
+    """Split one field's JSON entry into (value, confidence, source_text).
+
+    Tolerates a bare scalar in place of the ``{value, confidence, source_text}``
+    object -- some models drop the wrapper when they're very confident.
+    """
+    if isinstance(entry, dict):
+        return entry.get("value"), entry.get("confidence"), entry.get("source_text")
+    return entry, None, None
+
+
+def _resolve_confidence(reported: Any, *, cap: float, default: float) -> float:
+    if (
+        isinstance(reported, int | float)
+        and not isinstance(reported, bool)
+        and 0.0 <= reported <= 1.0
+    ):
+        return min(float(reported), cap)
+    return default
+
+
+def _normalize_tiered_value(value: Any, field_type: FieldType) -> JsonValue | None:
+    """Accept native JSON types matching ``field_type`` directly; otherwise
+    stringify and reuse ``_coerce_value``'s regex validators.
+
+    Never fabricates a value that doesn't shape-match -- mirrors
+    ``_coerce_value``'s own contract, just starting from a JSON value instead
+    of a captured string.
+    """
+    if field_type == FieldType.TABLE:
+        return None
+    if field_type == FieldType.OBJECT:
+        return value if isinstance(value, dict) else None
+    if field_type == FieldType.LIST:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            coerced = _coerce_value(value, field_type)
+            return coerced[0] if coerced else None
+        return None
+    if field_type in (FieldType.NUMBER, FieldType.INTEGER):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int | float):
+            return int(value) if field_type == FieldType.INTEGER else float(value)
+        if isinstance(value, str):
+            coerced = _coerce_value(value, field_type)
+            return coerced[0] if coerced else None
+        return None
+    if field_type == FieldType.BOOLEAN:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            coerced = _coerce_value(value, field_type)
+            return coerced[0] if coerced else None
+        return None
+    if field_type == FieldType.STRING:
+        if isinstance(value, str):
+            return value[:300]
+        return None
+    # DATE, CURRENCY, PERCENTAGE -- inherently text-shaped.
+    if isinstance(value, str):
+        coerced = _coerce_value(value, field_type)
+        return coerced[0] if coerced else None
+    return None
+
+
+async def _llm_tier(
+    chat_model: ChatModel,
+    document: NormalizedDocument,
+    fields: list[ModelFieldSpec],
+) -> dict[str, ExtractedFieldResult]:
+    scalar_fields = [field for field in fields if field.field_type != FieldType.TABLE]
+    if not scalar_fields:
+        return {}
+    excerpt = _document_text_excerpt(document)
+    if not excerpt:
+        return {}
+    lowered_excerpt = excerpt.lower()
+
+    response = await chat_model.generate(
+        GenerationRequest(
+            messages=[
+                ChatMessage(role=MessageRole.SYSTEM, content=_system_prompt()),
+                ChatMessage(
+                    role=MessageRole.USER,
+                    content=_user_prompt(scalar_fields, "Document text", excerpt),
+                ),
+            ],
+            role=ModelRole.TEXT,
+            temperature=0.0,
+            prompt_version="document-intelligence-llm-tier-v1",
+        )
+    )
+    payload = _parse_field_json(response.text)
+
+    found: dict[str, ExtractedFieldResult] = {}
+    for field in scalar_fields:
+        entry = payload.get(field.name)
+        if entry is None:
+            continue
+        raw_value, reported_confidence, source_text = _entry_parts(entry)
+        if raw_value is None:
+            continue
+        value = _normalize_tiered_value(raw_value, field.field_type)
+        if value is None:
+            continue
+        confidence = _resolve_confidence(
+            reported_confidence, cap=LLM_CONFIDENCE_CAP, default=LLM_CONFIDENCE_DEFAULT
+        )
+        grounded_source: str | None = None
+        if isinstance(source_text, str) and source_text.strip():
+            grounded_source = source_text.strip()
+            if grounded_source.lower() not in lowered_excerpt:
+                confidence = min(confidence, LLM_UNGROUNDED_CAP)
+        found[field.name] = ExtractedFieldResult(
+            name=field.name,
+            value=value,
+            confidence=confidence,
+            confidence_band=confidence_band(confidence),
+            extraction_method=ExtractionMethod.LLM,
+            source_text=grounded_source,
+        )
+    return found
+
+
+async def _vision_tier(
+    chat_model: ChatModel,
+    document_bytes: bytes,
+    raw_parser_result: RawParserResult,
+    fields: list[ModelFieldSpec],
+    *,
+    vision_max_pages: int,
+) -> dict[str, ExtractedFieldResult]:
+    scalar_fields = [field for field in fields if field.field_type != FieldType.TABLE]
+    if not scalar_fields:
+        return {}
+    vision_targets = [
+        target for target in collect_visual_targets(raw_parser_result) if target.tool == "vision"
+    ]
+    if not vision_targets:
+        return {}
+
+    # Dedupe by page (not by target, unlike _vision_enrich_pages) since this
+    # tier batches all remaining fields into one call per page.
+    page_numbers: list[int] = []
+    for target in vision_targets:
+        if target.page_number not in page_numbers:
+            page_numbers.append(target.page_number)
+    if vision_max_pages > 0:
+        page_numbers = page_numbers[:vision_max_pages]
+
+    found: dict[str, ExtractedFieldResult] = {}
+    remaining = list(scalar_fields)
+    for page_number in page_numbers:
+        if not remaining:
+            break
+        try:
+            png = await asyncio.to_thread(render_visual_png, document_bytes, page_number, None)
+            response = await chat_model.generate(
+                GenerationRequest(
+                    messages=[
+                        ChatMessage(role=MessageRole.SYSTEM, content=_system_prompt()),
+                        ChatMessage(
+                            role=MessageRole.USER,
+                            content=[
+                                TextContentPart(
+                                    text=_user_prompt(
+                                        remaining, "This page image", "(see attached image)"
+                                    )
+                                ),
+                                ImageBytesContentPart(data=png, mime_type="image/png"),
+                            ],
+                        ),
+                    ],
+                    role=ModelRole.VISION,
+                    temperature=0.0,
+                    prompt_version="document-intelligence-vision-tier-v1",
+                )
+            )
+            payload = _parse_field_json(response.text)
+        except Exception:
+            logger.warning(
+                "document_intelligence_vision_tier_page_failed", page=page_number, exc_info=True
+            )
+            continue
+
+        for field in list(remaining):
+            entry = payload.get(field.name)
+            if entry is None:
+                continue
+            raw_value, reported_confidence, source_text = _entry_parts(entry)
+            if raw_value is None:
+                continue
+            value = _normalize_tiered_value(raw_value, field.field_type)
+            if value is None:
+                continue
+            confidence = _resolve_confidence(
+                reported_confidence, cap=VISION_CONFIDENCE_CAP, default=VISION_CONFIDENCE_DEFAULT
+            )
+            found[field.name] = ExtractedFieldResult(
+                name=field.name,
+                value=value,
+                confidence=confidence,
+                confidence_band=confidence_band(confidence),
+                extraction_method=ExtractionMethod.VISION,
+                page=page_number,
+                source_text=source_text.strip() if isinstance(source_text, str) else None,
+            )
+            remaining.remove(field)
+    return found
+
+
+INTERNAL_PROVIDER_VERSION = "0.5.0"
 
 
 class InternalExtractionProvider:
-    """Cheap-tier (no LLM/vision) Document Intelligence extraction chain.
+    """Document Intelligence extraction chain: cheap tiers, then LLM, then vision.
 
     Distinct from -- and unrelated to -- ``application.plugins
     .document_intelligence._InternalProvider``, which is a dead Phase-1
     plugin-registry placeholder that nothing calls.
     """
 
-    def __init__(self, embedding_model: EmbeddingModel) -> None:
+    def __init__(
+        self,
+        embedding_model: EmbeddingModel,
+        chat_model: ChatModel | None = None,
+        *,
+        enable_llm_tier: bool = True,
+        enable_vision_tier: bool = True,
+        vision_max_pages: int = 0,
+    ) -> None:
         self._embedding_model = embedding_model
+        self._chat_model = chat_model
+        self._enable_llm_tier = enable_llm_tier
+        self._enable_vision_tier = enable_vision_tier
+        self._vision_max_pages = vision_max_pages
 
     async def extract(
         self, request: DocumentIntelligenceExtractionRequest
@@ -531,6 +859,42 @@ class InternalExtractionProvider:
                 logger.warning("document_intelligence_embedding_tier_failed", exc_info=True)
                 embedded = {}
             for name, result in embedded.items():
+                if request.model_name:
+                    result = result.model_copy(update={"model_name": request.model_name})
+                found[name] = result
+
+        remaining = [field for field in request.fields if field.name not in found]
+        if remaining and self._chat_model is not None and self._enable_llm_tier:
+            try:
+                llm_found = await _llm_tier(self._chat_model, document, remaining)
+            except Exception:
+                logger.warning("document_intelligence_llm_tier_failed", exc_info=True)
+                llm_found = {}
+            for name, result in llm_found.items():
+                if request.model_name:
+                    result = result.model_copy(update={"model_name": request.model_name})
+                found[name] = result
+
+        remaining = [field for field in request.fields if field.name not in found]
+        if (
+            remaining
+            and self._chat_model is not None
+            and self._enable_vision_tier
+            and request.raw_parser_result is not None
+            and request.document_bytes is not None
+        ):
+            try:
+                vision_found = await _vision_tier(
+                    self._chat_model,
+                    request.document_bytes,
+                    request.raw_parser_result,
+                    remaining,
+                    vision_max_pages=self._vision_max_pages,
+                )
+            except Exception:
+                logger.warning("document_intelligence_vision_tier_failed", exc_info=True)
+                vision_found = {}
+            for name, result in vision_found.items():
                 if request.model_name:
                     result = result.model_copy(update={"model_name": request.model_name})
                 found[name] = result

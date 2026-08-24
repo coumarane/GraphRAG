@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.domain.documents.document import NormalizedDocument
 from graph_rag.domain.elements.geometry import BoundingBox
+from graph_rag.domain.parsing.types import RawParserResult
 from graph_rag.domain.types import JsonValue
 
 
@@ -103,12 +104,7 @@ def confidence_band(value: float) -> ConfidenceBand:
 
 
 class ExtractionMethod(StrEnum):
-    """How one field's value was produced.
-
-    ``LLM``/``VISION`` are declared now (the ``extraction_method`` column
-    already accepts any string) but are never produced by this phase's
-    cheap-tier chain -- reserved for a later phase.
-    """
+    """How one field's value was produced."""
 
     STRUCTURED_PARSER = "STRUCTURED_PARSER"
     RULES = "RULES"
@@ -166,6 +162,8 @@ class DocumentIntelligenceExtractionRequest(BaseModel):
     document: NormalizedDocument
     fields: list[ModelFieldSpec] = Field(min_length=1)
     model_name: str | None = None
+    raw_parser_result: RawParserResult | None = None
+    document_bytes: bytes | None = None
 
 
 class DocumentIntelligenceExtractionResult(BaseModel):

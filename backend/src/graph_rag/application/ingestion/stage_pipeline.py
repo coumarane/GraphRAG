@@ -708,6 +708,8 @@ class DocumentPipeline:
                 document=w.normalized,
                 fields=resolution.fields,
                 model_name=resolution.model_name,
+                raw_parser_result=w.raw,
+                document_bytes=w.data,
             )
         )
         run_status = (

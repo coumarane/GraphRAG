@@ -86,6 +86,8 @@ multimodal:
 document_intelligence:
   enabled: true
   default_provider: internal
+  enable_llm_tier: true
+  enable_vision_tier: true
 
 chunking:
   strategy: multimodal_hierarchical

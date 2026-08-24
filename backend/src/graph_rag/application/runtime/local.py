@@ -249,9 +249,18 @@ def build_local_container(
         chat = chat_model or FakeChatModel(
             text='{"answer":"No indexed evidence yet.","citation_ids":[]}'
         )
-    document_intelligence_provider = document_intelligence_provider or InternalExtractionProvider(
-        embedding_model=embedder
-    )
+    vision_max_pages_value = int(os.environ.get("VISION_MAX_PAGES", "0") or "0")
+    if document_intelligence_provider is None:
+        from graph_rag.config.settings import get_settings as _get_settings
+
+        di_settings = _get_settings().document_intelligence
+        document_intelligence_provider = InternalExtractionProvider(
+            embedding_model=embedder,
+            chat_model=chat,
+            enable_llm_tier=di_settings.enable_llm_tier,
+            enable_vision_tier=di_settings.enable_vision_tier,
+            vision_max_pages=vision_max_pages_value,
+        )
     extractor = structured_extractor
     if extractor is None and use_live_models:
         from graph_rag.infrastructure.models.openai_direct import ChatStructuredExtractor
@@ -316,7 +325,7 @@ def build_local_container(
         document_intelligence_provider=document_intelligence_provider,
         document_extraction_repo=document_extraction_repo,
         max_pages=max_pages,
-        vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "0") or "0"),
+        vision_max_pages=vision_max_pages_value,
         semantic_graph=enable_semantic_graph,
         on_commit=on_commit,
         parse_service=_parse_service_from_registry(parser_registry),
