@@ -36,6 +36,7 @@ from graph_rag.domain.document_intelligence.protocols import (
     DocumentIntelligenceModelRepository,
 )
 from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.elements.geometry import BoundingBox
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
 from graph_rag.domain.ids import new_id
@@ -661,6 +662,13 @@ async def _vision_enrich_pages(
 
         before = len(extras)
         page_number = target.page_number
+        # target.bbox is None for a full-page vision pass (no crop) -- fall
+        # back to the whole page so the "Parsed content" viewer's overlay
+        # still has something to highlight instead of silently rendering
+        # nothing for every vision-enriched element.
+        element_bbox = target.bbox or BoundingBox(
+            page_number=page_number, x0=0.0, y0=0.0, x1=1.0, y1=1.0
+        )
         ocr = str(payload.get("ocr_text") or "").strip()
         summary = str(payload.get("page_summary") or "").strip()
         conditions = str(payload.get("measurement_conditions") or "").strip()
@@ -833,6 +841,7 @@ async def _vision_enrich_pages(
                         raw_content=chart_text,
                         normalized_content=chart_text,
                         ocr_confidence=0.75,
+                        bounding_boxes=[element_bbox],
                         metadata=chart_meta,
                     )
                 )
@@ -874,6 +883,7 @@ async def _vision_enrich_pages(
                     raw_content=description,
                     normalized_content=description,
                     ocr_confidence=0.7,
+                    bounding_boxes=[element_bbox],
                     metadata=image_meta,
                 )
             )
@@ -895,6 +905,7 @@ async def _vision_enrich_pages(
                     section_path=page_path,
                     raw_content=markdown,
                     normalized_content=markdown,
+                    bounding_boxes=[element_bbox],
                     metadata={"caption": caption, "source": "openai_vision_table"},
                 )
             )
@@ -916,6 +927,7 @@ async def _vision_enrich_pages(
                     section_path=page_path,
                     raw_content=text or formula_description,
                     normalized_content=formula_description or text,
+                    bounding_boxes=[element_bbox],
                     metadata={
                         "latex": text or formula_description,
                         "semantic_description": formula_description or text,
