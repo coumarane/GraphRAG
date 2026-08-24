@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.application.document_intelligence.models import FieldType, ModelType
+from graph_rag.domain.types import JsonValue
 
 
 class ModelFieldResponse(BaseModel):
@@ -56,3 +57,37 @@ class DocumentIntelligenceModelCreateRequest(BaseModel):
     model_key: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=255)
     fields: list[DocumentIntelligenceModelFieldCreateRequest] = Field(min_length=1)
+
+
+class ExtractedFieldItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    value: JsonValue
+    normalized_value: JsonValue | None = None
+    confidence: float
+    confidence_band: str
+    page: int | None = None
+    source_text: str | None = None
+    extraction_method: str
+    model_name: str | None = None
+
+
+class DocumentExtractionRunItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    status: str
+    model_key: str | None = None
+    provider: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    fields: list[ExtractedFieldItem] = Field(default_factory=list)
+
+
+class DocumentExtractionListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[DocumentExtractionRunItem]

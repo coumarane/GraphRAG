@@ -34,10 +34,13 @@ from graph_rag.api.schemas.conversations import (
     ChatProjectUpdateRequest,
 )
 from graph_rag.api.schemas.document_intelligence import (
+    DocumentExtractionListResponse,
+    DocumentExtractionRunItem,
     DocumentIntelligenceModelCreateRequest,
     DocumentIntelligenceModelFieldCreateRequest,
     DocumentIntelligenceModelListResponse,
     DocumentIntelligenceModelResponse,
+    ExtractedFieldItem,
     ModelFieldResponse,
 )
 
@@ -55,6 +58,8 @@ __all__ = [
     "ChunkListResponse",
     "ChunkPreviewItem",
     "DeletionAcceptedResponse",
+    "DocumentExtractionListResponse",
+    "DocumentExtractionRunItem",
     "DocumentIntelligenceModelCreateRequest",
     "DocumentIntelligenceModelFieldCreateRequest",
     "DocumentIntelligenceModelListResponse",
@@ -63,6 +68,7 @@ __all__ = [
     "DocumentResponse",
     "ElementItem",
     "ElementListResponse",
+    "ExtractedFieldItem",
     "GraphSearchRequest",
     "GraphSearchResponse",
     "GraphViewResponse",

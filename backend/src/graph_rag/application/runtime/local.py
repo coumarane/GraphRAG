@@ -369,6 +369,7 @@ def build_local_container(
         chat_project_repo=chat_project_repo,
         chat_conversation_repo=chat_conversation_repo,
         document_intelligence_model_repo=document_intelligence_model_repo,
+        document_extraction_repo=document_extraction_repo,
         object_store=object_store,
         register_source=register,
         retrieve=retrieve,

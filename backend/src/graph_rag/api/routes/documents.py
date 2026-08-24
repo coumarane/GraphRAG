@@ -16,10 +16,13 @@ from graph_rag.api.schemas import (
     ChunkListResponse,
     ChunkPreviewItem,
     DeletionAcceptedResponse,
+    DocumentExtractionListResponse,
+    DocumentExtractionRunItem,
     DocumentListResponse,
     DocumentResponse,
     ElementItem,
     ElementListResponse,
+    ExtractedFieldItem,
     GraphViewResponse,
     IngestAcceptedResponse,
     IngestionRunResponse,
@@ -34,6 +37,10 @@ from graph_rag.application.ingestion.register_source import RegisterSourceReques
 from graph_rag.application.runtime.container import ServiceContainer
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.deletion.stages import ReindexScope
+from graph_rag.domain.document_intelligence.records import (
+    DocumentExtractedFieldRecord,
+    DocumentExtractionRunRecord,
+)
 from graph_rag.domain.ingestion.records import DocumentRecord
 from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from graph_rag.domain.modality import Modality
@@ -390,6 +397,59 @@ async def list_document_chunks(
         document_id=document_id,
         version_id=version_id or document.current_version_id,
     )
+
+
+def _extraction_run_response(
+    run: DocumentExtractionRunRecord,
+    fields: list[DocumentExtractedFieldRecord],
+) -> DocumentExtractionRunItem:
+    return DocumentExtractionRunItem(
+        run_id=run.run_id,
+        status=run.status,
+        model_key=run.model_key,
+        provider=run.provider,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        error_code=run.error_code,
+        error_message=run.error_message,
+        fields=[
+            ExtractedFieldItem(
+                name=field.name,
+                value=field.value,
+                normalized_value=field.normalized_value,
+                confidence=field.confidence,
+                confidence_band=field.confidence_band,
+                page=field.page,
+                source_text=field.source_text,
+                extraction_method=field.extraction_method,
+                model_name=field.model_name,
+            )
+            for field in fields
+        ],
+    )
+
+
+@router.get("/{document_id}/extractions", response_model=DocumentExtractionListResponse)
+async def list_document_extractions(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> DocumentExtractionListResponse:
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    ensure_document_read(container.require_authorization(), tenant, document)
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        return DocumentExtractionListResponse(items=[])
+    repo = container.require_document_extraction_repo()
+    runs = await repo.list_runs_for_version(tenant, document_id, resolved_version)
+    items = []
+    for run in runs:
+        fields = await repo.list_fields_for_run(tenant, run.run_id)
+        items.append(_extraction_run_response(run, fields))
+    return DocumentExtractionListResponse(items=items)
 
 
 @router.get("/{document_id}/original")
