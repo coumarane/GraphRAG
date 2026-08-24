@@ -14,6 +14,7 @@ from graph_rag.api.schemas import (
     DocumentIntelligenceModelCreateRequest,
     DocumentIntelligenceModelListResponse,
     DocumentIntelligenceModelResponse,
+    FieldEntityMapping,
     ModelFieldResponse,
 )
 from graph_rag.application.authorization.gate import require_action
@@ -48,6 +49,7 @@ def _builtin_response(model: DocumentIntelligenceModel) -> DocumentIntelligenceM
                 label=field.label,
                 field_type=field.field_type,
                 default_selected=field.default_selected,
+                promote_to_document_metadata=field.promote_to_document_metadata,
             )
             for field in model.fields
         ],
@@ -68,9 +70,14 @@ def _custom_response(record: DocumentIntelligenceModelRecord) -> DocumentIntelli
                 label=field.label,
                 field_type=field.field_type,  # type: ignore[arg-type]
                 default_selected=field.default_selected,
+                promote_to_document_metadata=field.promote_to_document_metadata,
             )
             for field in record.fields
         ],
+        field_entity_mappings={
+            name: FieldEntityMapping.model_validate(mapping)
+            for name, mapping in record.field_entity_mappings.items()
+        },
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -104,6 +111,10 @@ async def create_document_intelligence_model(
         model_type=ModelType.CUSTOM,
         is_builtin=False,
         created_by_user_id=tenant.user_id,
+        field_entity_mappings={
+            name: mapping.model_dump(mode="json")
+            for name, mapping in body.field_entity_mappings.items()
+        },
         fields=[
             DocumentIntelligenceModelFieldRecord(
                 field_id=new_id(),
@@ -113,6 +124,7 @@ async def create_document_intelligence_model(
                 label=field.label,
                 field_type=field.field_type,
                 default_selected=field.default_selected,
+                promote_to_document_metadata=field.promote_to_document_metadata,
                 sort_order=index,
             )
             for index, field in enumerate(body.fields)

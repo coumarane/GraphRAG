@@ -161,3 +161,39 @@ def test_custom_model_fields_combine_with_selected_fields_filter() -> None:
         custom_models=[record],
     )
     assert [field.name for field in resolution.fields] == ["invoice_number"]
+
+
+def test_custom_model_promote_to_document_metadata_flag_survives_resolution() -> None:
+    tenant_id = new_id()
+    model_id = new_id()
+    record = DocumentIntelligenceModelRecord(
+        model_id=model_id,
+        tenant_id=tenant_id,
+        model_key="invoice",
+        name="Invoice",
+        fields=[
+            DocumentIntelligenceModelFieldRecord(
+                field_id=new_id(),
+                model_id=model_id,
+                tenant_id=tenant_id,
+                name="vendor_name",
+                label="Vendor name",
+                field_type="string",
+                promote_to_document_metadata=True,
+            ),
+            DocumentIntelligenceModelFieldRecord(
+                field_id=new_id(),
+                model_id=model_id,
+                tenant_id=tenant_id,
+                name="notes",
+                label="Notes",
+                field_type="string",
+            ),
+        ],
+    )
+    resolution = resolve_requested_fields(
+        DocumentIntelligenceIngestOptions(model_id="invoice"), custom_models=[record]
+    )
+    by_name = {field.name: field for field in resolution.fields}
+    assert by_name["vendor_name"].promote_to_document_metadata is True
+    assert by_name["notes"].promote_to_document_metadata is False

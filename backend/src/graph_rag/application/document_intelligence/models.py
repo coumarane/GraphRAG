@@ -50,6 +50,7 @@ class ModelFieldSpec(BaseModel):
     label: str
     field_type: FieldType
     default_selected: bool = False
+    promote_to_document_metadata: bool = False
 
 
 class DocumentIntelligenceModel(BaseModel):

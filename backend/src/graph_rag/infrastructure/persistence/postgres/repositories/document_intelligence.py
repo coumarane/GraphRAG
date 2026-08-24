@@ -57,6 +57,11 @@ class SqlAlchemyDocumentIntelligenceModelRepository:
             provider=model.provider,
             is_builtin=model.is_builtin,
             created_by_user_id=model.created_by_user_id,
+            metadata_json=(
+                {"field_entity_mappings": model.field_entity_mappings}
+                if model.field_entity_mappings
+                else {}
+            ),
         )
         self._session.add(row)
         field_rows = [
@@ -68,6 +73,7 @@ class SqlAlchemyDocumentIntelligenceModelRepository:
                 label=field.label,
                 field_type=field.field_type,
                 default_selected=field.default_selected,
+                promote_to_document_metadata=field.promote_to_document_metadata,
                 sort_order=field.sort_order,
             )
             for field in model.fields

@@ -41,6 +41,7 @@ from graph_rag.api.schemas.document_intelligence import (
     DocumentIntelligenceModelListResponse,
     DocumentIntelligenceModelResponse,
     ExtractedFieldItem,
+    FieldEntityMapping,
     ModelFieldResponse,
 )
 
@@ -69,6 +70,7 @@ __all__ = [
     "ElementItem",
     "ElementListResponse",
     "ExtractedFieldItem",
+    "FieldEntityMapping",
     "GraphSearchRequest",
     "GraphSearchResponse",
     "GraphViewResponse",

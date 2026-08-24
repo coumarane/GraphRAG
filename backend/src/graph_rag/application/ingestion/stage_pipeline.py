@@ -17,7 +17,10 @@ from graph_rag.application.document_intelligence.models import (
     DocumentIntelligenceIngestOptions,
 )
 from graph_rag.application.document_intelligence.providers import INTERNAL_PROVIDER_VERSION
-from graph_rag.application.document_intelligence.resolution import resolve_requested_fields
+from graph_rag.application.document_intelligence.resolution import (
+    find_custom_model,
+    resolve_requested_fields,
+)
 from graph_rag.application.document_intelligence.reuse import (
     clone_field_for_new_run,
     compute_fingerprint,
@@ -50,6 +53,7 @@ from graph_rag.domain.document_intelligence.records import (
     DocumentIntelligenceModelRecord,
 )
 from graph_rag.domain.documents.document import NormalizedDocument
+from graph_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
 from graph_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
 from graph_rag.domain.ingestion.handlers import StageContext, StageOutcome, StageOutcomeStatus
@@ -819,6 +823,20 @@ class DocumentPipeline:
             )
             for field in result.fields
         ]
+        promote_names = {
+            field.name for field in resolution.fields if field.promote_to_document_metadata
+        }
+        if promote_names:
+            await w.save_json(
+                f"document_intelligence_promoted_{context.ingestion_run_id.hex}",
+                {
+                    "fields": [
+                        {"name": row.name, "value": row.value, "page": row.page}
+                        for row in new_field_records
+                        if row.name in promote_names
+                    ]
+                },
+            )
         if new_field_records:
             await repo.add_extracted_fields(context.tenant, created_run.run_id, new_field_records)
         await w.service._flush()
@@ -875,10 +893,26 @@ class DocumentPipeline:
         doc_title = (
             (w.document.title or "").strip() if w.document is not None else ""
         ) or w.filename
+        promoted_stored = await w.load_json(
+            f"document_intelligence_promoted_{context.ingestion_run_id.hex}"
+        )
+        promoted_fields = (promoted_stored or {}).get("fields") or []
+        doc_level_fields = {
+            item["name"]: item["value"] for item in promoted_fields if item.get("page") is None
+        }
+        promoted_by_page: dict[int, dict[str, Any]] = {}
+        for item in promoted_fields:
+            if item.get("page") is not None:
+                promoted_by_page.setdefault(item["page"], {})[item["name"]] = item["value"]
         stamped: list[ChunkBase] = []
         for chunk in all_chunks:
             meta = dict(chunk.metadata)
             meta["document_name"] = doc_title
+            di_meta = dict(doc_level_fields)
+            for page in range(chunk.page_start, chunk.page_end + 1):
+                di_meta.update(promoted_by_page.get(page, {}))
+            if di_meta:
+                meta["document_intelligence"] = di_meta
             stamped.append(chunk.model_copy(update={"metadata": meta}))
         w.chunks = stamped
         w.audit.mark_downstream(chunking=True)
@@ -995,9 +1029,91 @@ class DocumentPipeline:
                 w.raw.warnings.append(f"semantic_graph_failed:{type(graph_exc).__name__}")
             projected = StructuralGraphBuilder().build(w.normalized, chunking_result)
             w.graph_counts = await w.service.graph_store.upsert_graph(context.tenant, projected)
+        mapped_nodes, mapped_rels = await self._build_mapped_entity_graph(context)
+        if mapped_nodes:
+            mapped_counts = await w.service.graph_store.upsert_graph(
+                context.tenant,
+                ProjectedGraph(
+                    tenant_id=context.tenant.tenant_id,
+                    document_id=context.document_id,
+                    version_id=context.version_id,
+                    nodes=mapped_nodes,
+                    relationships=mapped_rels,
+                ),
+            )
+            w.graph_counts = {
+                key: w.graph_counts.get(key, 0) + mapped_counts.get(key, 0)
+                for key in set(w.graph_counts) | set(mapped_counts)
+            }
         w.audit.mark_downstream(graph_index=True)
         await w.save_json("graph", {"counts": w.graph_counts, "upserted": True})
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
+
+    async def _build_mapped_entity_graph(
+        self, context: StageContext
+    ) -> tuple[list[GraphNode], list[GraphRelationship]]:
+        """Configured field->entity nodes for explicitly mapped fields only.
+
+        Never automatic: a field only produces a graph node when the
+        resolved model's ``field_entity_mappings`` names it (set via
+        ``POST /document-intelligence/models``). Returns early with zero
+        repo/graph calls whenever DI wasn't requested or nothing is mapped.
+        """
+        w = self.w
+        raw_options = (w.run.metadata or {}).get("document_intelligence") if w.run else None
+        if not raw_options:
+            return [], []
+        options = DocumentIntelligenceIngestOptions.model_validate(raw_options)
+        if not options.enabled or not options.model_id:
+            return [], []
+        model_repo = w.service.document_intelligence_model_repo
+        extraction_repo = w.service.document_extraction_repo
+        if model_repo is None or extraction_repo is None:
+            return [], []
+        custom_models = await model_repo.list_models(context.tenant)
+        record = find_custom_model(options.model_id, custom_models)
+        if record is None or not record.field_entity_mappings:
+            return [], []
+        runs = await extraction_repo.list_runs_for_version(
+            context.tenant, context.document_id, context.version_id
+        )
+        run = next((r for r in runs if r.ingestion_run_id == context.ingestion_run_id), None)
+        if run is None:
+            return [], []
+        extracted_fields = await extraction_repo.list_fields_for_run(context.tenant, run.run_id)
+        extracted_by_name = {field.name: field for field in extracted_fields}
+        nodes: list[GraphNode] = []
+        relationships: list[GraphRelationship] = []
+        for field_name, mapping in record.field_entity_mappings.items():
+            field = extracted_by_name.get(field_name)
+            if field is None or not isinstance(field.value, str | int | float):
+                continue
+            label = mapping["label"]
+            relationship_type = mapping.get("relationship_type") or "MENTIONS"
+            entity_id = deterministic_id(str(context.tenant.tenant_id), label, str(field.value))
+            nodes.append(
+                GraphNode(
+                    node_id=entity_id,
+                    label=label,
+                    tenant_id=context.tenant.tenant_id,
+                    properties={"name": str(field.value), "value": field.value},
+                )
+            )
+            relationships.append(
+                GraphRelationship(
+                    relationship_id=deterministic_id(
+                        str(context.tenant.tenant_id),
+                        relationship_type,
+                        str(context.document_id),
+                        str(entity_id),
+                    ),
+                    relationship_type=relationship_type,
+                    tenant_id=context.tenant.tenant_id,
+                    source_node_id=context.document_id,
+                    target_node_id=entity_id,
+                )
+            )
+        return nodes, relationships
 
     async def stage_index_graph(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)

@@ -230,6 +230,7 @@ def document_intelligence_model_field_to_record(
         label=model.label,
         field_type=model.field_type,
         default_selected=model.default_selected,
+        promote_to_document_metadata=model.promote_to_document_metadata,
         sort_order=model.sort_order,
     )
 
@@ -248,6 +249,7 @@ def document_intelligence_model_to_record(
         provider=model.provider,
         is_builtin=model.is_builtin,
         created_by_user_id=model.created_by_user_id,
+        field_entity_mappings=dict((model.metadata_json or {}).get("field_entity_mappings") or {}),
         fields=[document_intelligence_model_field_to_record(field) for field in fields],
         created_at=model.created_at,
         updated_at=model.updated_at,

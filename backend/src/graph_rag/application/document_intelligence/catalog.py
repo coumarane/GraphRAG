@@ -22,12 +22,14 @@ def _field(
     field_type: FieldType,
     *,
     default_selected: bool = False,
+    promote_to_document_metadata: bool = False,
 ) -> ModelFieldSpec:
     return ModelFieldSpec(
         name=name,
         label=label,
         field_type=field_type,
         default_selected=default_selected,
+        promote_to_document_metadata=promote_to_document_metadata,
     )
 
 
@@ -48,8 +50,20 @@ BUILTIN_DOCUMENT_INTELLIGENCE_MODELS: tuple[DocumentIntelligenceModel, ...] = (
         model_type=ModelType.PREBUILT,
         is_builtin=True,
         fields=[
-            _field("title", "Title", FieldType.STRING, default_selected=True),
-            _field("document_type", "Document type", FieldType.STRING, default_selected=True),
+            _field(
+                "title",
+                "Title",
+                FieldType.STRING,
+                default_selected=True,
+                promote_to_document_metadata=True,
+            ),
+            _field(
+                "document_type",
+                "Document type",
+                FieldType.STRING,
+                default_selected=True,
+                promote_to_document_metadata=True,
+            ),
             _field("effective_date", "Effective date", FieldType.DATE),
         ],
     ),
@@ -59,8 +73,20 @@ BUILTIN_DOCUMENT_INTELLIGENCE_MODELS: tuple[DocumentIntelligenceModel, ...] = (
         model_type=ModelType.PREBUILT,
         is_builtin=True,
         fields=[
-            _field("product_name", "Product name", FieldType.STRING, default_selected=True),
-            _field("manufacturer", "Manufacturer", FieldType.STRING, default_selected=True),
+            _field(
+                "product_name",
+                "Product name",
+                FieldType.STRING,
+                default_selected=True,
+                promote_to_document_metadata=True,
+            ),
+            _field(
+                "manufacturer",
+                "Manufacturer",
+                FieldType.STRING,
+                default_selected=True,
+                promote_to_document_metadata=True,
+            ),
             _field("cas_number", "CAS number", FieldType.STRING, default_selected=True),
             _field("hazard_classification", "Hazard classification", FieldType.LIST),
             _field("signal_word", "Signal word", FieldType.STRING),
@@ -74,8 +100,20 @@ BUILTIN_DOCUMENT_INTELLIGENCE_MODELS: tuple[DocumentIntelligenceModel, ...] = (
         model_type=ModelType.PREBUILT,
         is_builtin=True,
         fields=[
-            _field("product_name", "Product name", FieldType.STRING, default_selected=True),
-            _field("batch_number", "Batch number", FieldType.STRING, default_selected=True),
+            _field(
+                "product_name",
+                "Product name",
+                FieldType.STRING,
+                default_selected=True,
+                promote_to_document_metadata=True,
+            ),
+            _field(
+                "batch_number",
+                "Batch number",
+                FieldType.STRING,
+                default_selected=True,
+                promote_to_document_metadata=True,
+            ),
             _field("lot_number", "Lot number", FieldType.STRING, default_selected=True),
             _field("manufacture_date", "Manufacture date", FieldType.DATE),
             _field("expiry_date", "Expiry date", FieldType.DATE),

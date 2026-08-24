@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from graph_rag.application.document_intelligence.models import FieldType, ModelType
+from graph_rag.domain.graph.vocabulary import SemanticNodeLabel, SemanticRelationshipType
 from graph_rag.domain.types import JsonValue
 
 
@@ -18,6 +19,14 @@ class ModelFieldResponse(BaseModel):
     label: str
     field_type: FieldType
     default_selected: bool = False
+    promote_to_document_metadata: bool = False
+
+
+class FieldEntityMapping(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: SemanticNodeLabel
+    relationship_type: SemanticRelationshipType = SemanticRelationshipType.MENTIONS
 
 
 class DocumentIntelligenceModelResponse(BaseModel):
@@ -30,6 +39,7 @@ class DocumentIntelligenceModelResponse(BaseModel):
     version: str
     is_builtin: bool
     fields: list[ModelFieldResponse] = Field(default_factory=list)
+    field_entity_mappings: dict[str, FieldEntityMapping] = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -47,6 +57,7 @@ class DocumentIntelligenceModelFieldCreateRequest(BaseModel):
     label: str = Field(min_length=1)
     field_type: FieldType
     default_selected: bool = False
+    promote_to_document_metadata: bool = False
 
 
 class DocumentIntelligenceModelCreateRequest(BaseModel):
@@ -57,6 +68,17 @@ class DocumentIntelligenceModelCreateRequest(BaseModel):
     model_key: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=255)
     fields: list[DocumentIntelligenceModelFieldCreateRequest] = Field(min_length=1)
+    field_entity_mappings: dict[str, FieldEntityMapping] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _mappings_reference_real_fields(self) -> DocumentIntelligenceModelCreateRequest:
+        field_names = {field.name for field in self.fields}
+        unknown = set(self.field_entity_mappings) - field_names
+        if unknown:
+            raise ValueError(
+                f"field_entity_mappings references unknown field(s): {sorted(unknown)}"
+            )
+        return self
 
 
 class ExtractedFieldItem(BaseModel):

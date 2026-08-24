@@ -22,6 +22,7 @@ class DocumentIntelligenceModelFieldRecord(BaseModel):
     label: str
     field_type: str
     default_selected: bool = False
+    promote_to_document_metadata: bool = False
     sort_order: int = 0
 
 
@@ -39,6 +40,7 @@ class DocumentIntelligenceModelRecord(BaseModel):
     provider: str = "internal"
     is_builtin: bool = False
     created_by_user_id: UUID | None = None
+    field_entity_mappings: dict[str, dict[str, str]] = Field(default_factory=dict)
     fields: list[DocumentIntelligenceModelFieldRecord] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None

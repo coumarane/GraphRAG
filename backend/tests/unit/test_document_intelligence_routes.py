@@ -107,6 +107,71 @@ def test_create_custom_model_rejects_invalid_field_type(client, tenant_headers) 
     assert response.status_code == 422, response.text
 
 
+def test_create_custom_model_rejects_unknown_entity_label(client, tenant_headers) -> None:
+    response = client.post(
+        "/api/v1/document-intelligence/models",
+        json={
+            "model_key": "invoice-bad-label",
+            "name": "Invoice",
+            "fields": [{"name": "vendor_name", "label": "Vendor", "field_type": "string"}],
+            "field_entity_mappings": {"vendor_name": {"label": "NotARealLabel"}},
+        },
+        headers=tenant_headers,
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_custom_model_rejects_mapping_for_unknown_field(client, tenant_headers) -> None:
+    response = client.post(
+        "/api/v1/document-intelligence/models",
+        json={
+            "model_key": "invoice-dangling-mapping",
+            "name": "Invoice",
+            "fields": [{"name": "vendor_name", "label": "Vendor", "field_type": "string"}],
+            "field_entity_mappings": {"not_a_field": {"label": "Organization"}},
+        },
+        headers=tenant_headers,
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_custom_model_round_trips_promote_flag_and_field_entity_mapping(
+    client, tenant_headers
+) -> None:
+    created = client.post(
+        "/api/v1/document-intelligence/models",
+        json={
+            "model_key": "invoice-mapped",
+            "name": "Invoice",
+            "fields": [
+                {
+                    "name": "vendor_name",
+                    "label": "Vendor",
+                    "field_type": "string",
+                    "promote_to_document_metadata": True,
+                },
+            ],
+            "field_entity_mappings": {
+                "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+            },
+        },
+        headers=tenant_headers,
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["fields"][0]["promote_to_document_metadata"] is True
+    assert body["field_entity_mappings"] == {
+        "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+    }
+
+    listed = client.get("/api/v1/document-intelligence/models", headers=tenant_headers)
+    item = next(i for i in listed.json()["items"] if i["model_key"] == "invoice-mapped")
+    assert item["fields"][0]["promote_to_document_metadata"] is True
+    assert item["field_entity_mappings"] == {
+        "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+    }
+
+
 def test_custom_models_are_tenant_scoped(client, tenant_headers) -> None:
     client.post(
         "/api/v1/document-intelligence/models",

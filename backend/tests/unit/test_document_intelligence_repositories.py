@@ -69,6 +69,45 @@ async def test_in_memory_repo_create_then_list_round_trip() -> None:
     assert [item.model_id for item in listed] == [record.model_id]
 
 
+def _model_record_with_mapping(tenant_id) -> DocumentIntelligenceModelRecord:
+    model_id = new_id()
+    return DocumentIntelligenceModelRecord(
+        model_id=model_id,
+        tenant_id=tenant_id,
+        model_key="invoice",
+        name="Invoice",
+        model_type="custom",
+        is_builtin=False,
+        field_entity_mappings={
+            "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+        },
+        fields=[
+            DocumentIntelligenceModelFieldRecord(
+                field_id=new_id(),
+                model_id=model_id,
+                tenant_id=tenant_id,
+                name="vendor_name",
+                label="Vendor name",
+                field_type="string",
+                default_selected=True,
+                promote_to_document_metadata=True,
+                sort_order=0,
+            ),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_in_memory_repo_round_trips_promote_flag_and_field_entity_mappings() -> None:
+    repo = InMemoryDocumentIntelligenceModelRepository()
+    tenant = TenantContext(tenant_id=new_id(), tenant_key="demo")
+    created = await repo.create_model(tenant, _model_record_with_mapping(tenant.tenant_id))
+    assert created.fields[0].promote_to_document_metadata is True
+    assert created.field_entity_mappings == {
+        "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+    }
+
+
 @pytest.mark.asyncio
 async def test_in_memory_repo_rejects_duplicate_model_id() -> None:
     repo = InMemoryDocumentIntelligenceModelRepository()
@@ -211,6 +250,31 @@ async def test_sqlalchemy_repo_create_then_list_round_trip(sqlite_session: Async
     fetched = await repo.get_model(tenant, record.model_id)
     assert fetched is not None
     assert fetched.name == "Custom Widget"
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_repo_round_trips_promote_flag_and_field_entity_mappings(
+    sqlite_session: AsyncSession,
+) -> None:
+    tenants = SqlAlchemyTenantRepository(sqlite_session)
+    repo = SqlAlchemyDocumentIntelligenceModelRepository(sqlite_session)
+
+    tenant_record = TenantRecord(tenant_id=new_id(), tenant_key="demo")
+    await tenants.upsert(tenant_record)
+    tenant = TenantContext(tenant_id=tenant_record.tenant_id, tenant_key="demo")
+
+    created = await repo.create_model(tenant, _model_record_with_mapping(tenant.tenant_id))
+    assert created.fields[0].promote_to_document_metadata is True
+    assert created.field_entity_mappings == {
+        "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+    }
+
+    fetched = await repo.get_model(tenant, created.model_id)
+    assert fetched is not None
+    assert fetched.fields[0].promote_to_document_metadata is True
+    assert fetched.field_entity_mappings == {
+        "vendor_name": {"label": "Organization", "relationship_type": "MENTIONS"}
+    }
 
 
 @pytest.mark.asyncio

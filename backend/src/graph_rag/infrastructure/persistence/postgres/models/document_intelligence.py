@@ -83,6 +83,9 @@ class DocumentIntelligenceModelFieldModel(Base, TimestampMixin, TenantOwnedMixin
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     field_type: Mapped[str] = mapped_column(String(32), nullable=False)
     default_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    promote_to_document_metadata: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 

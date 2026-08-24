@@ -3,7 +3,7 @@
 Pure and synchronous -- mirrors why ``catalog.py`` is its own module rather
 than living in ``models.py``. Resolves built-in models by key, a persisted
 custom model (via the ``custom_models`` parameter, pre-fetched by the caller
--- see ``_find_custom_model``), and inline ``custom_fields``.
+-- see ``find_custom_model``), and inline ``custom_fields``.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def _matches_model_id(record: DocumentIntelligenceModelRecord, model_id: str) ->
         return False
 
 
-def _find_custom_model(
+def find_custom_model(
     model_id: str, custom_models: list[DocumentIntelligenceModelRecord]
 ) -> DocumentIntelligenceModelRecord | None:
     for record in custom_models:
@@ -83,7 +83,7 @@ def resolve_requested_fields(
             for field in builtin.fields:
                 merged[field.name] = field
         else:
-            custom = _find_custom_model(options.model_id, custom_models or [])
+            custom = find_custom_model(options.model_id, custom_models or [])
             if custom is not None:
                 model_key = custom.model_key
                 model_name = custom.name
@@ -93,6 +93,7 @@ def resolve_requested_fields(
                         label=custom_field.label,
                         field_type=custom_field.field_type,  # type: ignore[arg-type]
                         default_selected=custom_field.default_selected,
+                        promote_to_document_metadata=custom_field.promote_to_document_metadata,
                     )
             else:
                 warnings.append(
