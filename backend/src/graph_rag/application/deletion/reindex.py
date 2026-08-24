@@ -140,6 +140,21 @@ class ReindexDocumentService:
                     key = artifact_key(tenant.tenant_id, document_id, version_id, name)
                     await self.object_store.delete_prefix(tenant, prefix=key)
 
+        if scope is ReindexScope.FULL:
+            if self.object_store is None:
+                warnings.append("object_store_not_configured")
+            else:
+                # FULL means from scratch: re-parse the stored original rather than
+                # reusing whatever PARSE/NORMALIZE produced last time (parser fixes,
+                # e.g. new bounding-box extraction, only apply to documents that
+                # re-run PARSE -- a resume that starts later than PARSE would keep
+                # serving the old cached elements forever). Clear every
+                # (tenant, document, version)-keyed artifact downstream of it too,
+                # since they're all stale once the source elements can change.
+                for name in ("parse_raw", "normalized", "chunks", "embeddings", "graph"):
+                    key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+                    await self.object_store.delete_prefix(tenant, prefix=key)
+
         resume_stage = _resume_stage_for_scope(scope)
         run_id = new_id()
         stages = build_persisted_stage_records(
@@ -199,13 +214,15 @@ class ReindexDocumentService:
 
 
 def _resume_stage_for_scope(scope: ReindexScope) -> IngestionStageName:
+    if scope is ReindexScope.FULL:
+        return IngestionStageName.PARSE
     if scope is ReindexScope.VECTORS:
         return IngestionStageName.EMBED
     if scope is ReindexScope.GRAPH:
         return IngestionStageName.EXTRACT_GRAPH
-    if scope is ReindexScope.DOCUMENT_INTELLIGENCE:
-        return IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE
-    return IngestionStageName.CHUNK
+    # ReindexScope has exactly four members; DOCUMENT_INTELLIGENCE is the
+    # only one left once FULL/VECTORS/GRAPH are ruled out.
+    return IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE
 
 
 def _stage_index(stage: IngestionStageName) -> int:

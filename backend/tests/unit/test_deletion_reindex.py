@@ -380,6 +380,52 @@ async def test_reindex_clears_vectors_and_enqueues_run() -> None:
     assert run.metadata.get("reindex_scope") == "vectors"
 
 
+@pytest.mark.asyncio
+async def test_reindex_full_scope_clears_parse_artifacts_and_resumes_at_parse() -> None:
+    """FULL must reprocess from scratch, not just rebuild indexes from cache.
+
+    Regression test: FULL previously resumed at CHUNK and never cleared
+    parse_raw/normalized, so stage_parse/stage_normalize's own
+    (tenant, document, version)-keyed artifact caches meant a "full"
+    reprocess silently kept serving whatever PARSE produced on first
+    ingest -- a parser fix (e.g. new bounding-box extraction) never
+    reached already-ingested documents without a fresh re-upload.
+    """
+    from graph_rag.application.ingestion.stage_pipeline import artifact_key
+
+    container = build_local_container()
+    tenant, document_id, version_id = await _seed_document_intelligence_reindex_fixture(container)
+    assert container.object_store is not None
+
+    seeded_names = ("parse_raw", "normalized", "chunks", "embeddings", "graph")
+    for name in seeded_names:
+        key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+        await container.object_store.put_bytes(
+            tenant,
+            object_key=key,
+            data=b"{}",
+            content_type="application/json",
+            content_hash=_hash(name),
+        )
+
+    assert container.reindex_document is not None
+    result = await container.reindex_document.execute(
+        tenant,
+        document_id=document_id,
+        scope=ReindexScope.FULL,
+    )
+
+    for name in seeded_names:
+        key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+        with pytest.raises(NotFoundError):
+            await container.object_store.get_bytes(tenant, object_key=key)
+
+    assert container.ingestion_repo is not None
+    run = await container.ingestion_repo.get_run(tenant, result.ingestion_run_id)
+    assert run is not None
+    assert run.metadata.get("resume_stage") == "PARSE"
+
+
 async def _seed_document_intelligence_reindex_fixture(container):
     """Shared setup for the DOCUMENT_INTELLIGENCE-scope reindex tests below."""
     tenant = await container.resolve_tenant(tenant_key="demo")
