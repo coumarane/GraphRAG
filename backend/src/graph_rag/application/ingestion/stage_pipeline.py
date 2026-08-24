@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.document_intelligence.catalog import builtin_model_by_key
 from graph_rag.application.document_intelligence.models import (
     DocumentExtractionRunStatus,
     DocumentIntelligenceExtractionRequest,
@@ -46,6 +47,7 @@ from graph_rag.domain.chunks.vectors import ChunkingResult, ChunkVectorRecord
 from graph_rag.domain.document_intelligence.records import (
     DocumentExtractedFieldRecord,
     DocumentExtractionRunRecord,
+    DocumentIntelligenceModelRecord,
 )
 from graph_rag.domain.documents.document import NormalizedDocument
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
@@ -683,7 +685,16 @@ class DocumentPipeline:
         if cached is not None:
             return StageOutcome.model_validate(cached)
 
-        resolution = resolve_requested_fields(options)
+        model_repo = w.service.document_intelligence_model_repo
+        custom_models: list[DocumentIntelligenceModelRecord] = []
+        if (
+            options.model_id
+            and builtin_model_by_key(options.model_id) is None
+            and model_repo is not None
+        ):
+            custom_models = await model_repo.list_models(context.tenant)
+
+        resolution = resolve_requested_fields(options, custom_models=custom_models)
         fingerprint = compute_fingerprint(
             content_hash=(w.version.content_hash if w.version else None) or "",
             plugin_version=INTERNAL_PROVIDER_VERSION,

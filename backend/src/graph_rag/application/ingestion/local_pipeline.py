@@ -31,7 +31,10 @@ from graph_rag.application.plugins.parsers import (
 from graph_rag.application.usage.context import usage_context
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.chunks.vectors import ChunkingResult
-from graph_rag.domain.document_intelligence.protocols import DocumentExtractionRepository
+from graph_rag.domain.document_intelligence.protocols import (
+    DocumentExtractionRepository,
+    DocumentIntelligenceModelRepository,
+)
 from graph_rag.domain.elements.enums import ElementType
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
@@ -986,6 +989,7 @@ class ProcessRegisteredDocumentService:
     parsing_audit_repo: ParsingAuditRepository | None = None
     document_intelligence_provider: InternalExtractionProvider | None = None
     document_extraction_repo: DocumentExtractionRepository | None = None
+    document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None
     max_pages: int = 2_000
     vision_max_pages: int = 0
     semantic_graph: bool = True

@@ -324,6 +324,7 @@ def build_local_container(
         parsing_audit_repo=parsing_audit_repo,
         document_intelligence_provider=document_intelligence_provider,
         document_extraction_repo=document_extraction_repo,
+        document_intelligence_model_repo=document_intelligence_model_repo,
         max_pages=max_pages,
         vision_max_pages=vision_max_pages_value,
         semantic_graph=enable_semantic_graph,
