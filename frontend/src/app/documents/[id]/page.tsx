@@ -8,6 +8,11 @@ import { DocumentChunkViz } from "@/components/DocumentChunkViz";
 import { DocumentExtractionResults } from "@/components/DocumentExtractionResults";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
 import { DocumentParseReport } from "@/components/DocumentParseReport";
+import { DocumentIntelligencePanel } from "@/components/document-intelligence/DocumentIntelligencePanel";
+import type {
+  DocumentIntelligencePanelValue,
+  DocumentIntelligencePayload,
+} from "@/components/document-intelligence/types";
 
 type DocumentMeta = {
   document_id: string;
@@ -60,6 +65,11 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessPanelOpen, setReprocessPanelOpen] = useState(false);
+  const [diValue, setDiValue] = useState<DocumentIntelligencePanelValue>({
+    enabled: false,
+    payload: null,
+  });
   const [tab, setTab] = useState<Tab>("original");
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
   const pollRef = useRef<number | null>(null);
@@ -175,16 +185,25 @@ export default function DocumentDetailPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function reprocess() {
+  async function reprocess(
+    scope: "full" | "document_intelligence",
+    diPayload?: DocumentIntelligencePayload,
+  ) {
     if (!documentId) return;
     setReprocessing(true);
     setError(null);
     try {
       const response = await fetch(
-        `/api/documents/${documentId}/reprocess?scope=full`,
+        `/api/documents/${documentId}/reprocess?scope=${scope}`,
         {
           method: "POST",
-          headers: { "X-Tenant-Key": readTenantKey() },
+          headers: {
+            "X-Tenant-Key": readTenantKey(),
+            "Content-Type": "application/json",
+          },
+          body: diPayload
+            ? JSON.stringify({ document_intelligence: diPayload })
+            : undefined,
         },
       );
       const body = await response.json().catch(() => ({}));
@@ -195,6 +214,7 @@ export default function DocumentDetailPage() {
             : body.message || response.statusText,
         );
       }
+      setReprocessPanelOpen(false);
       startProgressPoll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -271,9 +291,17 @@ export default function DocumentDetailPage() {
             type="button"
             disabled={reprocessing}
             className="rounded border border-border bg-surface px-3 py-2 text-sm font-medium hover:border-accent disabled:opacity-60"
-            onClick={() => void reprocess()}
+            onClick={() => void reprocess("full")}
           >
             {reprocessing ? "Reprocessing…" : "Reprocess"}
+          </button>
+          <button
+            type="button"
+            disabled={reprocessing}
+            className="rounded border border-border bg-surface px-3 py-2 text-sm font-medium hover:border-accent disabled:opacity-60"
+            onClick={() => setReprocessPanelOpen((open) => !open)}
+          >
+            Reprocess with Document Intelligence
           </button>
           <Link
             href={`/query?document_id=${documentId}`}
@@ -283,6 +311,36 @@ export default function DocumentDetailPage() {
           </Link>
         </div>
       </div>
+
+      {reprocessPanelOpen ? (
+        <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+          <DocumentIntelligencePanel
+            value={diValue}
+            onChange={setDiValue}
+            disabled={reprocessing}
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={reprocessing || !diValue.enabled || !diValue.payload}
+              onClick={() =>
+                diValue.payload &&
+                void reprocess("document_intelligence", diValue.payload)
+              }
+              className="rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-60"
+            >
+              {reprocessing ? "Reprocessing…" : "Reprocess with these fields"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReprocessPanelOpen(false)}
+              className="rounded border border-border px-3 py-2 text-sm font-medium hover:border-accent"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="rounded border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">

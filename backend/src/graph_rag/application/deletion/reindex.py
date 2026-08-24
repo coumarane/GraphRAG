@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
+from graph_rag.application.ingestion.stage_pipeline import artifact_key
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.deletion.stages import ReindexScope
 from graph_rag.domain.graph.protocols import GraphStore
@@ -16,6 +18,7 @@ from graph_rag.domain.ingestion.protocols import DocumentRepository, IngestionRe
 from graph_rag.domain.ingestion.records import IngestionRunRecord
 from graph_rag.domain.ingestion.stages import IngestionRunStatus, IngestionStageName
 from graph_rag.domain.ingestion.state_machine import build_persisted_stage_records
+from graph_rag.domain.storage.protocols import ObjectStore
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import NotFoundError, ValidationError
 from graph_rag.shared.logging import get_logger
@@ -49,6 +52,7 @@ class ReindexDocumentService:
     ingestion_repo: IngestionRepository
     vector_store: ChunkVectorStore | None = None
     graph_store: GraphStore | None = None
+    object_store: ObjectStore | None = None
     config_fingerprint: str = "reindex-v1"
 
     async def execute(
@@ -58,6 +62,7 @@ class ReindexDocumentService:
         document_id: UUID,
         scope: ReindexScope = ReindexScope.FULL,
         chunk_ids: list[UUID] | None = None,
+        document_intelligence: DocumentIntelligenceIngestOptions | None = None,
     ) -> ReindexResult:
         tenant.ensure_authorized()
         document = await self.document_repo.get_document(tenant, document_id)
@@ -71,12 +76,19 @@ class ReindexDocumentService:
                 "Document has no current version to reindex",
                 details={"document_id": str(document_id)},
             )
+        if scope is ReindexScope.DOCUMENT_INTELLIGENCE and not (
+            document_intelligence is not None and document_intelligence.enabled
+        ):
+            raise ValidationError(
+                "document_intelligence options with enabled=true are required for this scope",
+                details={"scope": scope.value},
+            )
         version_id = document.current_version_id
         warnings: list[str] = []
         vectors_cleared = 0
         graph_cleared = 0
 
-        if scope in {ReindexScope.FULL, ReindexScope.VECTORS}:
+        if scope in {ReindexScope.FULL, ReindexScope.VECTORS, ReindexScope.DOCUMENT_INTELLIGENCE}:
             if self.vector_store is None:
                 warnings.append("vector_store_not_configured")
             else:
@@ -94,7 +106,7 @@ class ReindexDocumentService:
                         error=str(exc),
                     )
 
-        if scope in {ReindexScope.FULL, ReindexScope.GRAPH}:
+        if scope in {ReindexScope.FULL, ReindexScope.GRAPH, ReindexScope.DOCUMENT_INTELLIGENCE}:
             if self.graph_store is None:
                 warnings.append("graph_store_not_configured")
             else:
@@ -112,6 +124,21 @@ class ReindexDocumentService:
                         document_id=str(document_id),
                         error=str(exc),
                     )
+
+        if scope is ReindexScope.DOCUMENT_INTELLIGENCE:
+            if self.object_store is None:
+                warnings.append("object_store_not_configured")
+            else:
+                # Stage artifacts are cached by (tenant, document, version) only, not
+                # run_id -- stage_chunk/stage_embed/stage_extract_graph each
+                # short-circuit unconditionally when their cached artifact already
+                # exists. Resuming at EXTRACT_DOCUMENT_INTELLIGENCE alone would leave
+                # those stale, so newly-promoted fields/entity mappings would never
+                # actually get attached. parse_raw/normalized are deliberately left
+                # alone -- no reason to re-parse for a DI-only reprocess.
+                for name in ("chunks", "embeddings", "graph"):
+                    key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+                    await self.object_store.delete_prefix(tenant, prefix=key)
 
         resume_stage = _resume_stage_for_scope(scope)
         run_id = new_id()
@@ -139,7 +166,15 @@ class ReindexDocumentService:
                 parser_requested="reindex",
                 config_fingerprint=self.config_fingerprint,
                 content_hash=content_hash or "0" * 64,
-                metadata={"reindex_scope": scope.value, "resume_stage": resume_stage.value},
+                metadata={
+                    "reindex_scope": scope.value,
+                    "resume_stage": resume_stage.value,
+                    **(
+                        {"document_intelligence": document_intelligence.model_dump(mode="json")}
+                        if document_intelligence is not None
+                        else {}
+                    ),
+                },
             ),
             stages,
         )
@@ -168,6 +203,8 @@ def _resume_stage_for_scope(scope: ReindexScope) -> IngestionStageName:
         return IngestionStageName.EMBED
     if scope is ReindexScope.GRAPH:
         return IngestionStageName.EXTRACT_GRAPH
+    if scope is ReindexScope.DOCUMENT_INTELLIGENCE:
+        return IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE
     return IngestionStageName.CHUNK
 
 

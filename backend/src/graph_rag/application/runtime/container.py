@@ -14,6 +14,7 @@ from graph_rag.application.deletion import (
     ReindexDocumentService,
     ReindexResult,
 )
+from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
 from graph_rag.application.generation.query import QueryDocumentsService
 from graph_rag.application.ingestion.register_source import RegisterSourceService
 from graph_rag.application.retrieval.retrieve import RetrieveEvidenceService
@@ -361,6 +362,7 @@ class ServiceContainer:
         document_id: UUID,
         *,
         scope: ReindexScope = ReindexScope.FULL,
+        document_intelligence: DocumentIntelligenceIngestOptions | None = None,
     ) -> ReindexResult:
         if self.reindex_document is None:
             raise ConfigurationError("Reindex service is not configured")
@@ -368,6 +370,7 @@ class ServiceContainer:
             tenant,
             document_id=document_id,
             scope=scope,
+            document_intelligence=document_intelligence,
         )
 
     async def resume_run(self, tenant: TenantContext, run_id: UUID) -> Any:

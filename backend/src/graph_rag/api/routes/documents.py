@@ -27,6 +27,7 @@ from graph_rag.api.schemas import (
     IngestAcceptedResponse,
     IngestionRunResponse,
     ReprocessAcceptedResponse,
+    ReprocessRequest,
 )
 from graph_rag.application.authorization.filters import filter_authorized_documents
 from graph_rag.application.authorization.gate import ensure_document_read, require_action
@@ -253,13 +254,14 @@ async def reprocess_document(
     container: ContainerDep,
     background_tasks: BackgroundTasks,
     scope: str = "full",
+    body: ReprocessRequest | None = None,
 ) -> ReprocessAcceptedResponse:
     """Re-index an already stored document without re-uploading the file."""
     try:
         reindex_scope = ReindexScope(scope.lower())
     except ValueError as exc:
         raise ValidationError(
-            "scope must be one of: full, vectors, graph",
+            "scope must be one of: full, vectors, graph, document_intelligence",
             details={"scope": scope},
         ) from exc
 
@@ -276,16 +278,22 @@ async def reprocess_document(
         tenant,
         document_id=document_id,
         scope=reindex_scope,
+        document_intelligence=body.document_intelligence if body else None,
     )
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is not None:
         document.status = DocumentLifecycleStatus.INGESTING
         await container.require_document_repo().update_document(tenant, document)
 
+    auto_run_scopes = {
+        ReindexScope.FULL,
+        ReindexScope.VECTORS,
+        ReindexScope.DOCUMENT_INTELLIGENCE,
+    }
     if (
         container.auto_process_ingest
         and result.ingestion_run_id is not None
-        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+        and reindex_scope in auto_run_scopes
     ):
         background_tasks.add_task(
             _run_local_ingest,
@@ -296,7 +304,7 @@ async def reprocess_document(
     elif (
         container.outbox_store is not None
         and result.ingestion_run_id is not None
-        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+        and reindex_scope in auto_run_scopes
     ):
         from graph_rag.application.ingestion.enqueue import enqueue_ingest_ids
 

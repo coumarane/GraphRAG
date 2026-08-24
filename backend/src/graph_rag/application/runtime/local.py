@@ -361,6 +361,7 @@ def build_local_container(
         ingestion_repo=ingestion_repo,
         vector_store=vectors,
         graph_store=graph,
+        object_store=object_store,
     )
     container = ServiceContainer(
         tenant_repo=tenant_repo,

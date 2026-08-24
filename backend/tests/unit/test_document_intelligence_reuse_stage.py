@@ -2,10 +2,11 @@
 
 Constructed directly against ``DocumentPipeline.stage_extract_document_intelligence``
 rather than the public upload endpoint: document-level dedup blocks
-re-uploading identical bytes against the same version, and ``/reprocess``
-does not invoke this stage today (it never resumes earlier than ``CHUNK``,
-which sits after ``EXTRACT_DOCUMENT_INTELLIGENCE``). Two ``IngestionRunRecord``s
-are built in-hand, sharing one document/version identity, and run through the
+re-uploading identical bytes against the same version, and only the
+``DOCUMENT_INTELLIGENCE`` reindex scope invokes this stage via ``/reprocess``
+(``FULL``/``VECTORS``/``GRAPH`` never resume earlier than ``CHUNK``, which sits
+after ``EXTRACT_DOCUMENT_INTELLIGENCE``). Two ``IngestionRunRecord``s are
+built in-hand, sharing one document/version identity, and run through the
 stage directly against a shared in-memory repository.
 """
 

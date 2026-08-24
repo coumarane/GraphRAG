@@ -30,6 +30,7 @@ from graph_rag.infrastructure.persistence.memory import (
 )
 from graph_rag.infrastructure.persistence.neo4j import InMemoryGraphStore
 from graph_rag.infrastructure.persistence.qdrant import InMemoryChunkVectorStore
+from graph_rag.shared.exceptions import NotFoundError
 
 
 def _hash(text: str) -> str:
@@ -377,6 +378,131 @@ async def test_reindex_clears_vectors_and_enqueues_run() -> None:
     run = await container.ingestion_repo.get_run(tenant, result.ingestion_run_id)
     assert run is not None
     assert run.metadata.get("reindex_scope") == "vectors"
+
+
+async def _seed_document_intelligence_reindex_fixture(container):
+    """Shared setup for the DOCUMENT_INTELLIGENCE-scope reindex tests below."""
+    tenant = await container.resolve_tenant(tenant_key="demo")
+    document_id = new_id()
+    version_id = new_id()
+    assert container.document_repo is not None
+    await container.document_repo.create_document(
+        tenant,
+        DocumentRecord(
+            document_id=document_id,
+            tenant_id=tenant.tenant_id,
+            title="reindex-di",
+            status=DocumentLifecycleStatus.READY,
+            current_version_id=version_id,
+        ),
+    )
+    await container.document_repo.create_version(
+        tenant,
+        DocumentVersionRecord(
+            version_id=version_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_number=1,
+            source_filename="r.pdf",
+            mime_type="application/pdf",
+            content_hash=_hash("r"),
+            status=DocumentLifecycleStatus.READY,
+        ),
+    )
+    return tenant, document_id, version_id
+
+
+@pytest.mark.asyncio
+async def test_reindex_document_intelligence_scope_clears_derived_artifacts_only() -> None:
+    from graph_rag.application.ingestion.stage_pipeline import artifact_key
+
+    container = build_local_container()
+    tenant, document_id, version_id = await _seed_document_intelligence_reindex_fixture(container)
+    assert container.object_store is not None
+
+    seeded_names = ("parse_raw", "normalized", "chunks", "embeddings", "graph")
+    for name in seeded_names:
+        key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+        await container.object_store.put_bytes(
+            tenant,
+            object_key=key,
+            data=b"{}",
+            content_type="application/json",
+            content_hash=_hash(name),
+        )
+
+    assert container.reindex_document is not None
+    from graph_rag.application.document_intelligence.models import (
+        DocumentIntelligenceIngestOptions,
+    )
+
+    await container.reindex_document.execute(
+        tenant,
+        document_id=document_id,
+        scope=ReindexScope.DOCUMENT_INTELLIGENCE,
+        document_intelligence=DocumentIntelligenceIngestOptions(enabled=True, model_id="sds"),
+    )
+
+    for name in ("chunks", "embeddings", "graph"):
+        key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+        with pytest.raises(NotFoundError):
+            await container.object_store.get_bytes(tenant, object_key=key)
+    for name in ("parse_raw", "normalized"):
+        key = artifact_key(tenant.tenant_id, document_id, version_id, name)
+        data = await container.object_store.get_bytes(tenant, object_key=key)
+        assert data == b"{}"
+
+
+@pytest.mark.asyncio
+async def test_reindex_document_intelligence_scope_carries_options_into_run_metadata() -> None:
+    from graph_rag.application.document_intelligence.models import (
+        DocumentIntelligenceIngestOptions,
+    )
+
+    container = build_local_container()
+    tenant, document_id, _version_id = await _seed_document_intelligence_reindex_fixture(container)
+    assert container.reindex_document is not None
+    assert container.ingestion_repo is not None
+
+    options = DocumentIntelligenceIngestOptions(enabled=True, model_id="sds")
+    result = await container.reindex_document.execute(
+        tenant,
+        document_id=document_id,
+        scope=ReindexScope.DOCUMENT_INTELLIGENCE,
+        document_intelligence=options,
+    )
+    assert result.ingestion_run_id is not None
+    run = await container.ingestion_repo.get_run(tenant, result.ingestion_run_id)
+    assert run is not None
+    assert run.metadata.get("resume_stage") == "EXTRACT_DOCUMENT_INTELLIGENCE"
+    assert run.metadata.get("document_intelligence") == options.model_dump(mode="json")
+
+
+@pytest.mark.asyncio
+async def test_reindex_document_intelligence_scope_requires_enabled_options() -> None:
+    from graph_rag.application.document_intelligence.models import (
+        DocumentIntelligenceIngestOptions,
+    )
+    from graph_rag.shared.exceptions import ValidationError
+
+    container = build_local_container()
+    tenant, document_id, _version_id = await _seed_document_intelligence_reindex_fixture(container)
+    assert container.reindex_document is not None
+
+    with pytest.raises(ValidationError):
+        await container.reindex_document.execute(
+            tenant,
+            document_id=document_id,
+            scope=ReindexScope.DOCUMENT_INTELLIGENCE,
+            document_intelligence=None,
+        )
+    with pytest.raises(ValidationError):
+        await container.reindex_document.execute(
+            tenant,
+            document_id=document_id,
+            scope=ReindexScope.DOCUMENT_INTELLIGENCE,
+            document_intelligence=DocumentIntelligenceIngestOptions(enabled=False),
+        )
 
 
 @pytest.mark.asyncio

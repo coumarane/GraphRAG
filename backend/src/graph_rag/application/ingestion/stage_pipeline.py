@@ -83,7 +83,13 @@ from graph_rag.shared.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str) -> str:
+def artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str) -> str:
+    """Object-store key for a stage artifact, keyed by (tenant, document, version) -- not run_id.
+
+    Public since ``application/deletion/reindex.py`` needs to compute and
+    delete these same keys to invalidate stale cached derived data (see its
+    own module docstring for why).
+    """
     prefix = version_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
     return f"{prefix}artifacts/{name}.json"
 
@@ -116,7 +122,7 @@ class PipelineWorkspace:
 
     def _key(self, name: str) -> str:
         assert self.tenant is not None and self.run is not None
-        return _artifact_key(
+        return artifact_key(
             self.tenant.tenant_id,
             self.run.document_id,
             self.run.version_id,

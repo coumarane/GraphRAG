@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
 from graph_rag.config.settings import get_settings
 from graph_rag.domain.modality import Modality
 from graph_rag.domain.retrieval.enums import RetrievalMode
@@ -119,6 +120,12 @@ class DeletionAcceptedResponse(BaseModel):
     graph_deleted: int | None = None
     objects_deleted: int | None = None
     warnings: list[str] = Field(default_factory=list)
+
+
+class ReprocessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_intelligence: DocumentIntelligenceIngestOptions | None = None
 
 
 class ReprocessAcceptedResponse(BaseModel):
