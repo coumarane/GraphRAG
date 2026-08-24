@@ -12,10 +12,17 @@ from graph_rag.application.chunking import EmbedChunksService, HierarchicalMulti
 from graph_rag.application.document_intelligence.models import (
     DocumentExtractionRunStatus,
     DocumentIntelligenceExtractionRequest,
+    DocumentIntelligenceExtractionResult,
     DocumentIntelligenceIngestOptions,
 )
 from graph_rag.application.document_intelligence.providers import INTERNAL_PROVIDER_VERSION
 from graph_rag.application.document_intelligence.resolution import resolve_requested_fields
+from graph_rag.application.document_intelligence.reuse import (
+    clone_field_for_new_run,
+    compute_fingerprint,
+    select_reuse_candidate,
+    split_reused_and_delta_fields,
+)
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from graph_rag.application.ingestion.handlers import CallableStageHandler
 from graph_rag.application.ingestion.local_pipeline import (
@@ -677,6 +684,12 @@ class DocumentPipeline:
             return StageOutcome.model_validate(cached)
 
         resolution = resolve_requested_fields(options)
+        fingerprint = compute_fingerprint(
+            content_hash=(w.version.content_hash if w.version else None) or "",
+            plugin_version=INTERNAL_PROVIDER_VERSION,
+            model_key=resolution.model_key,
+            fields=resolution.fields,
+        )
         if not resolution.fields:
             await repo.create_run(
                 context.tenant,
@@ -690,6 +703,7 @@ class DocumentPipeline:
                     provider="internal",
                     plugin_version=INTERNAL_PROVIDER_VERSION,
                     status=DocumentExtractionRunStatus.FAILED.value,
+                    fingerprint=fingerprint,
                     selected_fields=list(options.selected_fields or []),
                     error_code="model_unresolved",
                     error_message="; ".join(resolution.warnings) or "no fields resolved",
@@ -703,18 +717,54 @@ class DocumentPipeline:
             await w.save_json(cache_name, outcome.model_dump(mode="json"))
             return outcome
 
-        result = await provider.extract(
-            DocumentIntelligenceExtractionRequest(
-                document=w.normalized,
-                fields=resolution.fields,
-                model_name=resolution.model_name,
-                raw_parser_result=w.raw,
-                document_bytes=w.data,
-            )
+        # Cost-control reuse: split requested fields into what a prior run
+        # against this same document/model/provider/version already has a
+        # row for (reused, cloned rather than re-extracted) vs. what doesn't
+        # (delta, the only fields actually sent to the provider). See
+        # reuse.py's module docstring for why this is one row-presence-based
+        # mechanism rather than a separate exact-fingerprint short-circuit.
+        prior_runs = await repo.list_runs_for_version(
+            context.tenant, context.document_id, context.version_id
         )
+        candidate = select_reuse_candidate(
+            prior_runs,
+            model_key=resolution.model_key,
+            provider="internal",
+            plugin_version=INTERNAL_PROVIDER_VERSION,
+        )
+        candidate_fields = (
+            await repo.list_fields_for_run(context.tenant, candidate.run_id)
+            if candidate is not None
+            else []
+        )
+        reused_rows, delta_fields = split_reused_and_delta_fields(
+            resolution.fields, candidate_fields
+        )
+
+        if delta_fields:
+            result = await provider.extract(
+                DocumentIntelligenceExtractionRequest(
+                    document=w.normalized,
+                    fields=delta_fields,
+                    model_name=resolution.model_name,
+                    raw_parser_result=w.raw,
+                    document_bytes=w.data,
+                )
+            )
+        else:
+            result = DocumentIntelligenceExtractionResult(
+                fields=[],
+                requested_field_names=[field.name for field in resolution.fields],
+                unresolved_field_names=[],
+            )
+
+        covered_names = {row.name for row in reused_rows} | {field.name for field in result.fields}
+        unresolved_field_names = [
+            field.name for field in resolution.fields if field.name not in covered_names
+        ]
         run_status = (
             DocumentExtractionRunStatus.COMPLETED_WITH_WARNINGS
-            if result.unresolved_field_names
+            if unresolved_field_names
             else DocumentExtractionRunStatus.COMPLETED
         )
         created_run = await repo.create_run(
@@ -729,51 +779,58 @@ class DocumentPipeline:
                 provider="internal",
                 plugin_version=INTERNAL_PROVIDER_VERSION,
                 status=run_status.value,
+                fingerprint=fingerprint,
                 selected_fields=[field.name for field in resolution.fields],
             ),
         )
-        if result.fields:
-            await repo.add_extracted_fields(
-                context.tenant,
-                created_run.run_id,
-                [
-                    DocumentExtractedFieldRecord(
-                        extracted_field_id=new_id(),
-                        tenant_id=context.tenant.tenant_id,
-                        run_id=created_run.run_id,
-                        name=field.name,
-                        value=field.value,
-                        normalized_value=field.normalized_value,
-                        confidence=field.confidence,
-                        confidence_band=field.confidence_band.value,
-                        page=field.page,
-                        source_text=field.source_text,
-                        bounding_box=field.bounding_box.model_dump(mode="json")
-                        if field.bounding_box
-                        else None,
-                        extraction_method=field.extraction_method.value,
-                        model_name=field.model_name,
-                    )
-                    for field in result.fields
-                ],
+        new_field_records = [
+            clone_field_for_new_run(
+                row, new_extracted_field_id=new_id(), new_run_id=created_run.run_id
             )
+            for row in reused_rows
+        ] + [
+            DocumentExtractedFieldRecord(
+                extracted_field_id=new_id(),
+                tenant_id=context.tenant.tenant_id,
+                run_id=created_run.run_id,
+                name=field.name,
+                value=field.value,
+                normalized_value=field.normalized_value,
+                confidence=field.confidence,
+                confidence_band=field.confidence_band.value,
+                page=field.page,
+                source_text=field.source_text,
+                bounding_box=field.bounding_box.model_dump(mode="json")
+                if field.bounding_box
+                else None,
+                extraction_method=field.extraction_method.value,
+                model_name=field.model_name,
+            )
+            for field in result.fields
+        ]
+        if new_field_records:
+            await repo.add_extracted_fields(context.tenant, created_run.run_id, new_field_records)
         await w.service._flush()
-        warning = (
-            (
-                f"document_intelligence: {len(result.fields)}/{len(resolution.fields)} fields "
-                f"extracted; missing={result.unresolved_field_names}"
+
+        reused_count, extracted_count = len(reused_rows), len(result.fields)
+        warning_bits: list[str] = []
+        if reused_count:
+            assert candidate is not None
+            warning_bits.append(
+                f"reused {reused_count}/{len(resolution.fields)} fields from run "
+                f"{candidate.run_id}; extracted {extracted_count} new"
             )
-            if result.unresolved_field_names
-            else None
-        )
+        if unresolved_field_names:
+            warning_bits.append(f"missing={unresolved_field_names}")
+        warning = ("document_intelligence: " + "; ".join(warning_bits)) if warning_bits else None
         outcome = StageOutcome(
             status=(
                 StageOutcomeStatus.COMPLETED_WITH_WARNINGS
-                if warning
+                if unresolved_field_names
                 else StageOutcomeStatus.COMPLETED
             ),
             warning=warning,
-            elements_processed=len(result.fields) or None,
+            elements_processed=(reused_count + extracted_count) or None,
         )
         await w.save_json(cache_name, outcome.model_dump(mode="json"))
         return outcome
