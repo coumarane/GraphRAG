@@ -102,6 +102,35 @@ class ElementListResponse(BaseModel):
     limit: int
 
 
+class PageBoundingBox(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class PageElementItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: UUID
+    element_type: str
+    page_start: int
+    page_end: int
+    bounding_box: PageBoundingBox | None = None
+    text: str = ""
+
+
+class PageLayoutResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    version_id: UUID
+    page: int
+    elements: list[PageElementItem] = Field(default_factory=list)
+
+
 class GraphViewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

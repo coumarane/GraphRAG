@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import tempfile
 from pathlib import Path
@@ -26,6 +27,9 @@ from graph_rag.api.schemas import (
     GraphViewResponse,
     IngestAcceptedResponse,
     IngestionRunResponse,
+    PageBoundingBox,
+    PageElementItem,
+    PageLayoutResponse,
     ReprocessAcceptedResponse,
     ReprocessRequest,
 )
@@ -35,6 +39,8 @@ from graph_rag.application.document_intelligence.models import (
     DocumentIntelligenceIngestOptions,
 )
 from graph_rag.application.ingestion.register_source import RegisterSourceRequest
+from graph_rag.application.ingestion.stage_pipeline import artifact_key
+from graph_rag.application.ingestion.visual_enrichment import render_visual_png
 from graph_rag.application.runtime.container import ServiceContainer
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.deletion.stages import ReindexScope
@@ -42,6 +48,8 @@ from graph_rag.domain.document_intelligence.records import (
     DocumentExtractedFieldRecord,
     DocumentExtractionRunRecord,
 )
+from graph_rag.domain.documents.document import NormalizedDocument
+from graph_rag.domain.elements.base import ElementBase
 from graph_rag.domain.ingestion.records import DocumentRecord
 from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from graph_rag.domain.modality import Modality
@@ -494,6 +502,133 @@ async def download_original(
             "Cache-Control": "private, max-age=60",
         },
     )
+
+
+@router.get("/{document_id}/pages/{page}/render")
+async def render_document_page(
+    document_id: UUID,
+    page: int,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> Response:
+    """Rasterize one page of the original document to PNG.
+
+    Used by the "Parsed content" viewer to render a page image that JS can
+    overlay clickable element bounding boxes on -- something an
+    iframe-embedded native PDF viewer (used by /original) can't support.
+    """
+    if page < 1:
+        raise ValidationError("page must be >= 1")
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        raise NotFoundError(
+            "Document has no version to render",
+            details={"document_id": str(document_id)},
+        )
+    version = await container.require_document_repo().get_version(tenant, resolved_version)
+    if version is None or not version.original_object_key:
+        raise NotFoundError(
+            "Original object not found",
+            details={"document_id": str(document_id), "version_id": str(resolved_version)},
+        )
+    if version.page_count is not None and page > version.page_count:
+        raise NotFoundError(
+            "Page out of range",
+            details={
+                "document_id": str(document_id),
+                "page": page,
+                "page_count": version.page_count,
+            },
+        )
+    data = await container.require_object_store().get_bytes(
+        tenant, object_key=version.original_object_key
+    )
+    try:
+        png_bytes = await asyncio.to_thread(render_visual_png, data, page, None)
+    except Exception as exc:  # pypdfium2 raises on corrupt/out-of-range pages
+        raise NotFoundError(
+            "Unable to render page",
+            details={"document_id": str(document_id), "page": page},
+        ) from exc
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/{document_id}/pages/{page}/layout", response_model=PageLayoutResponse)
+async def get_page_layout(
+    document_id: UUID,
+    page: int,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> PageLayoutResponse:
+    """Element bounding boxes + text for one page, for the click-to-highlight overlay.
+
+    Sourced from the cached "normalized" object-store artifact rather than
+    the (dead, never-populated) /elements route -- see that route's own
+    ElementView projection, which nothing in the codebase ever constructs.
+    """
+    if page < 1:
+        raise ValidationError("page must be >= 1")
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        raise NotFoundError(
+            "Document has no version",
+            details={"document_id": str(document_id)},
+        )
+    key = artifact_key(tenant.tenant_id, document_id, resolved_version, "normalized")
+    try:
+        raw = await container.require_object_store().get_bytes(tenant, object_key=key)
+    except NotFoundError as exc:
+        raise NotFoundError(
+            "Page layout not available yet",
+            details={"document_id": str(document_id), "version_id": str(resolved_version)},
+        ) from exc
+    normalized = NormalizedDocument.model_validate(json.loads(raw.decode("utf-8")))
+    if page > normalized.page_count:
+        raise NotFoundError(
+            "Page out of range",
+            details={
+                "document_id": str(document_id),
+                "page": page,
+                "page_count": normalized.page_count,
+            },
+        )
+    items = [
+        PageElementItem(
+            element_id=element.element_id,
+            element_type=str(element.element_type),
+            page_start=element.page_start,
+            page_end=element.page_end,
+            bounding_box=_first_bbox_for_page(element, page),
+            text=element.normalized_content or element.raw_content or "",
+        )
+        for element in normalized.elements
+        if element.page_start <= page <= element.page_end
+    ]
+    return PageLayoutResponse(
+        document_id=document_id,
+        version_id=resolved_version,
+        page=page,
+        elements=items,
+    )
+
+
+def _first_bbox_for_page(element: ElementBase, page: int) -> PageBoundingBox | None:
+    for bbox in element.bounding_boxes:
+        if bbox.page_number == page:
+            return PageBoundingBox(x0=bbox.x0, y0=bbox.y0, x1=bbox.x1, y1=bbox.y1)
+    return None
 
 
 @router.get("/{document_id}/elements", response_model=ElementListResponse)
