@@ -307,23 +307,20 @@ def collect_visual_targets(raw: RawParserResult) -> list[VisualTarget]:
 
 
 VISION_MAX_EDGE = 1280
-# No parser in this codebase currently populates RawElement.bounding_boxes
-# (Docling's adapter drops the provenance bbox it gets from the library;
-# grep finds BoundingBox(...) constructed nowhere else either), so every
-# "element crop" sent to vision today is actually a full-page render at this
-# scale -- a small region like a title-slide logo ends up as a tiny, often
-# illegible, fraction of that page image. Confirmed live: GPT consistently
-# described a company logo generically instead of reading its text across
-# repeated re-ingestions of the same document. 1.0 leaves real page content
-# at native PDF point size (often well under the 1280px cap below); 2.2
-# still gets clamped down for larger pages but gives small pages/regions
-# meaningfully more real pixels before that cap applies.
+# Elements without a parser-reported bbox (or targets that intentionally scan
+# the whole page) still render full-page at this scale -- 1.0 leaves real page
+# content at native PDF point size (often well under the 1280px cap below);
+# 2.2 still gets clamped down for larger pages but gives small pages/regions
+# meaningfully more real pixels before that cap applies. Confirmed live: GPT
+# consistently described a company logo generically instead of reading its
+# text when it only had a full-page render to work from.
 VISION_RENDER_SCALE = 2.2
-# Kept for when/if a parser starts reporting real bounding boxes: a crop of
-# a small region needs denser source pixels than a full-page render, and PDF
-# content is vector so rendering higher before cropping is lossless detail,
-# not interpolated blur -- the crop keeps the payload small regardless of
-# scale since only the bbox region survives.
+# Used whenever a target carries a real bbox (Docling now reports one per
+# element via its own provenance geometry): a crop of a small region needs
+# denser source pixels than a full-page render, and PDF content is vector so
+# rendering higher before cropping is lossless detail, not interpolated blur
+# -- the crop keeps the payload small regardless of scale since only the
+# bbox region survives.
 VISION_CROP_RENDER_SCALE = 3.0
 
 

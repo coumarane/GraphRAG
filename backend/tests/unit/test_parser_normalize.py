@@ -96,6 +96,31 @@ def test_dict_to_raw_and_normalize_matches_contract() -> None:
     assert_matches_contract("normalized-document", document.model_dump(mode="json"))
 
 
+def test_dict_to_raw_result_reads_bbox_into_bounding_boxes() -> None:
+    payload = _sample_payload()
+    payload["elements"][0]["bbox"] = {
+        "page_number": 1,
+        "x0": 0.1,
+        "y0": 0.2,
+        "x1": 0.3,
+        "y1": 0.4,
+    }
+    raw = dict_to_raw_result("docling", payload)
+    boxed = raw.elements[0]
+    assert len(boxed.bounding_boxes) == 1
+    box = boxed.bounding_boxes[0]
+    assert (box.page_number, box.x0, box.y0, box.x1, box.y1) == (1, 0.1, 0.2, 0.3, 0.4)
+    # Elements without a "bbox" key stay empty rather than crashing.
+    assert raw.elements[1].bounding_boxes == []
+
+
+def test_dict_to_raw_result_ignores_malformed_bbox() -> None:
+    payload = _sample_payload()
+    payload["elements"][0]["bbox"] = {"x0": 0.1}  # missing required keys
+    raw = dict_to_raw_result("docling", payload)
+    assert raw.elements[0].bounding_boxes == []
+
+
 def test_normalize_rejects_invalid_page_range() -> None:
     source = empty_parse_source(filename="bad.pdf", mime_type="application/pdf")
     raw = RawParserResult(

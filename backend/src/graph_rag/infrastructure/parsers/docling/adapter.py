@@ -73,6 +73,56 @@ def _page_from_item(item: Any) -> int | None:
     return None
 
 
+def _page_size(document: Any, page_no: int) -> tuple[float, float] | None:
+    pages = getattr(document, "pages", None)
+    if not pages:
+        return None
+    page_item = pages.get(page_no) if hasattr(pages, "get") else None
+    if page_item is None:
+        return None
+    size = getattr(page_item, "size", None)
+    width = getattr(size, "width", None)
+    height = getattr(size, "height", None)
+    if not width or not height:
+        return None
+    return float(width), float(height)
+
+
+def _bbox_from_item(
+    item: Any, page_no: int, page_size: tuple[float, float] | None
+) -> dict[str, Any] | None:
+    """Normalize Docling's own per-item bbox into our 0..1 top-left format.
+
+    Docling's ``ProvenanceItem.bbox`` is in PDF-point units and, empirically
+    (verified against real parsed PDFs, not assumed from the type's default),
+    uses a bottom-left coordinate origin -- ``to_top_left_origin`` handles
+    that conversion regardless of which origin a given Docling version
+    actually emits, so this never hand-rolls the flip itself.
+    """
+    if page_size is None:
+        return None
+    prov = getattr(item, "prov", None)
+    if not prov:
+        return None
+    entries = prov if isinstance(prov, (list, tuple)) else [prov]
+    entry = entries[0]
+    bbox = getattr(entry, "bbox", None)
+    if bbox is None:
+        return None
+    width, height = page_size
+    try:
+        top_left = bbox.to_top_left_origin(height)
+    except Exception:
+        return None
+    x0 = max(0.0, min(1.0, top_left.l / width))
+    y0 = max(0.0, min(1.0, top_left.t / height))
+    x1 = max(0.0, min(1.0, top_left.r / width))
+    y1 = max(0.0, min(1.0, top_left.b / height))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return {"page_number": page_no, "x0": x0, "y0": y0, "x1": x1, "y1": y1}
+
+
 def _item_text(item: Any) -> str:
     text = getattr(item, "text", None)
     if isinstance(text, str) and text.strip():
@@ -126,15 +176,17 @@ def _default_docling_convert(data: bytes, filename: str) -> dict[str, Any]:
             mapped = _map_label(label)
             if not text and mapped in {"text", "heading", "caption", "list"}:
                 continue
-            elements.append(
-                {
-                    "type": mapped,
-                    "text": text,
-                    "page": page,
-                    "reading_order": index,
-                    "metadata": {"docling_label": label},
-                }
-            )
+            element_dict: dict[str, Any] = {
+                "type": mapped,
+                "text": text,
+                "page": page,
+                "reading_order": index,
+                "metadata": {"docling_label": label},
+            }
+            bbox = _bbox_from_item(item, page, _page_size(document, page))
+            if bbox is not None:
+                element_dict["bbox"] = bbox
+            elements.append(element_dict)
 
     if not elements:
         # Legacy fallback: markdown blocks (page provenance unavailable).
@@ -193,13 +245,15 @@ def _default_docling_convert(data: bytes, filename: str) -> dict[str, Any]:
             coverage = min(1.0, 0.35 + 0.15 * images)
         else:
             coverage = 0.0
-        pages.append(
-            {
-                "page_number": number,
-                "text_density": density,
-                "image_coverage": coverage,
-            }
-        )
+        page_entry: dict[str, Any] = {
+            "page_number": number,
+            "text_density": density,
+            "image_coverage": coverage,
+        }
+        size = _page_size(document, number)
+        if size is not None:
+            page_entry["width"], page_entry["height"] = size
+        pages.append(page_entry)
     return {
         "parser_version": getattr(DocumentConverter, "__module__", "docling"),
         "title": filename,

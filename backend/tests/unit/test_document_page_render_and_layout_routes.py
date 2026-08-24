@@ -101,6 +101,31 @@ def test_layout_route_returns_elements_filtered_by_page(
     assert all(item["page_start"] <= 1 <= item["page_end"] for item in body["elements"])
 
 
+def test_layout_route_elements_have_precise_bounding_boxes(
+    client, tenant_headers, tmp_path: Path
+) -> None:
+    """Regression test: the Docling adapter must extract real element geometry.
+
+    Previously Docling's own per-item ``prov[0].bbox`` was read only to
+    recover a page number, then discarded -- every element's
+    ``bounding_box`` was null, so the click-to-highlight overlay had nothing
+    to draw for structurally parsed content (text, headings, tables), and
+    even vision-enriched elements only ever got a crude full-page fallback.
+    """
+    document_id = _ingest_ready_document(client, tenant_headers, tmp_path)
+    response = client.get(f"/api/v1/documents/{document_id}/pages/1/layout", headers=tenant_headers)
+    assert response.status_code == 200, response.text
+    elements = response.json()["elements"]
+    assert elements, "expected at least one element on page 1"
+    boxed = [el for el in elements if el["bounding_box"] is not None]
+    assert boxed, "expected at least one element with a bounding box"
+    for el in boxed:
+        box = el["bounding_box"]
+        assert 0.0 <= box["x0"] < box["x1"] <= 1.0
+        assert 0.0 <= box["y0"] < box["y1"] <= 1.0
+        assert (box["x0"], box["y0"], box["x1"], box["y1"]) != (0.0, 0.0, 1.0, 1.0)
+
+
 def test_layout_route_404_unknown_document(client, tenant_headers) -> None:
     response = client.get(f"/api/v1/documents/{new_id()}/pages/1/layout", headers=tenant_headers)
     assert response.status_code == 404, response.text
