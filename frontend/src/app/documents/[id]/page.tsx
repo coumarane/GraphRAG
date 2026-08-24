@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
+import { DocumentExtractionResults } from "@/components/DocumentExtractionResults";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
 import { DocumentParseReport } from "@/components/DocumentParseReport";
 
@@ -48,7 +49,7 @@ type Chunk = {
   token_count: number;
 };
 
-type Tab = "original" | "indexed" | "report";
+type Tab = "original" | "indexed" | "report" | "extractions";
 
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
@@ -295,6 +296,7 @@ export default function DocumentDetailPage() {
             ["original", "Original preview"],
             ["indexed", `Indexed text (${chunkTotal})`],
             ["report", "Parse report"],
+            ["extractions", "Extracted fields"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -320,6 +322,10 @@ export default function DocumentDetailPage() {
 
       {tab === "report" && documentId ? (
         <DocumentParseReport documentId={documentId} />
+      ) : null}
+
+      {tab === "extractions" && documentId ? (
+        <DocumentExtractionResults documentId={documentId} />
       ) : null}
     </section>
   );
