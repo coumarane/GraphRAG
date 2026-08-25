@@ -170,6 +170,47 @@ async def test_docling_adapter_with_injected_convert() -> None:
     assert_matches_contract("normalized-document", document.model_dump(mode="json"))
 
 
+@pytest.mark.asyncio
+async def test_docling_adapter_times_out_a_hanging_convert_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stuck Docling conversion must fail cleanly, not hang PARSE forever.
+
+    Regression test: DoclingParser.parse() called run_parser_sync() without
+    a timeout, despite run_parser_sync already supporting one -- a stalled
+    layout/table model or hung I/O call inside the SDK could block the
+    whole PARSE stage indefinitely with no way to recover, exactly like the
+    vision-LLM call fixed earlier (a separate, narrower gap in the same
+    ingestion run).
+    """
+    import asyncio
+    import threading
+
+    from graph_rag.infrastructure.parsers.docling import adapter as docling_adapter
+    from graph_rag.shared.exceptions import TransientError
+
+    monkeypatch.setattr(docling_adapter, "DEFAULT_PARSE_TIMEOUT_SECONDS", 0.05)
+
+    # A bounded wait, not a true infinite sleep: asyncio.wait_for only
+    # detaches the *caller* from a timed-out thread-pool call, it does not
+    # kill the underlying OS thread -- a genuinely unbounded sleep here
+    # would leak a live thread that blocks the test process's own clean
+    # shutdown (ThreadPoolExecutor joins outstanding workers at exit).
+    stall = threading.Event()
+
+    def _hangs_past_the_timeout(_data: bytes, _name: str) -> dict[str, object]:
+        stall.wait(timeout=2.0)
+        raise AssertionError("must be timed out before returning")
+
+    parser = DoclingParser(convert_fn=_hangs_past_the_timeout)
+    source = empty_parse_source(
+        filename="enterprise.pdf", mime_type="application/pdf", content=b"%PDF"
+    )
+
+    with pytest.raises(TransientError, match="timed out"):
+        await asyncio.wait_for(parser.parse(source, ParseOptions()), timeout=5.0)
+
+
 def test_docling_page_helpers_use_provenance() -> None:
     from types import SimpleNamespace
 

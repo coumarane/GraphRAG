@@ -7,6 +7,14 @@ from collections.abc import Callable
 
 from graph_rag.shared.exceptions import ConfigurationError, ParserError, TransientError
 
+# Default ceiling for a single blocking parser SDK call (Docling/MinerU/Marker/
+# PaddleOCR conversion). A stuck layout/table model or a hung I/O call inside
+# the SDK otherwise blocks PARSE indefinitely -- there is no way to recover
+# an ingestion run stuck awaiting a call that never returns. Generous enough
+# for legitimately large/complex documents; only ever engages when something
+# has actually stalled well past normal parse time.
+DEFAULT_PARSE_TIMEOUT_SECONDS = 600.0
+
 
 def require_optional_dependency(module_name: str, extra_name: str = "parsers") -> object:
     """Import an optional parser dependency or raise a configuration error."""

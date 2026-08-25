@@ -12,7 +12,11 @@ from graph_rag.domain.parsing.types import (
     ParseSource,
     RawParserResult,
 )
-from graph_rag.infrastructure.parsers.base import require_optional_dependency, run_parser_sync
+from graph_rag.infrastructure.parsers.base import (
+    DEFAULT_PARSE_TIMEOUT_SECONDS,
+    require_optional_dependency,
+    run_parser_sync,
+)
 from graph_rag.infrastructure.parsers.convert import dict_to_raw_result
 from graph_rag.infrastructure.parsers.pdfium.inspector import PdfiumInspector
 
@@ -282,5 +286,8 @@ class DoclingParser:
 
     async def parse(self, source: ParseSource, options: ParseOptions) -> RawParserResult:
         data = source.require_bytes()
-        payload = await run_parser_sync(lambda: self._convert_fn(data, source.filename))
+        payload = await run_parser_sync(
+            lambda: self._convert_fn(data, source.filename),
+            timeout_seconds=DEFAULT_PARSE_TIMEOUT_SECONDS,
+        )
         return dict_to_raw_result(self.name, payload)
