@@ -22,6 +22,7 @@ type ListResponse = {
 };
 
 type RunProgress = {
+  ingestion_run_id?: string;
   status: string;
   current_stage?: string | null;
   estimated_completion_percent?: number;
@@ -49,6 +50,7 @@ function DocumentsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [runProgress, setRunProgress] = useState<Record<string, RunProgress>>({});
   const pollRefs = useRef<Map<string, number>>(new Map());
@@ -208,6 +210,38 @@ function DocumentsPageContent() {
     }
   }
 
+  async function cancelRun(documentId: string, runId: string) {
+    setError(null);
+    setActionMessage(null);
+    setCancellingId(documentId);
+    try {
+      const response = await fetch(`/api/ingestion-runs/${runId}/cancel`, {
+        method: "POST",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : body.message || response.statusText,
+        );
+      }
+      stopPolling(documentId);
+      setRunProgress((prev) => {
+        const next = { ...prev };
+        delete next[documentId];
+        return next;
+      });
+      setActionMessage("Run cancelled. Click Reprocess to try again.");
+      void load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -364,6 +398,24 @@ function DocumentsPageContent() {
                           ? "Reprocessing…"
                           : "Reprocess"}
                       </button>
+                      {IN_PROGRESS.has(doc.status) &&
+                      runProgress[doc.document_id]?.ingestion_run_id ? (
+                        <button
+                          type="button"
+                          disabled={cancellingId === doc.document_id}
+                          onClick={() =>
+                            void cancelRun(
+                              doc.document_id,
+                              runProgress[doc.document_id].ingestion_run_id as string,
+                            )
+                          }
+                          className="inline-flex rounded border border-danger/40 bg-background px-3 py-1.5 text-xs font-medium text-danger hover:border-danger disabled:opacity-60"
+                        >
+                          {cancellingId === doc.document_id
+                            ? "Cancelling…"
+                            : "Cancel"}
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
