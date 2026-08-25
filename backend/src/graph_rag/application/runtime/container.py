@@ -407,6 +407,8 @@ class ServiceContainer:
                 details={"status": run.status.value},
             )
         run.status = IngestionRunStatus.CANCELLED
+        run.error_code = "cancelled"
+        run.error_message = "Run cancelled by user."
         updated_run = await repo.update_run(tenant, run)
         # A cancelled run otherwise leaves the document's own status
         # (set to INGESTING when the run started) permanently stuck --

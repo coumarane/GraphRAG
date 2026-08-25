@@ -440,6 +440,9 @@ async def test_cancel_run_unsticks_document_left_in_ingesting_status() -> None:
 
     updated_run = await container.cancel_run(tenant, run_id)
     assert updated_run.status is IngestionRunStatus.CANCELLED
+    # Otherwise the UI has nothing to show for a cancelled run -- the
+    # document status flips to FAILED but the error banner stays blank.
+    assert updated_run.error_message
 
     document = await container.document_repo.get_document(tenant, document_id)
     assert document is not None
