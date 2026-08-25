@@ -18,8 +18,12 @@ from graph_rag.domain.graph.vocabulary import (
     StructuralNodeLabel,
 )
 from graph_rag.domain.ids import content_sha256_hex, new_id
-from graph_rag.domain.ingestion.records import DocumentRecord, DocumentVersionRecord
-from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
+from graph_rag.domain.ingestion.records import (
+    DocumentRecord,
+    DocumentVersionRecord,
+    IngestionRunRecord,
+)
+from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus, IngestionRunStatus
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.infrastructure.cache import InMemoryCacheInvalidator
 from graph_rag.infrastructure.models import FakeEmbeddingModel, FakeStructuredExtractor
@@ -378,6 +382,123 @@ async def test_reindex_clears_vectors_and_enqueues_run() -> None:
     run = await container.ingestion_repo.get_run(tenant, result.ingestion_run_id)
     assert run is not None
     assert run.metadata.get("reindex_scope") == "vectors"
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_unsticks_document_left_in_ingesting_status() -> None:
+    """Cancelling a wedged run must not leave the document stuck forever.
+
+    Regression test: cancel_run flipped the run row to CANCELLED but never
+    touched the document's own status (set to INGESTING when the run
+    started). Nothing else ever revisits it, so a cancelled run left the
+    document permanently showing "ingesting" in the UI -- and since a
+    terminal run can never be cancelled again (ValidationError), there was
+    no way to retry via Cancel + Reprocess either.
+    """
+    container = build_local_container()
+    tenant = await container.resolve_tenant(tenant_key="demo")
+    document_id = new_id()
+    version_id = new_id()
+    run_id = new_id()
+    assert container.document_repo is not None
+    assert container.ingestion_repo is not None
+
+    await container.document_repo.create_document(
+        tenant,
+        DocumentRecord(
+            document_id=document_id,
+            tenant_id=tenant.tenant_id,
+            title="stuck",
+            status=DocumentLifecycleStatus.INGESTING,
+            current_version_id=version_id,
+        ),
+    )
+    await container.document_repo.create_version(
+        tenant,
+        DocumentVersionRecord(
+            version_id=version_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_number=1,
+            source_filename="r.pdf",
+            mime_type="application/pdf",
+            content_hash=_hash("r"),
+            status=DocumentLifecycleStatus.INGESTING,
+        ),
+    )
+    await container.ingestion_repo.create_run(
+        tenant,
+        IngestionRunRecord(
+            ingestion_run_id=run_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_id=version_id,
+            status=IngestionRunStatus.RUNNING,
+        ),
+        [],
+    )
+
+    updated_run = await container.cancel_run(tenant, run_id)
+    assert updated_run.status is IngestionRunStatus.CANCELLED
+
+    document = await container.document_repo.get_document(tenant, document_id)
+    assert document is not None
+    assert document.status is DocumentLifecycleStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_leaves_non_ingesting_document_status_untouched() -> None:
+    """cancel_run must not clobber a document status it didn't cause."""
+    container = build_local_container()
+    tenant = await container.resolve_tenant(tenant_key="demo")
+    document_id = new_id()
+    version_id = new_id()
+    run_id = new_id()
+    assert container.document_repo is not None
+    assert container.ingestion_repo is not None
+
+    await container.document_repo.create_document(
+        tenant,
+        DocumentRecord(
+            document_id=document_id,
+            tenant_id=tenant.tenant_id,
+            title="already-ready",
+            status=DocumentLifecycleStatus.READY,
+            current_version_id=version_id,
+        ),
+    )
+    await container.document_repo.create_version(
+        tenant,
+        DocumentVersionRecord(
+            version_id=version_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_number=1,
+            source_filename="r.pdf",
+            mime_type="application/pdf",
+            content_hash=_hash("r"),
+            status=DocumentLifecycleStatus.READY,
+        ),
+    )
+    # A stray VECTORS-scope run left RUNNING after the document already
+    # settled back to READY from an earlier, unrelated run.
+    await container.ingestion_repo.create_run(
+        tenant,
+        IngestionRunRecord(
+            ingestion_run_id=run_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_id=version_id,
+            status=IngestionRunStatus.RUNNING,
+        ),
+        [],
+    )
+
+    await container.cancel_run(tenant, run_id)
+
+    document = await container.document_repo.get_document(tenant, document_id)
+    assert document is not None
+    assert document.status is DocumentLifecycleStatus.READY
 
 
 @pytest.mark.asyncio

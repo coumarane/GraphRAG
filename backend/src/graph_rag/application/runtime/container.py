@@ -407,4 +407,15 @@ class ServiceContainer:
                 details={"status": run.status.value},
             )
         run.status = IngestionRunStatus.CANCELLED
-        return await repo.update_run(tenant, run)
+        updated_run = await repo.update_run(tenant, run)
+        # A cancelled run otherwise leaves the document's own status
+        # (set to INGESTING when the run started) permanently stuck --
+        # nothing else ever revisits it, so the document list would show
+        # "ingesting" forever with no run left to finish or retry it.
+        document_repo = self.require_document_repo()
+        document = await document_repo.get_document(tenant, run.document_id)
+        if document is not None and document.status == DocumentLifecycleStatus.INGESTING:
+            document.status = DocumentLifecycleStatus.FAILED
+            document.updated_at = datetime.now(UTC)
+            await document_repo.update_document(tenant, document)
+        return updated_run
