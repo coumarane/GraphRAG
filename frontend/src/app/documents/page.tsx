@@ -90,7 +90,24 @@ function DocumentsPageContent() {
       const list = body as ListResponse;
       setData(list);
       for (const item of list.items) {
-        if (IN_PROGRESS.has(item.status)) startStatusPoll(item.document_id);
+        if (IN_PROGRESS.has(item.status)) {
+          startStatusPoll(item.document_id);
+        } else if (item.status === "failed") {
+          // Not a live poll transition (e.g. a plain page load landing on
+          // an already-failed document) -- fetch once so the error tooltip
+          // below has something to show.
+          void fetch(`/api/documents/${item.document_id}/ingestion-runs/latest`, {
+            headers: { "X-Tenant-Key": readTenantKey() },
+            cache: "no-store",
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((run) => {
+              if (run) {
+                setRunProgress((prev) => ({ ...prev, [item.document_id]: run }));
+              }
+            })
+            .catch(() => undefined);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -140,13 +157,29 @@ function DocumentsPageContent() {
           };
         });
 
-        if (TERMINAL.has(body.status)) {
+        const terminal = TERMINAL.has(body.status);
+        // Fetch the run's final state even on the terminal tick -- an early
+        // return here used to discard error_message/latest_warning before
+        // it was ever read, so a failed run showed no diagnostic info
+        // anywhere in the UI, just the bare word "failed".
+        const runRes = await fetch(
+          `/api/documents/${documentId}/ingestion-runs/latest`,
+          { headers: { "X-Tenant-Key": readTenantKey() }, cache: "no-store" },
+        );
+        if (runRes.ok) {
+          const run = (await runRes.json()) as RunProgress;
+          setRunProgress((prev) => ({ ...prev, [documentId]: run }));
+        }
+
+        if (terminal) {
           stopPolling(documentId);
-          setRunProgress((prev) => {
-            const next = { ...prev };
-            delete next[documentId];
-            return next;
-          });
+          if (body.status === "ready") {
+            setRunProgress((prev) => {
+              const next = { ...prev };
+              delete next[documentId];
+              return next;
+            });
+          }
           setReprocessingId((current) =>
             current === documentId ? null : current,
           );
@@ -158,16 +191,6 @@ function DocumentsPageContent() {
             );
           }
           void load();
-          return;
-        }
-
-        const runRes = await fetch(
-          `/api/documents/${documentId}/ingestion-runs/latest`,
-          { headers: { "X-Tenant-Key": readTenantKey() }, cache: "no-store" },
-        );
-        if (runRes.ok) {
-          const run = (await runRes.json()) as RunProgress;
-          setRunProgress((prev) => ({ ...prev, [documentId]: run }));
         }
       } catch {
         /* keep polling */
@@ -348,6 +371,21 @@ function DocumentsPageContent() {
                     >
                       {doc.status}
                     </span>
+                    {doc.status === "failed" &&
+                    (runProgress[doc.document_id]?.error_message ||
+                      runProgress[doc.document_id]?.latest_warning) ? (
+                      <p
+                        className="mt-1 max-w-xs truncate text-[11px] text-danger"
+                        title={
+                          runProgress[doc.document_id].error_message ||
+                          runProgress[doc.document_id].latest_warning ||
+                          ""
+                        }
+                      >
+                        {runProgress[doc.document_id].error_message ||
+                          runProgress[doc.document_id].latest_warning}
+                      </p>
+                    ) : null}
                     {IN_PROGRESS.has(doc.status) && runProgress[doc.document_id] ? (
                       <div className="mt-1.5 w-32 space-y-1">
                         <div className="h-1.5 overflow-hidden rounded-full bg-border">

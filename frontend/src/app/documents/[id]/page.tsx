@@ -123,7 +123,23 @@ export default function DocumentDetailPage() {
   }, [load]);
 
   useEffect(() => {
-    if (meta && IN_PROGRESS.has(meta.status)) startProgressPoll();
+    if (!meta) return;
+    if (IN_PROGRESS.has(meta.status)) {
+      startProgressPoll();
+    } else if (meta.status === "failed" && documentId) {
+      // Not a live poll transition (e.g. a plain page load/refresh landing
+      // on an already-failed document) -- still worth fetching once so the
+      // error banner below has something to show.
+      void fetch(`/api/documents/${documentId}/ingestion-runs/latest`, {
+        headers: { "X-Tenant-Key": readTenantKey() },
+        cache: "no-store",
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((run) => {
+          if (run) setRunProgress(run as RunProgress);
+        })
+        .catch(() => undefined);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta?.status]);
 
@@ -143,22 +159,26 @@ export default function DocumentDetailPage() {
           headers,
           cache: "no-store",
         });
+        let terminal = false;
         if (statusRes.ok) {
           const statusBody = (await statusRes.json()) as DocumentMeta;
           setMeta(statusBody);
-          if (TERMINAL.has(statusBody.status)) {
-            stopProgressPoll();
-            setRunProgress(null);
-            setReprocessing(false);
-            await load();
-            return;
-          }
+          terminal = TERMINAL.has(statusBody.status);
         }
+        // Fetch the run's final state (error_message/latest_warning) even on
+        // the tick that detects termination -- an early return here used to
+        // discard it before it was ever read, so a failed run showed no
+        // diagnostic info anywhere in the UI.
         const runRes = await fetch(
           `/api/documents/${documentId}/ingestion-runs/latest`,
           { headers, cache: "no-store" },
         );
         if (runRes.ok) setRunProgress((await runRes.json()) as RunProgress);
+        if (terminal) {
+          stopProgressPoll();
+          setReprocessing(false);
+          await load();
+        }
       } catch {
         /* keep polling */
       }
@@ -270,6 +290,12 @@ export default function DocumentDetailPage() {
                   : ""}
               </p>
             </div>
+          ) : null}
+          {meta?.status === "failed" &&
+          (runProgress?.error_message || runProgress?.latest_warning) ? (
+            <p className="mt-2 max-w-xl rounded border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
+              {runProgress.error_message || runProgress.latest_warning}
+            </p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
