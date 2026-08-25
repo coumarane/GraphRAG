@@ -156,6 +156,12 @@ _MAP_LOCATION_HINT = re.compile(
     r"research and development|location|sites?|plant)\b"
 )
 _PERCENT_TOKEN = re.compile(r"(?<!\d)\d{1,3}(?:\.\d+)?\s*%")
+# Backstop for a hung ChatModel.generate() call -- a stalled socket (proxy
+# holding the connection open, provider outage) never raises, so the
+# per-target retry/backoff below never fires and PARSE wedges forever with
+# no timeout to recover from. Longer than OpenAIChatModel's own default
+# per-request timeout so that client-level error surfaces first when it can.
+_VISION_CALL_TIMEOUT_SECONDS = 120.0
 _FLAT_CHART_HINT = re.compile(
     r"(?i)\b("
     r"irritation|patch test|concentration level|response\s*,?\s*%|"
@@ -618,22 +624,27 @@ async def _vision_enrich_pages(
                 png = await asyncio.to_thread(
                     render_visual_png, data, target.page_number, target.bbox
                 )
-                response = await chat.generate(
-                    GenerationRequest(
-                        messages=[
-                            ChatMessage(
-                                role=MessageRole.USER,
-                                content=[
-                                    TextContentPart(text=prompt_for_target(target, _VISION_PROMPT)),
-                                    ImageBytesContentPart(data=png, mime_type="image/png"),
-                                ],
-                            )
-                        ],
-                        role=ModelRole.VISION,
-                        model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
-                        temperature=0.0,
-                        prompt_version="local-pdf-vision-v6-per-element",
-                    )
+                response = await asyncio.wait_for(
+                    chat.generate(
+                        GenerationRequest(
+                            messages=[
+                                ChatMessage(
+                                    role=MessageRole.USER,
+                                    content=[
+                                        TextContentPart(
+                                            text=prompt_for_target(target, _VISION_PROMPT)
+                                        ),
+                                        ImageBytesContentPart(data=png, mime_type="image/png"),
+                                    ],
+                                )
+                            ],
+                            role=ModelRole.VISION,
+                            model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
+                            temperature=0.0,
+                            prompt_version="local-pdf-vision-v6-per-element",
+                        )
+                    ),
+                    timeout=_VISION_CALL_TIMEOUT_SECONDS,
                 )
                 payload = _parse_vision_json(response.text)
                 break

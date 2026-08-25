@@ -61,12 +61,16 @@ def _message_to_openai(message: ChatMessage) -> dict[str, Any]:
     return {"role": role, "content": parts}
 
 
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 90.0
+
+
 def _default_openai_chat(
     messages: list[dict[str, Any]],
     *,
     model_name: str,
     api_key: str | None,
     temperature: float,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> tuple[str, TokenUsage]:
     try:
         from openai import OpenAI
@@ -76,7 +80,12 @@ def _default_openai_chat(
             details={"extra": "llm", "module": "openai"},
             cause=exc,
         ) from exc
-    client = OpenAI(api_key=api_key)
+    # Explicit timeout instead of relying on the SDK/httpx default: a hung
+    # socket (e.g. a proxy holding the TCP connection open with no data)
+    # can otherwise block the calling coroutine indefinitely -- callers like
+    # per-element vision enrichment retry on exception, which never fires
+    # without a timeout to raise one.
+    client = OpenAI(api_key=api_key, timeout=timeout)
     response = client.chat.completions.create(
         model=model_name,
         messages=messages,
@@ -104,12 +113,14 @@ class OpenAIChatModel:
         temperature: float = 0.0,
         chat_fn: ChatCompleteFn | None = None,
         usage_recorder: UsageRecorder | None = None,
+        request_timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> None:
         self._model_name = model_name
         self._api_key = api_key
         self._temperature = temperature
         self._chat_fn = chat_fn
         self._usage_recorder = usage_recorder
+        self._request_timeout = request_timeout
 
     @property
     def model_name(self) -> str:
@@ -132,6 +143,7 @@ class OpenAIChatModel:
                     model_name=model_name,
                     api_key=self._api_key,
                     temperature=temperature,
+                    timeout=self._request_timeout,
                 )
         except ConfigurationError:
             raise
