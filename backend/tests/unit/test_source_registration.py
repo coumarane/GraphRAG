@@ -144,6 +144,56 @@ async def test_register_source_stores_original(session: AsyncSession, tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_register_source_allows_reupload_after_document_deleted(
+    session: AsyncSession, tmp_path: Path
+) -> None:
+    """A deleted document's old version must not block a fresh re-upload.
+
+    Regression test: deletion only ever persists DocumentLifecycleStatus.DELETED
+    on the owning DOCUMENT record -- there is no update_version in this
+    repository protocol, so a version's own status is never actually
+    flipped in storage. The tenant-wide duplicate-content guard queried
+    versions by content_hash alone, with no awareness that the owning
+    document had been deleted, so re-uploading identical bytes after
+    deleting the original document was rejected forever.
+    """
+    from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
+
+    path = tmp_path / "doc.pdf"
+    content = b"%PDF-1.7\nre-upload-me\n"
+    path.write_bytes(content)
+
+    document_repo = SqlAlchemyDocumentRepository(session)
+    service = RegisterSourceService(
+        tenant_repo=SqlAlchemyTenantRepository(session),
+        document_repo=document_repo,
+        ingestion_repo=SqlAlchemyIngestionRepository(session),
+        object_store=InMemoryObjectStore(),
+        source_loader=DefaultSourceLoader(max_upload_bytes=10_000),
+    )
+    tenant = TenantContext(tenant_id=new_id(), tenant_key="demo")
+    result = await service.execute(
+        tenant,
+        RegisterSourceRequest(local_path=str(path), title="Doc"),
+    )
+    await session.commit()
+
+    document = await document_repo.get_document(tenant, result.document_id)
+    assert document is not None
+    document.status = DocumentLifecycleStatus.DELETED
+    document.current_version_id = None
+    await document_repo.update_document(tenant, document)
+    await session.commit()
+
+    reuploaded = await service.execute(
+        tenant,
+        RegisterSourceRequest(local_path=str(path), title="Doc again"),
+    )
+    assert reuploaded.duplicate_version is False
+    assert reuploaded.document_id != result.document_id
+
+
+@pytest.mark.asyncio
 async def test_register_source_without_document_intelligence_leaves_metadata_empty(
     session: AsyncSession, tmp_path: Path
 ) -> None:

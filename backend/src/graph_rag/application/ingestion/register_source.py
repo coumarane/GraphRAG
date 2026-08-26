@@ -192,6 +192,15 @@ class RegisterSourceService:
                     None,
                     content_hash,
                 )
+                if duplicate is not None:
+                    # Versions have no persisted status flip of their own (no
+                    # update_version in this protocol) -- deletion only ever
+                    # marks the owning DOCUMENT as DELETED. Without this check
+                    # a deleted document's old version permanently blocks any
+                    # future re-upload of the same bytes.
+                    owner = await self.document_repo.get_document(tenant, duplicate.document_id)
+                    if owner is not None and owner.status is DocumentLifecycleStatus.DELETED:
+                        duplicate = None
                 if duplicate is not None and duplicate.original_object_key:
                     raise ConflictError(
                         "This document is already uploaded. Identical content was found.",
