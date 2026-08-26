@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
@@ -59,6 +59,7 @@ type Tab = "original" | "pages" | "indexed" | "report" | "extractions";
 
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const documentId = params.id;
   const [meta, setMeta] = useState<DocumentMeta | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
@@ -66,6 +67,7 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [reprocessing, setReprocessing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [reprocessPanelOpen, setReprocessPanelOpen] = useState(false);
   const [diValue, setDiValue] = useState<DocumentIntelligencePanelValue>({
     enabled: false,
@@ -243,6 +245,35 @@ export default function DocumentDetailPage() {
     }
   }
 
+  async function deleteDocument() {
+    if (!documentId) return;
+    const confirmed = window.confirm(
+      `Delete "${meta?.title || documentId}"? This permanently removes its ` +
+        "vectors, graph data, and stored files. This cannot be undone.",
+    );
+    if (!confirmed) return;
+    setError(null);
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : body.message || response.statusText,
+        );
+      }
+      router.push("/documents");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -336,6 +367,14 @@ export default function DocumentDetailPage() {
           >
             Query this doc
           </Link>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => void deleteDocument()}
+            className="rounded border border-danger/40 bg-surface px-3 py-2 text-sm font-medium text-danger hover:border-danger disabled:opacity-60"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
         </div>
       </div>
 

@@ -51,6 +51,7 @@ function DocumentsPageContent() {
   const [busy, setBusy] = useState(true);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [runProgress, setRunProgress] = useState<Record<string, RunProgress>>({});
   const pollRefs = useRef<Map<string, number>>(new Map());
@@ -265,6 +266,43 @@ function DocumentsPageContent() {
     }
   }
 
+  async function deleteDocument(documentId: string, title: string | null) {
+    const confirmed = window.confirm(
+      `Delete "${title || documentId}"? This permanently removes its vectors, ` +
+        "graph data, and stored files. This cannot be undone.",
+    );
+    if (!confirmed) return;
+    setError(null);
+    setActionMessage(null);
+    setDeletingId(documentId);
+    try {
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : body.message || response.statusText,
+        );
+      }
+      stopPolling(documentId);
+      setRunProgress((prev) => {
+        const next = { ...prev };
+        delete next[documentId];
+        return next;
+      });
+      setActionMessage("Document deleted.");
+      void load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -454,6 +492,14 @@ function DocumentsPageContent() {
                             : "Cancel"}
                         </button>
                       ) : null}
+                      <button
+                        type="button"
+                        disabled={deletingId === doc.document_id}
+                        onClick={() => void deleteDocument(doc.document_id, doc.title)}
+                        className="inline-flex rounded border border-danger/40 bg-background px-3 py-1.5 text-xs font-medium text-danger hover:border-danger disabled:opacity-60"
+                      >
+                        {deletingId === doc.document_id ? "Deleting…" : "Delete"}
+                      </button>
                     </div>
                   </td>
                 </tr>
