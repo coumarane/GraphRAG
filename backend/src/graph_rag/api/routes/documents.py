@@ -226,6 +226,7 @@ async def list_documents(
     items, total = await container.require_document_repo().list_documents(
         tenant, offset=0, limit=max(offset + limit, 200)
     )
+    items = [item for item in items if item.status is not DocumentLifecycleStatus.DELETED]
     authz = container.require_authorization()
     allowed = filter_authorized_documents(authz, tenant, items)
     total = len(allowed)
