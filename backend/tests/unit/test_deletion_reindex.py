@@ -415,9 +415,10 @@ async def test_delete_document_cancels_active_ingestion_run() -> None:
     assert run is not None
     assert run.status is IngestionRunStatus.CANCELLED
 
+    # A real row delete, not a status flip -- the whole point is that a
+    # deleted document can never be found and resurrected again.
     document = await container.document_repo.get_document(tenant, document_id)
-    assert document is not None
-    assert document.status is DocumentLifecycleStatus.DELETED
+    assert document is None
 
 
 @pytest.mark.asyncio
@@ -490,9 +491,9 @@ async def test_delete_document_service_cleans_indexes() -> None:
     assert result.vectors_deleted >= 1
     assert result.objects_deleted >= 1
     assert result.cache_keys_invalidated == 1
+    # A real row delete, not a status flip.
     updated = await doc_repo.get_document(tenant, document.document_id)
-    assert updated is not None
-    assert updated.status is DocumentLifecycleStatus.DELETED
+    assert updated is None
 
 
 @pytest.mark.asyncio

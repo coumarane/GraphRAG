@@ -272,6 +272,30 @@ class SqlAlchemyDocumentRepository:
             {"lock_key": lock_key},
         )
 
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> bool:
+        tenant.ensure_authorized()
+        await set_tenant_context(self._session, tenant)
+        result = await self._session.execute(
+            select(DocumentModel).where(
+                DocumentModel.document_id == document_id,
+                DocumentModel.tenant_id == tenant.tenant_id,
+            )
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return False
+        # ON DELETE CASCADE (see alembic/versions/0001_lifecycle.py and
+        # 0008_document_intelligence.py) removes document_versions,
+        # ingestion_runs/stages, parser_attempts, parsing-audit rows, and
+        # document_extraction_runs/fields in the same statement.
+        await self._session.delete(model)
+        await self._session.flush()
+        return True
+
 
 def assert_tenant_context_present(tenant: TenantContext | None) -> TenantContext:
     """Repository guard used by adapters that accept optional wiring mistakes."""

@@ -110,6 +110,20 @@ class DocumentRepository(Protocol):
         """Acquire a transaction-scoped lock for duplicate detection."""
         ...
 
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> bool:
+        """Permanently remove a document row (not a status flip).
+
+        Implementations rely on DB-level ``ON DELETE CASCADE`` to remove
+        versions, ingestion runs/stages, parser attempts, parsing audit
+        records, and document intelligence extraction rows in the same
+        statement. Returns ``False`` if the document did not exist.
+        """
+        ...
+
 
 class IngestionRepository(Protocol):
     """Ingestion run and stage port."""

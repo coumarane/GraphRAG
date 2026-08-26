@@ -139,6 +139,21 @@ class InMemoryDocumentRepository:
     ) -> None:
         return None
 
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> bool:
+        key = (tenant.tenant_id, document_id)
+        existed = self.documents.pop(key, None) is not None
+        for version_key in [
+            version_key
+            for version_key, version in self.versions.items()
+            if version_key[0] == tenant.tenant_id and version.document_id == document_id
+        ]:
+            del self.versions[version_key]
+        return existed
+
     @staticmethod
     def _assert_tenant(tenant: TenantContext, owner: UUID) -> None:
         if tenant.tenant_id != owner:

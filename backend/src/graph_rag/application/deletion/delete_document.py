@@ -184,20 +184,14 @@ class DeleteDocumentService:
             warnings.append("object_store_not_configured")
 
         if not retain_postgres:
-            if version_id is not None:
-                version = await self.document_repo.get_version(tenant, version_id)
-                if version is not None:
-                    version.status = DocumentLifecycleStatus.DELETED
-                    # Versions are immutable in protocol — update via create not available;
-                    # status flip requires repository update; use document metadata archive.
-                    document.metadata = {
-                        **document.metadata,
-                        "deleted_version_id": str(version_id),
-                        "deleted_at": datetime.now(UTC).isoformat(),
-                    }
-            document.status = DocumentLifecycleStatus.DELETED
-            document.current_version_id = None
-            await self.document_repo.update_document(tenant, document)
+            # A real row delete, not a status flip: a soft-deleted row that
+            # merely says DELETED is exactly what let a zombie ingestion run
+            # resurrect a "deleted" document back to FAILED once before --
+            # a row that no longer exists can't be resurrected. DB-level
+            # ON DELETE CASCADE removes versions, ingestion runs/stages,
+            # parser attempts, parsing-audit rows, and document
+            # intelligence extraction rows in the same statement.
+            await self.document_repo.delete_document(tenant, document_id)
             stages.append(DeletionStageName.ARCHIVE_POSTGRES)
         else:
             warnings.append("postgres_retained")
