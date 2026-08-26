@@ -355,6 +355,7 @@ def build_local_container(
         lexical_store=lexical,
         cache=InMemoryCacheInvalidator(),
         chunk_id_provider=chunk_ids_for_version,
+        ingestion_repo=ingestion_repo,
     )
     reindex_service = ReindexDocumentService(
         document_repo=document_repo,

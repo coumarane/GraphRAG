@@ -356,6 +356,71 @@ async def test_delete_document_selective_flags_skip_vectors_and_graph() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_document_cancels_active_ingestion_run() -> None:
+    """Deleting a document must stop any run still in flight for it.
+
+    Regression test for an incident where a long-running, still-retrying
+    ingestion run outlived a document's deletion by many hours, eventually
+    failed trying to read the just-purged original file, and its
+    failure-handling flipped the document's status from DELETED back to
+    FAILED -- resurrecting a deleted document in every list/detail view.
+    """
+    container = build_local_container()
+    tenant = await container.resolve_tenant(tenant_key="demo")
+    document_id = new_id()
+    version_id = new_id()
+    run_id = new_id()
+    assert container.document_repo is not None
+    assert container.ingestion_repo is not None
+    assert container.delete_document is not None
+
+    await container.document_repo.create_document(
+        tenant,
+        DocumentRecord(
+            document_id=document_id,
+            tenant_id=tenant.tenant_id,
+            title="mid-flight",
+            status=DocumentLifecycleStatus.INGESTING,
+            current_version_id=version_id,
+        ),
+    )
+    await container.document_repo.create_version(
+        tenant,
+        DocumentVersionRecord(
+            version_id=version_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_number=1,
+            source_filename="r.pdf",
+            mime_type="application/pdf",
+            content_hash=_hash("r"),
+            status=DocumentLifecycleStatus.INGESTING,
+        ),
+    )
+    await container.ingestion_repo.create_run(
+        tenant,
+        IngestionRunRecord(
+            ingestion_run_id=run_id,
+            tenant_id=tenant.tenant_id,
+            document_id=document_id,
+            version_id=version_id,
+            status=IngestionRunStatus.RUNNING,
+        ),
+        [],
+    )
+
+    await container.delete_document.execute(tenant, document_id=document_id)
+
+    run = await container.ingestion_repo.get_run(tenant, run_id)
+    assert run is not None
+    assert run.status is IngestionRunStatus.CANCELLED
+
+    document = await container.document_repo.get_document(tenant, document_id)
+    assert document is not None
+    assert document.status is DocumentLifecycleStatus.DELETED
+
+
+@pytest.mark.asyncio
 async def test_delete_document_service_cleans_indexes() -> None:
     document = _doc()
     tenant = TenantContext(tenant_id=document.tenant_id)

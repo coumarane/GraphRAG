@@ -18,8 +18,12 @@ from graph_rag.domain.deletion.stages import (
 )
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ids import new_id
-from graph_rag.domain.ingestion.protocols import DocumentRepository
-from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
+from graph_rag.domain.ingestion.protocols import DocumentRepository, IngestionRepository
+from graph_rag.domain.ingestion.stages import (
+    TERMINAL_RUN_STATUSES,
+    DocumentLifecycleStatus,
+    IngestionRunStatus,
+)
 from graph_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from graph_rag.domain.storage.protocols import ObjectStore, version_prefix
 from graph_rag.domain.tenant import TenantContext
@@ -66,6 +70,7 @@ class DeleteDocumentService:
     lexical_store: LexicalSearchStore | None = None
     cache: CacheInvalidator | None = None
     chunk_id_provider: ChunkIdProvider | None = None
+    ingestion_repo: IngestionRepository | None = None
 
     async def execute(
         self,
@@ -99,6 +104,19 @@ class DeleteDocumentService:
         objects_deleted = 0
         cache_keys = 0
         version_id = document.current_version_id
+
+        # A still-running ingestion run left alive after deletion will keep
+        # retrying against a document whose original file this deletion is
+        # about to purge -- its eventual failure would otherwise flip
+        # document.status back from DELETED to FAILED, resurrecting a
+        # deleted document in every list/detail view.
+        if self.ingestion_repo is not None:
+            active_run = await self.ingestion_repo.get_latest_run_for_document(tenant, document_id)
+            if active_run is not None and active_run.status not in TERMINAL_RUN_STATUSES:
+                active_run.status = IngestionRunStatus.CANCELLED
+                active_run.error_code = "cancelled"
+                active_run.error_message = "Run cancelled: document was deleted."
+                await self.ingestion_repo.update_run(tenant, active_run)
 
         document.status = DocumentLifecycleStatus.DELETING
         await self.document_repo.update_document(tenant, document)
@@ -193,11 +211,7 @@ class DeleteDocumentService:
             stages.append(DeletionStageName.INVALIDATE_CACHE)
 
         stages.append(DeletionStageName.FINALIZE)
-        status = (
-            DeletionOperationStatus.PARTIAL
-            if warnings
-            else DeletionOperationStatus.COMPLETED
-        )
+        status = DeletionOperationStatus.PARTIAL if warnings else DeletionOperationStatus.COMPLETED
         result = DeletionResult(
             operation_id=op_id,
             tenant_id=tenant.tenant_id,

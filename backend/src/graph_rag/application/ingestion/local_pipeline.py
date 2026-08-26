@@ -1040,6 +1040,11 @@ class ProcessRegisteredDocumentService:
         document = await self.document_repo.get_document(tenant, document_id)
         if document is None:
             return None
+        if document.status is DocumentLifecycleStatus.DELETED:
+            # Deletion is final -- a run that was in flight when the document
+            # was deleted (or a retry that outlives it) must never resurrect
+            # it back into "ingesting"/"ready"/"failed".
+            return document
         if metadata_updates:
             meta = dict(document.metadata)
             meta.update(metadata_updates)
