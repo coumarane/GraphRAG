@@ -735,6 +735,9 @@ async def delete_document(
     document_id: UUID,
     tenant: TenantDep,
     container: ContainerDep,
+    delete_vectors: bool = True,
+    delete_graph: bool = True,
+    delete_objects: bool = True,
 ) -> DeletionAcceptedResponse:
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is None:
@@ -745,7 +748,13 @@ async def delete_document(
         Action.DOCUMENT_DELETE,
         document=document,
     )
-    operation = await container.submit_deletion(tenant, document_id)
+    operation = await container.submit_deletion(
+        tenant,
+        document_id,
+        delete_vectors=delete_vectors,
+        delete_graph=delete_graph,
+        delete_objects=delete_objects,
+    )
     result = operation.result
     return DeletionAcceptedResponse(
         operation_id=operation.operation_id,

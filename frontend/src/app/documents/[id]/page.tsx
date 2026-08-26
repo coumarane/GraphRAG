@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
 import { DocumentExtractionResults } from "@/components/DocumentExtractionResults";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
@@ -68,6 +69,12 @@ export default function DocumentDetailPage() {
   const [busy, setBusy] = useState(true);
   const [reprocessing, setReprocessing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteOptions, setDeleteOptions] = useState({
+    vectors: true,
+    graph: true,
+    objects: true,
+  });
   const [reprocessPanelOpen, setReprocessPanelOpen] = useState(false);
   const [diValue, setDiValue] = useState<DocumentIntelligencePanelValue>({
     enabled: false,
@@ -247,15 +254,15 @@ export default function DocumentDetailPage() {
 
   async function deleteDocument() {
     if (!documentId) return;
-    const confirmed = window.confirm(
-      `Delete "${meta?.title || documentId}"? This permanently removes its ` +
-        "vectors, graph data, and stored files. This cannot be undone.",
-    );
-    if (!confirmed) return;
     setError(null);
     setDeleting(true);
     try {
-      const response = await fetch(`/api/documents/${documentId}`, {
+      const qs = new URLSearchParams({
+        delete_vectors: String(deleteOptions.vectors),
+        delete_graph: String(deleteOptions.graph),
+        delete_objects: String(deleteOptions.objects),
+      });
+      const response = await fetch(`/api/documents/${documentId}?${qs}`, {
         method: "DELETE",
         headers: { "X-Tenant-Key": readTenantKey() },
       });
@@ -370,13 +377,42 @@ export default function DocumentDetailPage() {
           <button
             type="button"
             disabled={deleting}
-            onClick={() => void deleteDocument()}
+            onClick={() => {
+              setDeleteOptions({ vectors: true, graph: true, objects: true });
+              setConfirmDeleteOpen(true);
+            }}
             className="rounded border border-danger/40 bg-surface px-3 py-2 text-sm font-medium text-danger hover:border-danger disabled:opacity-60"
           >
             {deleting ? "Deleting…" : "Delete"}
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title={`Delete "${meta?.title || documentId}"?`}
+        description="This will permanently delete data for this document. This cannot be undone."
+        checklist={[
+          { id: "vectors", label: "Vector embeddings (Qdrant)", checked: deleteOptions.vectors },
+          { id: "graph", label: "Knowledge graph data (Neo4j)", checked: deleteOptions.graph },
+          {
+            id: "objects",
+            label: "Original file and stored artifacts",
+            checked: deleteOptions.objects,
+          },
+        ]}
+        onToggleChecklistItem={(id) =>
+          setDeleteOptions((prev) => ({ ...prev, [id]: !prev[id as keyof typeof prev] }))
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={() => {
+          setConfirmDeleteOpen(false);
+          void deleteDocument();
+        }}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
 
       {reprocessPanelOpen ? (
         <div className="space-y-3 rounded-xl border border-border bg-surface p-4">

@@ -311,6 +311,9 @@ class ServiceContainer:
         document_id: UUID,
         *,
         execute_now: bool = True,
+        delete_vectors: bool = True,
+        delete_graph: bool = True,
+        delete_objects: bool = True,
     ) -> DeletionOperation:
         operation = DeletionOperation(
             operation_id=new_id(),
@@ -350,6 +353,9 @@ class ServiceContainer:
             tenant,
             document_id=document_id,
             operation_id=operation.operation_id,
+            delete_vectors=delete_vectors,
+            delete_graph=delete_graph,
+            delete_objects=delete_objects,
         )
         operation.status = result.status.value
         operation.result = result

@@ -21,7 +21,11 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function DELETE(request: Request, { params }: Params) {
   const { id } = await params;
-  const upstream = await fetch(`${getRagApiUrl()}/api/v1/documents/${id}`, {
+  const qs = new URL(request.url).searchParams.toString();
+  const path = qs
+    ? `/api/v1/documents/${id}?${qs}`
+    : `/api/v1/documents/${id}`;
+  const upstream = await fetch(`${getRagApiUrl()}${path}`, {
     method: "DELETE",
     headers: tenantHeaders(request),
     cache: "no-store",

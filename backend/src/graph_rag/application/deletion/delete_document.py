@@ -74,6 +74,9 @@ class DeleteDocumentService:
         document_id: UUID,
         operation_id: UUID | None = None,
         retain_postgres: bool = False,
+        delete_vectors: bool = True,
+        delete_graph: bool = True,
+        delete_objects: bool = True,
     ) -> DeletionResult:
         tenant.ensure_authorized()
         document = await self.document_repo.get_document(tenant, document_id)
@@ -103,7 +106,9 @@ class DeleteDocumentService:
 
         chunk_ids = await self._resolve_chunk_ids(tenant, document_id, version_id)
 
-        if self.vector_store is not None:
+        if not delete_vectors:
+            warnings.append("vectors_retained")
+        elif self.vector_store is not None:
             # Prefer full-document purge so prior versions cannot orphan vectors.
             delete_document = getattr(self.vector_store, "delete_document", None)
             if callable(delete_document):
@@ -134,7 +139,9 @@ class DeleteDocumentService:
                 version_id=version_id,
             )
 
-        if version_id is not None and self.graph_store is not None:
+        if not delete_graph:
+            warnings.append("graph_retained")
+        elif version_id is not None and self.graph_store is not None:
             graph_deleted = await self.graph_store.delete_version(
                 tenant,
                 document_id=document_id,
@@ -145,7 +152,9 @@ class DeleteDocumentService:
         elif self.graph_store is None:
             warnings.append("graph_store_not_configured")
 
-        if version_id is not None and self.object_store is not None:
+        if not delete_objects:
+            warnings.append("objects_retained")
+        elif version_id is not None and self.object_store is not None:
             prefix = version_prefix(
                 tenant_id=tenant.tenant_id,
                 document_id=document_id,

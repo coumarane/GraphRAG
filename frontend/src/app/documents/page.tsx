@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type DocumentItem = {
   document_id: string;
@@ -52,6 +53,15 @@ function DocumentsPageContent() {
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    title: string | null;
+  } | null>(null);
+  const [deleteOptions, setDeleteOptions] = useState({
+    vectors: true,
+    graph: true,
+    objects: true,
+  });
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [runProgress, setRunProgress] = useState<Record<string, RunProgress>>({});
   const pollRefs = useRef<Map<string, number>>(new Map());
@@ -266,17 +276,20 @@ function DocumentsPageContent() {
     }
   }
 
-  async function deleteDocument(documentId: string, title: string | null) {
-    const confirmed = window.confirm(
-      `Delete "${title || documentId}"? This permanently removes its vectors, ` +
-        "graph data, and stored files. This cannot be undone.",
-    );
-    if (!confirmed) return;
+  async function deleteDocument(
+    documentId: string,
+    options: { vectors: boolean; graph: boolean; objects: boolean },
+  ) {
     setError(null);
     setActionMessage(null);
     setDeletingId(documentId);
     try {
-      const response = await fetch(`/api/documents/${documentId}`, {
+      const qs = new URLSearchParams({
+        delete_vectors: String(options.vectors),
+        delete_graph: String(options.graph),
+        delete_objects: String(options.objects),
+      });
+      const response = await fetch(`/api/documents/${documentId}?${qs}`, {
         method: "DELETE",
         headers: { "X-Tenant-Key": readTenantKey() },
       });
@@ -300,6 +313,7 @@ function DocumentsPageContent() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setDeletingId(null);
+      setPendingDelete(null);
     }
   }
 
@@ -495,7 +509,10 @@ function DocumentsPageContent() {
                       <button
                         type="button"
                         disabled={deletingId === doc.document_id}
-                        onClick={() => void deleteDocument(doc.document_id, doc.title)}
+                        onClick={() => {
+                          setDeleteOptions({ vectors: true, graph: true, objects: true });
+                          setPendingDelete({ id: doc.document_id, title: doc.title });
+                        }}
                         className="inline-flex rounded border border-danger/40 bg-background px-3 py-1.5 text-xs font-medium text-danger hover:border-danger disabled:opacity-60"
                       >
                         {deletingId === doc.document_id ? "Deleting…" : "Delete"}
@@ -512,6 +529,29 @@ function DocumentsPageContent() {
           </p>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete "${pendingDelete?.title || pendingDelete?.id}"?`}
+        description="This will permanently delete data for this document. This cannot be undone."
+        checklist={[
+          { id: "vectors", label: "Vector embeddings (Qdrant)", checked: deleteOptions.vectors },
+          { id: "graph", label: "Knowledge graph data (Neo4j)", checked: deleteOptions.graph },
+          {
+            id: "objects",
+            label: "Original file and stored artifacts",
+            checked: deleteOptions.objects,
+          },
+        ]}
+        onToggleChecklistItem={(id) =>
+          setDeleteOptions((prev) => ({ ...prev, [id]: !prev[id as keyof typeof prev] }))
+        }
+        confirmLabel="Delete"
+        danger
+        busy={pendingDelete !== null && deletingId === pendingDelete.id}
+        onConfirm={() => pendingDelete && void deleteDocument(pendingDelete.id, deleteOptions)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </section>
   );
 }

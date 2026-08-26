@@ -264,6 +264,97 @@ def test_orphan_helpers() -> None:
     assert entity in orphans
 
 
+async def _build_delete_fixture():
+    """Shared setup for DeleteDocumentService tests: a ready document with
+    real chunks/vectors/graph data seeded, so selective-deletion flags have
+    something concrete to prove they did or didn't touch."""
+    document = _doc()
+    tenant = TenantContext(tenant_id=document.tenant_id)
+    doc_repo = InMemoryDocumentRepository()
+    await doc_repo.create_document(
+        tenant,
+        DocumentRecord(
+            document_id=document.document_id,
+            tenant_id=document.tenant_id,
+            title="A",
+            status=DocumentLifecycleStatus.READY,
+            current_version_id=document.version_id,
+        ),
+    )
+    await doc_repo.create_version(
+        tenant,
+        DocumentVersionRecord(
+            version_id=document.version_id,
+            tenant_id=document.tenant_id,
+            document_id=document.document_id,
+            version_number=1,
+            source_filename="a.pdf",
+            mime_type="application/pdf",
+            content_hash=_hash("a"),
+            status=DocumentLifecycleStatus.READY,
+            original_object_key=(
+                f"tenants/{document.tenant_id}/documents/{document.document_id}/"
+                f"versions/{document.version_id}/original/a.pdf"
+            ),
+        ),
+    )
+    object_store = InMemoryObjectStore()
+    await object_store.put_bytes(
+        tenant,
+        object_key=(
+            f"tenants/{document.tenant_id}/documents/{document.document_id}/"
+            f"versions/{document.version_id}/original/a.pdf"
+        ),
+        data=b"%PDF",
+        content_type="application/pdf",
+        content_hash=_hash("pdf"),
+    )
+    chunks = HierarchicalMultimodalChunker().chunk(document)
+    chunk_store = InMemoryChunkLookupStore()
+    await chunk_store.upsert(tenant, chunks.all_chunks)
+    vectors = InMemoryChunkVectorStore()
+    await vectors.ensure_collection(vector_size=2)
+    embedded = await EmbedChunksService(FakeEmbeddingModel()).embed(chunks.all_chunks)
+    await vectors.upsert(tenant, embedded.records)
+    graph = InMemoryGraphStore()
+    await BuildKnowledgeGraphService(FakeStructuredExtractor(), graph).build(
+        tenant, document, chunks
+    )
+    cache = InMemoryCacheInvalidator()
+    service = DeleteDocumentService(
+        document_repo=doc_repo,
+        object_store=object_store,
+        vector_store=vectors,
+        graph_store=graph,
+        cache=cache,
+        chunk_id_provider=lambda t, d, v: [
+            c.chunk_id for c in chunk_store.list_for_version(t, document_id=d, version_id=v)
+        ],
+    )
+    return document, tenant, service, vectors, graph
+
+
+@pytest.mark.asyncio
+async def test_delete_document_selective_flags_skip_vectors_and_graph() -> None:
+    """Unchecking a data-store checkbox must actually leave it untouched."""
+    document, tenant, service, vectors, graph = await _build_delete_fixture()
+
+    result = await service.execute(
+        tenant,
+        document_id=document.document_id,
+        delete_vectors=False,
+        delete_graph=False,
+    )
+
+    assert result.vectors_deleted == 0
+    assert result.graph_deleted == 0
+    assert "vectors_retained" in result.warnings
+    assert "graph_retained" in result.warnings
+    assert result.objects_deleted >= 1
+    assert len(vectors._records) >= 1  # in-memory test double, no public "count" accessor
+    assert len(graph.nodes) >= 1
+
+
 @pytest.mark.asyncio
 async def test_delete_document_service_cleans_indexes() -> None:
     document = _doc()
