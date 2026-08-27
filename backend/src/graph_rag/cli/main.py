@@ -494,8 +494,10 @@ def delete_document(
 
 
 async def _delete_async(*, document_id: str, tenant_id: str) -> dict[str, Any]:
+    container = get_container()
     tenant = await _resolve_tenant(tenant_id)
-    operation = await get_container().submit_deletion(tenant, UUID(document_id))
+    operation = await container.submit_deletion(tenant, UUID(document_id))
+    await container.commit_db()
     payload: dict[str, Any] = {
         "operation_id": str(operation.operation_id),
         "document_id": str(operation.document_id),

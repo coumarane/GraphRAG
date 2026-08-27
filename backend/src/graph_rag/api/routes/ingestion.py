@@ -129,6 +129,7 @@ async def resume_ingestion_run(
     container: ContainerDep,
 ) -> IngestionRunResponse:
     await container.resume_run(tenant, run_id)
+    await container.commit_db()
     return await get_ingestion_run(run_id, tenant, container)
 
 
@@ -139,4 +140,5 @@ async def cancel_ingestion_run(
     container: ContainerDep,
 ) -> IngestionRunResponse:
     await container.cancel_run(tenant, run_id)
+    await container.commit_db()
     return await get_ingestion_run(run_id, tenant, container)

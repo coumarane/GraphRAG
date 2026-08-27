@@ -756,6 +756,10 @@ async def delete_document(
         delete_graph=delete_graph,
         delete_objects=delete_objects,
     )
+    # Without an explicit commit the Postgres row delete stays in the
+    # process-local session and never reaches the database (and other API
+    # replicas keep serving the "deleted" document).
+    await container.commit_db()
     result = operation.result
     return DeletionAcceptedResponse(
         operation_id=operation.operation_id,

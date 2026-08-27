@@ -312,7 +312,14 @@ function DocumentsPageContent() {
         delete next[documentId];
         return next;
       });
-      setActionMessage("Document deleted.");
+      // Drop the row immediately so a stuck failed orphan (e.g. missing blob)
+      // does not linger while the list reload races.
+      setData((prev) => {
+        if (!prev) return prev;
+        const items = prev.items.filter((item) => item.document_id !== documentId);
+        return { ...prev, items, total: Math.max(0, prev.total - 1) };
+      });
+      setActionMessage("Document deleted from the database.");
       void load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -538,7 +545,7 @@ function DocumentsPageContent() {
       <ConfirmDialog
         open={pendingDelete !== null}
         title={`Delete "${pendingDelete?.title || pendingDelete?.id}"?`}
-        description="This will permanently delete data for this document. This cannot be undone."
+        description="This permanently removes the document row from the database (and selected derived data). A missing original file does not block removal. This cannot be undone."
         checklist={[
           { id: "vectors", label: "Vector embeddings (Qdrant)", checked: deleteOptions.vectors },
           { id: "graph", label: "Knowledge graph data (Neo4j)", checked: deleteOptions.graph },
