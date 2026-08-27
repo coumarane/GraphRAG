@@ -67,7 +67,12 @@ function DocumentsPageContent() {
   const pollRefs = useRef<Map<string, number>>(new Map());
 
   const visibleItems = useMemo(() => {
-    const items = data?.items ?? [];
+    // Defense in depth: the API already omits soft-deleted rows, but never
+    // show status=deleted (or mid-delete) if a stale payload slips through.
+    const items = (data?.items ?? []).filter((item) => {
+      const status = item.status.toLowerCase();
+      return status !== "deleted" && status !== "deleting";
+    });
     if (!statusFilter) return items;
     return items.filter(
       (item) => item.status.toLowerCase() === statusFilter.toLowerCase(),
