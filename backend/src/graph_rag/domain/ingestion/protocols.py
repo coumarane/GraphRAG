@@ -62,7 +62,11 @@ class DocumentRepository(Protocol):
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[DocumentRecord], int]:
-        """List tenant-scoped documents (newest first when timestamps exist)."""
+        """List tenant-scoped documents (newest first when timestamps exist).
+
+        Soft-deleted documents (status=deleted) must be omitted so list
+        views and pagination totals stay consistent with the UI catalog.
+        """
         ...
 
     async def update_document(

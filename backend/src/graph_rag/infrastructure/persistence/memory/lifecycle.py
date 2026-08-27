@@ -13,7 +13,7 @@ from graph_rag.domain.ingestion.records import (
     ParserAttemptRecord,
     TenantRecord,
 )
-from graph_rag.domain.ingestion.stages import IngestionStageName
+from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus, IngestionStageName
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import AuthorizationError, ConflictError, NotFoundError
 
@@ -80,6 +80,7 @@ class InMemoryDocumentRepository:
             document
             for (owner, _document_id), document in self.documents.items()
             if owner == tenant.tenant_id
+            and document.status is not DocumentLifecycleStatus.DELETED
         ]
         items.sort(
             key=lambda doc: doc.updated_at or doc.created_at or doc.document_id.hex,
