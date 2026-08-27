@@ -63,3 +63,34 @@ async def test_set_document_status_is_a_no_op_once_deleted() -> None:
     document = await container.document_repo.get_document(tenant, document_id)
     assert document is not None
     assert document.status is DocumentLifecycleStatus.DELETED
+
+
+@pytest.mark.asyncio
+async def test_set_document_status_is_a_no_op_while_deleting() -> None:
+    container = build_local_container()
+    tenant = await container.resolve_tenant(tenant_key="demo")
+    document_id = new_id()
+    assert container.document_repo is not None
+    assert container.process_ingestion is not None
+
+    await container.document_repo.create_document(
+        tenant,
+        DocumentRecord(
+            document_id=document_id,
+            tenant_id=tenant.tenant_id,
+            title="being-deleted",
+            status=DocumentLifecycleStatus.DELETING,
+            current_version_id=None,
+        ),
+    )
+
+    await container.process_ingestion._set_document_status(
+        tenant,
+        document_id,
+        DocumentLifecycleStatus.FAILED,
+        updated_at=datetime.now(UTC),
+    )
+
+    document = await container.document_repo.get_document(tenant, document_id)
+    assert document is not None
+    assert document.status is DocumentLifecycleStatus.DELETING
