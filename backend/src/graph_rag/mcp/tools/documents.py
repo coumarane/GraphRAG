@@ -98,6 +98,7 @@ async def delete_document(
         container.require_authorization(), tenant, Action.DOCUMENT_DELETE, document=document
     )
     operation = await container.submit_deletion(tenant, document_id)
+    await container.commit_db()
     result = operation.result
     return {
         "operation_id": str(operation.operation_id),
@@ -130,4 +131,5 @@ async def reindex_document(
         container.require_authorization(), tenant, Action.DOCUMENT_REINDEX, document=document
     )
     result = await container.submit_reindex(tenant, document_id, scope=scope)
+    await container.commit_db()
     return result.model_dump(mode="json")

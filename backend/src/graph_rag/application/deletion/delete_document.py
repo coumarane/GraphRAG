@@ -122,64 +122,116 @@ class DeleteDocumentService:
         await self.document_repo.update_document(tenant, document)
         stages.append(DeletionStageName.MARK_DELETING)
 
-        chunk_ids = await self._resolve_chunk_ids(tenant, document_id, version_id)
+        try:
+            chunk_ids = await self._resolve_chunk_ids(tenant, document_id, version_id)
+        except Exception as exc:
+            chunk_ids = []
+            warnings.append(f"chunk_id_resolution_failed:{exc}")
+            logger.warning(
+                "delete_chunk_id_resolution_failed",
+                document_id=str(document_id),
+                error=str(exc),
+            )
 
+        # Derived-index / object cleanup is best-effort. A missing blob
+        # ("Object not found") or a flaky Qdrant/Neo4j call must not block
+        # removing the Postgres document row -- that is what leaves failed
+        # orphans stuck in the Documents list forever.
         if not delete_vectors:
             warnings.append("vectors_retained")
         elif self.vector_store is not None:
-            # Prefer full-document purge so prior versions cannot orphan vectors.
-            delete_document = getattr(self.vector_store, "delete_document", None)
-            if callable(delete_document):
-                vectors_deleted = await delete_document(
-                    tenant,
-                    document_id=document_id,
+            try:
+                delete_document = getattr(self.vector_store, "delete_document", None)
+                if callable(delete_document):
+                    vectors_deleted = await delete_document(
+                        tenant,
+                        document_id=document_id,
+                    )
+                elif version_id is not None:
+                    vectors_deleted = await self.vector_store.delete_version(
+                        tenant,
+                        document_id=document_id,
+                        version_id=version_id,
+                    )
+                stages.append(DeletionStageName.DELETE_VECTORS)
+            except Exception as exc:
+                warnings.append(f"vector_cleanup_failed:{exc}")
+                logger.warning(
+                    "delete_vector_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
                 )
-            elif version_id is not None:
-                vectors_deleted = await self.vector_store.delete_version(
-                    tenant,
-                    document_id=document_id,
-                    version_id=version_id,
-                )
-            stages.append(DeletionStageName.DELETE_VECTORS)
         else:
             warnings.append("vector_store_not_configured")
 
         if version_id is not None and self.chunk_store is not None:
-            await self.chunk_store.delete_version(
-                tenant,
-                document_id=document_id,
-                version_id=version_id,
-            )
+            try:
+                await self.chunk_store.delete_version(
+                    tenant,
+                    document_id=document_id,
+                    version_id=version_id,
+                )
+            except Exception as exc:
+                warnings.append(f"chunk_cleanup_failed:{exc}")
+                logger.warning(
+                    "delete_chunk_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
         if version_id is not None and self.lexical_store is not None:
-            await self.lexical_store.delete_version(
-                tenant,
-                document_id=document_id,
-                version_id=version_id,
-            )
+            try:
+                await self.lexical_store.delete_version(
+                    tenant,
+                    document_id=document_id,
+                    version_id=version_id,
+                )
+            except Exception as exc:
+                warnings.append(f"lexical_cleanup_failed:{exc}")
+                logger.warning(
+                    "delete_lexical_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
 
         if not delete_graph:
             warnings.append("graph_retained")
         elif version_id is not None and self.graph_store is not None:
-            graph_deleted = await self.graph_store.delete_version(
-                tenant,
-                document_id=document_id,
-                version_id=version_id,
-                chunk_ids=chunk_ids or None,
-            )
-            stages.append(DeletionStageName.DELETE_GRAPH)
+            try:
+                graph_deleted = await self.graph_store.delete_version(
+                    tenant,
+                    document_id=document_id,
+                    version_id=version_id,
+                    chunk_ids=chunk_ids or None,
+                )
+                stages.append(DeletionStageName.DELETE_GRAPH)
+            except Exception as exc:
+                warnings.append(f"graph_cleanup_failed:{exc}")
+                logger.warning(
+                    "delete_graph_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
         elif self.graph_store is None:
             warnings.append("graph_store_not_configured")
 
         if not delete_objects:
             warnings.append("objects_retained")
         elif version_id is not None and self.object_store is not None:
-            prefix = version_prefix(
-                tenant_id=tenant.tenant_id,
-                document_id=document_id,
-                version_id=version_id,
-            )
-            objects_deleted = await self.object_store.delete_prefix(tenant, prefix=prefix)
-            stages.append(DeletionStageName.DELETE_OBJECTS)
+            try:
+                prefix = version_prefix(
+                    tenant_id=tenant.tenant_id,
+                    document_id=document_id,
+                    version_id=version_id,
+                )
+                objects_deleted = await self.object_store.delete_prefix(tenant, prefix=prefix)
+                stages.append(DeletionStageName.DELETE_OBJECTS)
+            except Exception as exc:
+                warnings.append(f"object_cleanup_failed:{exc}")
+                logger.warning(
+                    "delete_object_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
         elif self.object_store is None:
             warnings.append("object_store_not_configured")
 
@@ -197,12 +249,20 @@ class DeleteDocumentService:
             warnings.append("postgres_retained")
 
         if self.cache is not None:
-            cache_keys = await self.cache.invalidate_document(
-                tenant,
-                document_id=document_id,
-                version_id=version_id,
-            )
-            stages.append(DeletionStageName.INVALIDATE_CACHE)
+            try:
+                cache_keys = await self.cache.invalidate_document(
+                    tenant,
+                    document_id=document_id,
+                    version_id=version_id,
+                )
+                stages.append(DeletionStageName.INVALIDATE_CACHE)
+            except Exception as exc:
+                warnings.append(f"cache_invalidation_failed:{exc}")
+                logger.warning(
+                    "delete_cache_invalidation_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
 
         stages.append(DeletionStageName.FINALIZE)
         status = DeletionOperationStatus.PARTIAL if warnings else DeletionOperationStatus.COMPLETED
