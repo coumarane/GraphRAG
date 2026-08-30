@@ -11,7 +11,11 @@ from graph_rag.application.deletion import DeleteDocumentService, ReindexDocumen
 from graph_rag.application.document_intelligence.providers.internal import (
     InternalExtractionProvider,
 )
-from graph_rag.application.generation import GenerateAnswerService, QueryDocumentsService
+from graph_rag.application.generation import (
+    ChatConversationService,
+    GenerateAnswerService,
+    QueryDocumentsService,
+)
 from graph_rag.application.ingestion import RegisterSourceService
 from graph_rag.application.ingestion.local_pipeline import ProcessRegisteredDocumentService
 from graph_rag.application.retrieval import RetrieveEvidenceService
@@ -310,6 +314,7 @@ def build_local_container(
         GenerateAnswerService(chat),
         document_titles=document_titles,
     )
+    chat_service = ChatConversationService(chat)
     process = ProcessRegisteredDocumentService(
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
@@ -376,6 +381,7 @@ def build_local_container(
         register_source=register,
         retrieve=retrieve,
         query=query,
+        chat=chat_service,
         graph_store=graph,
         vector_store=vectors,
         chunk_store=chunks,

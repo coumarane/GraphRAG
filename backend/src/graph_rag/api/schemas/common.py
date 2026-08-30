@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -243,6 +244,7 @@ class QueryApiRequest(BaseModel):
 
     question: str = Field(min_length=1)
     mode: RetrievalMode = Field(default_factory=lambda: get_settings().retrieval.default_mode)
+    interaction_mode: Literal["chat", "search"] = "chat"
     document_ids: list[UUID] = Field(default_factory=list)
     modalities: list[Modality] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)

@@ -186,3 +186,97 @@ def test_patch_conversation_covers_rename_pin_archive_move(client, tenant_header
         headers=tenant_headers,
     )
     assert moved.json()["project_id"] == project_id
+
+
+def test_query_defaults_to_chat_mode_with_no_retrieval(client, tenant_headers) -> None:
+    """No interaction_mode in the request -> chat mode, no citations/retrieval."""
+    response = client.post(
+        "/api/v1/query",
+        json={"question": "Hello there."},
+        headers=tenant_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["interaction_mode"] == "chat"
+    assert body["citations"] == []
+    assert body["retrieval_mode"] is None
+
+    detail = client.get(f"/api/v1/conversations/{body['conversation_id']}", headers=tenant_headers)
+    detail_body = detail.json()
+    assert detail_body["interaction_mode"] == "chat"
+    messages = detail_body["messages"]
+    assert [m["interaction_mode"] for m in messages] == ["chat", "chat"]
+
+
+def test_query_search_mode_matches_prior_grounded_behavior(client, tenant_headers) -> None:
+    """interaction_mode="search" behaves exactly like the pre-existing grounded flow."""
+    response = client.post(
+        "/api/v1/query",
+        json={"question": "What is this document about?", "interaction_mode": "search"},
+        headers=tenant_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["interaction_mode"] == "search"
+    assert body["retrieval_mode"] is not None
+
+    detail = client.get(f"/api/v1/conversations/{body['conversation_id']}", headers=tenant_headers)
+    detail_body = detail.json()
+    assert detail_body["interaction_mode"] == "search"
+    messages = detail_body["messages"]
+    assert [m["interaction_mode"] for m in messages] == ["search", "search"]
+
+
+def test_switching_modes_mid_conversation_preserves_history_and_persists_mode(
+    client, tenant_headers
+) -> None:
+    """A conversation can move chat -> search -> chat; each message keeps the
+    mode it was actually sent in, and switching to chat never clears the
+    conversation's sticky search context.
+    """
+    first = client.post(
+        "/api/v1/query",
+        json={"question": "Hi, first turn.", "interaction_mode": "chat"},
+        headers=tenant_headers,
+    )
+    conversation_id = first.json()["conversation_id"]
+    assert first.json()["interaction_mode"] == "chat"
+
+    second = client.post(
+        "/api/v1/query",
+        json={
+            "question": "Now search my documents.",
+            "conversation_id": conversation_id,
+            "interaction_mode": "search",
+        },
+        headers=tenant_headers,
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["interaction_mode"] == "search"
+
+    third = client.post(
+        "/api/v1/query",
+        json={
+            "question": "Back to plain chat.",
+            "conversation_id": conversation_id,
+            "interaction_mode": "chat",
+        },
+        headers=tenant_headers,
+    )
+    assert third.status_code == 200, third.text
+    assert third.json()["interaction_mode"] == "chat"
+
+    detail = client.get(f"/api/v1/conversations/{conversation_id}", headers=tenant_headers)
+    messages = detail.json()["messages"]
+    # 3 turns x (user + assistant) = 6 persisted messages, each tagged with
+    # the mode it was actually sent/answered in.
+    assert [m["interaction_mode"] for m in messages] == [
+        "chat",
+        "chat",
+        "search",
+        "search",
+        "chat",
+        "chat",
+    ]
+    # The conversation's active mode reflects the most recent turn.
+    assert detail.json()["interaction_mode"] == "chat"

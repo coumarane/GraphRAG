@@ -39,6 +39,7 @@ def _conversation_response(record: ChatConversationRecord) -> ChatConversationRe
         project_id=record.project_id,
         title=record.title,
         mode=record.mode,
+        interaction_mode=record.interaction_mode,
         document_id=record.document_id,
         pending_expand_question=record.pending_expand_question,
         conversation_context=record.conversation_context,
@@ -105,6 +106,7 @@ async def get_conversation(
                 message_id=message.message_id,
                 role=message.role,
                 content=message.content,
+                interaction_mode=message.interaction_mode,
                 citations=message.citations,
                 warnings=message.warnings,
                 retrieval_mode=message.retrieval_mode,
@@ -134,6 +136,7 @@ async def create_conversation(
             project_id=body.project_id,
             title=body.title or "New chat",
             mode=body.mode,
+            interaction_mode=body.interaction_mode,
             document_id=body.document_id,
         ),
     )

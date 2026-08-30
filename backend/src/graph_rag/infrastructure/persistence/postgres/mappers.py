@@ -190,6 +190,7 @@ def chat_conversation_to_record(model: ChatConversationModel) -> ChatConversatio
         project_id=model.project_id,
         title=model.title,
         mode=model.mode,
+        interaction_mode=model.interaction_mode,
         document_id=model.document_id,
         pending_expand_question=model.pending_expand_question,
         conversation_context=_metadata(model.conversation_context)
@@ -209,6 +210,7 @@ def chat_message_to_record(model: ChatMessageModel) -> ChatMessageRecord:
         conversation_id=model.conversation_id,
         role=model.role,
         content=model.content,
+        interaction_mode=model.interaction_mode,
         citations=[dict(item) for item in (model.citations or [])],
         warnings=[str(item) for item in (model.warnings or [])],
         retrieval_mode=model.retrieval_mode,

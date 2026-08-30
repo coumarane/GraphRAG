@@ -37,6 +37,7 @@ import {
   type ChatMessage,
   type ChatProject,
   type ChatThread,
+  type InteractionMode,
 } from "@/lib/chatApi";
 
 const MODES = [
@@ -48,6 +49,27 @@ const MODES = [
   "multimodal",
   "mix",
 ] as const;
+
+const MENTION_COMMANDS: {
+  key: InteractionMode;
+  label: string;
+  description: string;
+}[] = [
+  { key: "chat", label: "chat", description: "Plain conversation, no document search" },
+  { key: "search", label: "search", description: "Search your documents with citations" },
+];
+
+const LEADING_MODE_PATTERN = /^@(chat|search)(?=\s|$)/i;
+
+function detectMentionTrigger(
+  text: string,
+  cursor: number,
+): { query: string; start: number } | null {
+  const before = text.slice(0, cursor);
+  const match = before.match(/@(\w*)$/);
+  if (!match) return null;
+  return { query: match[1].toLowerCase(), start: cursor - match[0].length };
+}
 
 function unwrapAnswerPayload(raw: string): {
   answer: string;
@@ -577,6 +599,11 @@ function ChatWorkspace() {
   const [showInspect, setShowInspect] = useState(false);
   const [showChangeContext, setShowChangeContext] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [mention, setMention] = useState<{
+    query: string;
+    start: number;
+    highlight: number;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const initials = useMemo(() => userInitials(), [hydrated, tenantKey]);
@@ -600,6 +627,9 @@ function ChatWorkspace() {
     activeThread?.conversationContext?.documentIds?.length ||
       activeThread?.documentId?.trim(),
   );
+  const mentionMatches = mention
+    ? MENTION_COMMANDS.filter((command) => command.label.startsWith(mention.query))
+    : [];
 
   useEffect(() => {
     const syncTenant = () => setTenantKey(readTenantKey());
@@ -664,6 +694,7 @@ function ChatWorkspace() {
     const mapped: Partial<{
       title: string;
       mode: string;
+      interaction_mode: InteractionMode;
       document_id: string | null;
       project_id: string | null;
       pinned: boolean;
@@ -671,6 +702,7 @@ function ChatWorkspace() {
     }> = {};
     if (patch.title !== undefined) mapped.title = patch.title;
     if (patch.mode !== undefined) mapped.mode = patch.mode;
+    if (patch.interactionMode !== undefined) mapped.interaction_mode = patch.interactionMode;
     if (patch.documentId !== undefined) mapped.document_id = patch.documentId || null;
     if (patch.projectId !== undefined) mapped.project_id = patch.projectId ?? null;
     if (patch.pinned !== undefined) mapped.pinned = patch.pinned;
@@ -681,6 +713,7 @@ function ChatWorkspace() {
   function startNewChat() {
     const fresh = createEmptyThread({
       mode: activeThread?.mode ?? "auto",
+      interactionMode: activeThread?.interactionMode ?? "chat",
       documentId: activeThread?.documentId ?? "",
       projectId: selectedProjectId,
     });
@@ -741,26 +774,58 @@ function ChatWorkspace() {
     void patchConversation(activeThread.id, remoteThreadPatch(patch)).catch(() => {});
   }
 
-  function insertMention() {
-    setDraft((prev) => {
-      if (!prev) return "@";
-      if (prev.endsWith(" ") || prev.endsWith("\n")) return `${prev}@`;
-      return `${prev} @`;
+  function openMentionMenu() {
+    const insertion = !draft || draft.endsWith(" ") || draft.endsWith("\n") ? "@" : " @";
+    const nextDraft = `${draft}${insertion}`;
+    setDraft(nextDraft);
+    setMention({ query: "", start: nextDraft.length - 1, highlight: 0 });
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextDraft.length, nextDraft.length);
     });
-    textareaRef.current?.focus();
+  }
+
+  function selectMention(command: (typeof MENTION_COMMANDS)[number]) {
+    if (!mention) return;
+    const cursor = textareaRef.current?.selectionStart ?? draft.length;
+    const nextDraft = `${draft.slice(0, mention.start)}${draft.slice(cursor)}`;
+    setDraft(nextDraft);
+    setMention(null);
+    if (activeThread && activeThread.interactionMode !== command.key) {
+      updateActive({ interactionMode: command.key });
+    }
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const pos = mention.start;
+      textareaRef.current?.setSelectionRange(pos, pos);
+    });
   }
 
   async function sendMessage(questionRaw: string) {
     if (!activeThread || busy) return;
-    const question = questionRaw.trim();
+    let question = questionRaw.trim();
     if (!question) {
       setError("Enter a message.");
       return;
     }
 
+    let interactionMode: InteractionMode = activeThread.interactionMode ?? "chat";
+    const modeMatch = question.match(LEADING_MODE_PATTERN);
+    if (modeMatch) {
+      interactionMode = modeMatch[1].toLowerCase() as InteractionMode;
+      question = question.slice(modeMatch[0].length).trim();
+      if (!question) {
+        setError(`Type a message after @${modeMatch[1].toLowerCase()}.`);
+        return;
+      }
+    }
+    if (interactionMode !== activeThread.interactionMode) {
+      updateActive({ interactionMode });
+    }
+
     setBusy(true);
     setError(null);
-    const userMessage = createMessage("user", question);
+    const userMessage = createMessage("user", question, { interaction_mode: interactionMode });
     const nextMessages = [...activeThread.messages, userMessage];
     const titled =
       activeThread.messages.length === 0
@@ -800,6 +865,7 @@ function ChatWorkspace() {
           question: questionForApi,
           conversation_id: activeThread.id,
           mode: activeThread.mode,
+          interaction_mode: interactionMode,
           document_ids: documentIds,
           expand_document_scope: expandScope,
           include_graph_paths: true,
@@ -945,6 +1011,8 @@ function ChatWorkspace() {
         warnings: uniqueWarnings,
         retrieval_mode: body.retrieval_mode || body.mode,
         retrieval_trace_id: body.retrieval_trace_id,
+        interaction_mode:
+          (body.interaction_mode as InteractionMode | undefined) ?? interactionMode,
         graph_paths: graphPaths,
       });
       setThreads((prev) => {
@@ -1244,19 +1312,101 @@ function ChatWorkspace() {
         ) : null}
 
         <form onSubmit={onSubmit} className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
-          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-2.5 shadow-sm sm:p-3">
+          <div className="relative mx-auto w-full max-w-3xl rounded-2xl border border-border bg-surface p-2.5 shadow-sm sm:p-3">
+            {mention && mentionMatches.length ? (
+              <div className="absolute bottom-full left-2 z-20 mb-2 w-64 overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
+                {mentionMatches.map((command, index) => (
+                  <button
+                    key={command.key}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      selectMention(command);
+                    }}
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm",
+                      index === mention.highlight
+                        ? "bg-accent-soft text-accent"
+                        : "hover:bg-surface-elevated",
+                    )}
+                  >
+                    <span className="font-medium">@{command.label}</span>
+                    <span className="text-xs text-muted">{command.description}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {activeThread.interactionMode === "search" ? (
+              <div className="mb-2">
+                <Badge variant="default" className="text-xs">
+                  Search mode — type @chat to switch back
+                </Badge>
+              </div>
+            ) : null}
             <textarea
               ref={textareaRef}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDraft(value);
+                const cursor = event.target.selectionStart ?? value.length;
+                const trigger = detectMentionTrigger(value, cursor);
+                if (!trigger) {
+                  setMention(null);
+                  return;
+                }
+                const matches = MENTION_COMMANDS.filter((command) =>
+                  command.label.startsWith(trigger.query),
+                );
+                setMention(
+                  matches.length
+                    ? { query: trigger.query, start: trigger.start, highlight: 0 }
+                    : null,
+                );
+              }}
               onKeyDown={(event) => {
+                if (mention && mentionMatches.length) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setMention((prev) =>
+                      prev
+                        ? { ...prev, highlight: (prev.highlight + 1) % mentionMatches.length }
+                        : prev,
+                    );
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setMention((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            highlight:
+                              (prev.highlight - 1 + mentionMatches.length) %
+                              mentionMatches.length,
+                          }
+                        : prev,
+                    );
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === "Tab") {
+                    event.preventDefault();
+                    selectMention(mentionMatches[mention.highlight] ?? mentionMatches[0]);
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setMention(null);
+                    return;
+                  }
+                }
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void sendMessage(draft);
                 }
               }}
               rows={3}
-              placeholder={`Ask about ${contextLabel}…`}
+              placeholder={`Ask about ${contextLabel}… (@search or @chat to switch modes)`}
               className="max-h-40 min-h-[4.5rem] w-full resize-y bg-transparent px-1 py-1 text-[15px] outline-none placeholder:text-muted"
               disabled={busy}
             />
@@ -1265,11 +1415,11 @@ function ChatWorkspace() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={insertMention}
+                onClick={openMentionMenu}
                 disabled={busy}
               >
                 <AtSign className="h-4 w-4" />
-                <span className="hidden sm:inline">Mention KB</span>
+                <span className="hidden sm:inline">chat / search</span>
               </Button>
               <Button
                 type="button"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +36,7 @@ class ChatConversationRecord(BaseModel):
     project_id: UUID | None = None
     title: str = "New chat"
     mode: str = "auto"
+    interaction_mode: Literal["chat", "search"] = "chat"
     document_id: UUID | None = None
     pending_expand_question: str | None = None
     conversation_context: dict[str, JsonValue] | None = None
@@ -54,6 +56,7 @@ class ChatMessageRecord(BaseModel):
     conversation_id: UUID
     role: str
     content: str
+    interaction_mode: Literal["chat", "search"] = "search"
     citations: list[dict[str, JsonValue]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     retrieval_mode: str | None = None

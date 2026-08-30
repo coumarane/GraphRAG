@@ -180,6 +180,7 @@ class SqlAlchemyChatConversationRepository:
             project_id=conversation.project_id,
             title=conversation.title,
             mode=conversation.mode,
+            interaction_mode=conversation.interaction_mode,
             document_id=conversation.document_id,
             pending_expand_question=conversation.pending_expand_question,
             conversation_context=conversation.conversation_context,
@@ -266,6 +267,7 @@ class SqlAlchemyChatConversationRepository:
         model.project_id = conversation.project_id
         model.title = conversation.title
         model.mode = conversation.mode
+        model.interaction_mode = conversation.interaction_mode
         model.document_id = conversation.document_id
         model.pending_expand_question = conversation.pending_expand_question
         model.conversation_context = conversation.conversation_context
@@ -325,6 +327,7 @@ class SqlAlchemyChatConversationRepository:
             conversation_id=message.conversation_id,
             role=message.role,
             content=message.content,
+            interaction_mode=message.interaction_mode,
             citations=list(message.citations),
             warnings=list(message.warnings),
             retrieval_mode=message.retrieval_mode,

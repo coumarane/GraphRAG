@@ -20,7 +20,12 @@ from graph_rag.domain.conversation.naming import title_from_question
 from graph_rag.domain.conversation.records import ChatConversationRecord, ChatMessageRecord
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
-from graph_rag.domain.retrieval.models import QueryRequest, RetrievalFilters, RetrievalRequest
+from graph_rag.domain.retrieval.models import (
+    QueryRequest,
+    QueryResponse,
+    RetrievalFilters,
+    RetrievalRequest,
+)
 from graph_rag.shared.exceptions import ConfigurationError
 
 router = APIRouter(tags=["retrieval"])
@@ -107,6 +112,7 @@ async def query_documents(
                     tenant_id=tenant.tenant_id,
                     owner_user_id=tenant.user_id,
                     mode=body.mode.value,
+                    interaction_mode=body.interaction_mode,
                 ),
             )
     else:
@@ -117,6 +123,7 @@ async def query_documents(
                 tenant_id=tenant.tenant_id,
                 owner_user_id=tenant.user_id,
                 mode=body.mode.value,
+                interaction_mode=body.interaction_mode,
             ),
         )
 
@@ -135,33 +142,50 @@ async def query_documents(
         quantity=1,
         period=QuotaPeriod.DAY,
     )
-    service = container.require_query()
     try:
         with usage_context(
             tenant_id=tenant.tenant_id,
             query_id=new_id(),
             user_id=tenant.user_id,
         ):
-            outcome = await service.query(
-                tenant,
-                QueryRequest(
+            if body.interaction_mode == "chat":
+                chat_result = await container.require_chat().chat(
+                    tenant,
                     question=body.question,
-                    mode=body.mode,
-                    filters=RetrievalFilters(
-                        document_ids=list(body.document_ids),
-                        modalities=list(body.modalities),
-                        tags=list(body.tags),
-                        security_labels=list(body.security_labels),
+                    history=history,
+                )
+                response = QueryResponse(
+                    answer=chat_result.answer,
+                    retrieval_mode=None,
+                    interaction_mode="chat",
+                    citations=[],
+                    graph_paths=[],
+                    retrieval_trace_id=new_id(),
+                    warnings=list(chat_result.warnings),
+                )
+            else:
+                service = container.require_query()
+                outcome = await service.query(
+                    tenant,
+                    QueryRequest(
+                        question=body.question,
+                        mode=body.mode,
+                        filters=RetrievalFilters(
+                            document_ids=list(body.document_ids),
+                            modalities=list(body.modalities),
+                            tags=list(body.tags),
+                            security_labels=list(body.security_labels),
+                        ),
+                        top_k=body.top_k,
+                        graph_depth=body.graph_depth,
+                        include_graph_paths=body.include_graph_paths,
+                        rerank=body.rerank,
+                        answer_model_override=body.answer_model_override,
+                        conversation_history=history,
+                        expand_document_scope=body.expand_document_scope,
                     ),
-                    top_k=body.top_k,
-                    graph_depth=body.graph_depth,
-                    include_graph_paths=body.include_graph_paths,
-                    rerank=body.rerank,
-                    answer_model_override=body.answer_model_override,
-                    conversation_history=history,
-                    expand_document_scope=body.expand_document_scope,
-                ),
-            )
+                )
+                response = outcome.response
         container.require_quotas().commit(
             reservation_id=reservation.reservation_id,
             actual_quantity=1,
@@ -170,14 +194,15 @@ async def query_documents(
         container.require_quotas().release(reservation_id=reservation.reservation_id)
         raise
 
-    response = outcome.response
-    pending = (conversation.pending_expand_question or "").strip()
-    awaiting = "awaiting_scope_expand" in response.warnings
-    next_pending = (
-        (pending if pending and body.expand_document_scope else body.question)
-        if awaiting
-        else None
-    )
+    next_pending = conversation.pending_expand_question
+    if body.interaction_mode == "search":
+        pending = (conversation.pending_expand_question or "").strip()
+        awaiting = "awaiting_scope_expand" in response.warnings
+        next_pending = (
+            (pending if pending and body.expand_document_scope else body.question)
+            if awaiting
+            else None
+        )
 
     await conv_repo.add_message(
         tenant,
@@ -187,6 +212,7 @@ async def query_documents(
             conversation_id=conversation.conversation_id,
             role="user",
             content=body.question,
+            interaction_mode=body.interaction_mode,
         ),
     )
     await conv_repo.add_message(
@@ -197,16 +223,19 @@ async def query_documents(
             conversation_id=conversation.conversation_id,
             role="assistant",
             content=response.answer,
+            interaction_mode=body.interaction_mode,
             citations=[citation.model_dump(mode="json") for citation in response.citations],
             warnings=list(response.warnings),
-            retrieval_mode=response.retrieval_mode.value,
+            retrieval_mode=response.retrieval_mode.value if response.retrieval_mode else None,
             retrieval_trace_id=response.retrieval_trace_id,
             graph_paths=[path.model_dump(mode="json") for path in response.graph_paths],
         ),
     )
 
-    conversation.pending_expand_question = next_pending
-    conversation.conversation_context = response.active_conversation_context
+    conversation.interaction_mode = body.interaction_mode
+    if body.interaction_mode == "search":
+        conversation.pending_expand_question = next_pending
+        conversation.conversation_context = response.active_conversation_context
     if not history_records and conversation.title in ("", "New chat"):
         conversation.title = title_from_question(body.question)
     await conv_repo.update_conversation(tenant, conversation)
