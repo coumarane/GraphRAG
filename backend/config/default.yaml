@@ -83,6 +83,12 @@ multimodal:
   context_after_elements: 3
   maximum_context_tokens: 1800
 
+document_intelligence:
+  enabled: true
+  default_provider: internal
+  enable_llm_tier: true
+  enable_vision_tier: true
+
 chunking:
   strategy: multimodal_hierarchical
   parent_target_tokens: 2500
@@ -134,3 +140,18 @@ worker:
   heartbeat_stale_seconds: 90.0
   reclaim_idle_seconds: 120.0
   outbox_poll_seconds: 1.0
+
+plugins:
+  enabled: true
+  allow_core_override: false
+  object_store:
+    backend: memory
+  vector_store:
+    backend: memory
+  graph_store:
+    backend: memory
+  metadata_store:
+    backend: memory
+  ingest_queue:
+    backend: ""
+  config: {}

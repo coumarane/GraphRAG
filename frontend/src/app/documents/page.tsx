@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type DocumentItem = {
   document_id: string;
@@ -22,6 +23,7 @@ type ListResponse = {
 };
 
 type RunProgress = {
+  ingestion_run_id?: string;
   status: string;
   current_stage?: string | null;
   estimated_completion_percent?: number;
@@ -49,12 +51,28 @@ function DocumentsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    title: string | null;
+  } | null>(null);
+  const [deleteOptions, setDeleteOptions] = useState({
+    vectors: true,
+    graph: true,
+    objects: true,
+  });
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [runProgress, setRunProgress] = useState<Record<string, RunProgress>>({});
   const pollRefs = useRef<Map<string, number>>(new Map());
 
   const visibleItems = useMemo(() => {
-    const items = data?.items ?? [];
+    // Defense in depth: the API already omits soft-deleted rows, but never
+    // show status=deleted (or mid-delete) if a stale payload slips through.
+    const items = (data?.items ?? []).filter((item) => {
+      const status = item.status.toLowerCase();
+      return status !== "deleted" && status !== "deleting";
+    });
     if (!statusFilter) return items;
     return items.filter(
       (item) => item.status.toLowerCase() === statusFilter.toLowerCase(),
@@ -88,7 +106,24 @@ function DocumentsPageContent() {
       const list = body as ListResponse;
       setData(list);
       for (const item of list.items) {
-        if (IN_PROGRESS.has(item.status)) startStatusPoll(item.document_id);
+        if (IN_PROGRESS.has(item.status)) {
+          startStatusPoll(item.document_id);
+        } else if (item.status === "failed") {
+          // Not a live poll transition (e.g. a plain page load landing on
+          // an already-failed document) -- fetch once so the error tooltip
+          // below has something to show.
+          void fetch(`/api/documents/${item.document_id}/ingestion-runs/latest`, {
+            headers: { "X-Tenant-Key": readTenantKey() },
+            cache: "no-store",
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((run) => {
+              if (run) {
+                setRunProgress((prev) => ({ ...prev, [item.document_id]: run }));
+              }
+            })
+            .catch(() => undefined);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -138,13 +173,29 @@ function DocumentsPageContent() {
           };
         });
 
-        if (TERMINAL.has(body.status)) {
+        const terminal = TERMINAL.has(body.status);
+        // Fetch the run's final state even on the terminal tick -- an early
+        // return here used to discard error_message/latest_warning before
+        // it was ever read, so a failed run showed no diagnostic info
+        // anywhere in the UI, just the bare word "failed".
+        const runRes = await fetch(
+          `/api/documents/${documentId}/ingestion-runs/latest`,
+          { headers: { "X-Tenant-Key": readTenantKey() }, cache: "no-store" },
+        );
+        if (runRes.ok) {
+          const run = (await runRes.json()) as RunProgress;
+          setRunProgress((prev) => ({ ...prev, [documentId]: run }));
+        }
+
+        if (terminal) {
           stopPolling(documentId);
-          setRunProgress((prev) => {
-            const next = { ...prev };
-            delete next[documentId];
-            return next;
-          });
+          if (body.status === "ready") {
+            setRunProgress((prev) => {
+              const next = { ...prev };
+              delete next[documentId];
+              return next;
+            });
+          }
           setReprocessingId((current) =>
             current === documentId ? null : current,
           );
@@ -156,16 +207,6 @@ function DocumentsPageContent() {
             );
           }
           void load();
-          return;
-        }
-
-        const runRes = await fetch(
-          `/api/documents/${documentId}/ingestion-runs/latest`,
-          { headers: { "X-Tenant-Key": readTenantKey() }, cache: "no-store" },
-        );
-        if (runRes.ok) {
-          const run = (await runRes.json()) as RunProgress;
-          setRunProgress((prev) => ({ ...prev, [documentId]: run }));
         }
       } catch {
         /* keep polling */
@@ -205,6 +246,86 @@ function DocumentsPageContent() {
     } catch (err) {
       setReprocessingId(null);
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function cancelRun(documentId: string, runId: string) {
+    setError(null);
+    setActionMessage(null);
+    setCancellingId(documentId);
+    try {
+      const response = await fetch(`/api/ingestion-runs/${runId}/cancel`, {
+        method: "POST",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : body.message || response.statusText,
+        );
+      }
+      stopPolling(documentId);
+      setRunProgress((prev) => {
+        const next = { ...prev };
+        delete next[documentId];
+        return next;
+      });
+      setActionMessage("Run cancelled. Click Reprocess to try again.");
+      void load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  async function deleteDocument(
+    documentId: string,
+    options: { vectors: boolean; graph: boolean; objects: boolean },
+  ) {
+    setError(null);
+    setActionMessage(null);
+    setDeletingId(documentId);
+    try {
+      const qs = new URLSearchParams({
+        delete_vectors: String(options.vectors),
+        delete_graph: String(options.graph),
+        delete_objects: String(options.objects),
+      });
+      const response = await fetch(`/api/documents/${documentId}?${qs}`, {
+        method: "DELETE",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : body.message || response.statusText,
+        );
+      }
+      stopPolling(documentId);
+      setRunProgress((prev) => {
+        const next = { ...prev };
+        delete next[documentId];
+        return next;
+      });
+      // Drop the row immediately so a stuck failed orphan (e.g. missing blob)
+      // does not linger while the list reload races.
+      setData((prev) => {
+        if (!prev) return prev;
+        const items = prev.items.filter((item) => item.document_id !== documentId);
+        return { ...prev, items, total: Math.max(0, prev.total - 1) };
+      });
+      setActionMessage("Document deleted from the database.");
+      void load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
+      setPendingDelete(null);
     }
   }
 
@@ -314,6 +435,21 @@ function DocumentsPageContent() {
                     >
                       {doc.status}
                     </span>
+                    {doc.status === "failed" &&
+                    (runProgress[doc.document_id]?.error_message ||
+                      runProgress[doc.document_id]?.latest_warning) ? (
+                      <p
+                        className="mt-1 max-w-xs truncate text-[11px] text-danger"
+                        title={
+                          runProgress[doc.document_id].error_message ||
+                          runProgress[doc.document_id].latest_warning ||
+                          ""
+                        }
+                      >
+                        {runProgress[doc.document_id].error_message ||
+                          runProgress[doc.document_id].latest_warning}
+                      </p>
+                    ) : null}
                     {IN_PROGRESS.has(doc.status) && runProgress[doc.document_id] ? (
                       <div className="mt-1.5 w-32 space-y-1">
                         <div className="h-1.5 overflow-hidden rounded-full bg-border">
@@ -364,6 +500,35 @@ function DocumentsPageContent() {
                           ? "Reprocessing…"
                           : "Reprocess"}
                       </button>
+                      {IN_PROGRESS.has(doc.status) &&
+                      runProgress[doc.document_id]?.ingestion_run_id ? (
+                        <button
+                          type="button"
+                          disabled={cancellingId === doc.document_id}
+                          onClick={() =>
+                            void cancelRun(
+                              doc.document_id,
+                              runProgress[doc.document_id].ingestion_run_id as string,
+                            )
+                          }
+                          className="inline-flex rounded border border-danger/40 bg-background px-3 py-1.5 text-xs font-medium text-danger hover:border-danger disabled:opacity-60"
+                        >
+                          {cancellingId === doc.document_id
+                            ? "Cancelling…"
+                            : "Cancel"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={deletingId === doc.document_id}
+                        onClick={() => {
+                          setDeleteOptions({ vectors: true, graph: true, objects: true });
+                          setPendingDelete({ id: doc.document_id, title: doc.title });
+                        }}
+                        className="inline-flex rounded border border-danger/40 bg-background px-3 py-1.5 text-xs font-medium text-danger hover:border-danger disabled:opacity-60"
+                      >
+                        {deletingId === doc.document_id ? "Deleting…" : "Delete"}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -376,6 +541,29 @@ function DocumentsPageContent() {
           </p>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete "${pendingDelete?.title || pendingDelete?.id}"?`}
+        description="This permanently removes the document row from the database (and selected derived data). A missing original file does not block removal. This cannot be undone."
+        checklist={[
+          { id: "vectors", label: "Vector embeddings (Qdrant)", checked: deleteOptions.vectors },
+          { id: "graph", label: "Knowledge graph data (Neo4j)", checked: deleteOptions.graph },
+          {
+            id: "objects",
+            label: "Original file and stored artifacts",
+            checked: deleteOptions.objects,
+          },
+        ]}
+        onToggleChecklistItem={(id) =>
+          setDeleteOptions((prev) => ({ ...prev, [id]: !prev[id as keyof typeof prev] }))
+        }
+        confirmLabel="Delete"
+        danger
+        busy={pendingDelete !== null && deletingId === pendingDelete.id}
+        onConfirm={() => pendingDelete && void deleteDocument(pendingDelete.id, deleteOptions)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </section>
   );
 }

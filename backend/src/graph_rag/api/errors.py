@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -73,7 +74,10 @@ def register_exception_handlers(app: FastAPI) -> None:
             code="validation_error",
             instance=str(request.url.path),
             correlation_id=correlation,
-            metadata={"errors": exc.errors()},
+            # A model_validator's raised ValueError lands in errors()' ctx.error as a
+            # live exception object -- jsonable_encoder (FastAPI's own default handler
+            # uses this too) stringifies it instead of json.dumps choking on it.
+            metadata={"errors": jsonable_encoder(exc.errors())},
         )
         return JSONResponse(status_code=422, content=body)
 

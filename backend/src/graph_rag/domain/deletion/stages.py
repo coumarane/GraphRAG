@@ -33,6 +33,7 @@ class ReindexScope(StrEnum):
     FULL = "full"
     VECTORS = "vectors"
     GRAPH = "graph"
+    DOCUMENT_INTELLIGENCE = "document_intelligence"
 
 
 DELETION_STAGE_ORDER: tuple[DeletionStageName, ...] = tuple(DeletionStageName)

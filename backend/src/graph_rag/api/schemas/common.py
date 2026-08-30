@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
+from graph_rag.config.settings import get_settings
 from graph_rag.domain.modality import Modality
 from graph_rag.domain.retrieval.enums import RetrievalMode
 from graph_rag.domain.retrieval.models import (
@@ -100,6 +102,35 @@ class ElementListResponse(BaseModel):
     limit: int
 
 
+class PageBoundingBox(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class PageElementItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: UUID
+    element_type: str
+    page_start: int
+    page_end: int
+    bounding_box: PageBoundingBox | None = None
+    text: str = ""
+
+
+class PageLayoutResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    version_id: UUID
+    page: int
+    elements: list[PageElementItem] = Field(default_factory=list)
+
+
 class GraphViewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,6 +149,12 @@ class DeletionAcceptedResponse(BaseModel):
     graph_deleted: int | None = None
     objects_deleted: int | None = None
     warnings: list[str] = Field(default_factory=list)
+
+
+class ReprocessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_intelligence: DocumentIntelligenceIngestOptions | None = None
 
 
 class ReprocessAcceptedResponse(BaseModel):
@@ -178,15 +215,17 @@ class RetrievalSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1)
-    mode: RetrievalMode = RetrievalMode.AUTO
+    mode: RetrievalMode = Field(default_factory=lambda: get_settings().retrieval.default_mode)
     document_ids: list[UUID] = Field(default_factory=list)
     modalities: list[Modality] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     security_labels: list[str] = Field(default_factory=list)
-    top_k: int = Field(default=12, ge=1, le=100)
-    graph_depth: int = Field(default=2, ge=0, le=10)
+    top_k: int = Field(default_factory=lambda: get_settings().retrieval.top_k, ge=1, le=100)
+    graph_depth: int = Field(
+        default_factory=lambda: get_settings().retrieval.graph_depth, ge=0, le=10
+    )
     include_graph_paths: bool = False
-    rerank: bool = True
+    rerank: bool = Field(default_factory=lambda: get_settings().retrieval.rerank)
 
 
 class RetrievalSearchResponse(BaseModel):
@@ -203,15 +242,17 @@ class QueryApiRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1)
-    mode: RetrievalMode = RetrievalMode.AUTO
+    mode: RetrievalMode = Field(default_factory=lambda: get_settings().retrieval.default_mode)
     document_ids: list[UUID] = Field(default_factory=list)
     modalities: list[Modality] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     security_labels: list[str] = Field(default_factory=list)
-    top_k: int = Field(default=12, ge=1, le=100)
-    graph_depth: int = Field(default=2, ge=0, le=10)
+    top_k: int = Field(default_factory=lambda: get_settings().retrieval.top_k, ge=1, le=100)
+    graph_depth: int = Field(
+        default_factory=lambda: get_settings().retrieval.graph_depth, ge=0, le=10
+    )
     include_graph_paths: bool = False
-    rerank: bool = True
+    rerank: bool = Field(default_factory=lambda: get_settings().retrieval.rerank)
     answer_model_override: str | None = None
     conversation_id: UUID | None = None
     conversation_history: list[dict[str, str]] = Field(

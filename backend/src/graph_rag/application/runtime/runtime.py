@@ -19,6 +19,15 @@ from graph_rag.domain.ingestion.protocols import (
 from graph_rag.infrastructure.persistence.minio import MinioObjectStore
 
 
+def _build_parser_registry(settings: Settings) -> Any:
+    from graph_rag.application.plugins.parsers import validate_parsing_profile_primaries
+    from graph_rag.infrastructure.parsers.registry import parser_registry_from_settings
+
+    registry = parser_registry_from_settings(settings)
+    validate_parsing_profile_primaries(settings.parsing.profiles, registry.names())
+    return registry
+
+
 def object_store_backend() -> str:
     """Return configured object-store backend name (``memory``, ``minio``, or ``azure_blob``)."""
     return os.environ.get("OBJECT_STORE_BACKEND", "memory").strip().lower() or "memory"
@@ -91,6 +100,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     ingestion_repo: IngestionRepository | None = None
     chat_project_repo = None
     chat_conversation_repo = None
+    document_intelligence_model_repo = None
+    document_extraction_repo = None
     parsing_audit_repo = None
     usage_repo = None
     db_session: AsyncSession | None = None
@@ -106,6 +117,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             LockedAsyncProxy,
             SqlAlchemyChatConversationRepository,
             SqlAlchemyChatProjectRepository,
+            SqlAlchemyDocumentExtractionRepository,
+            SqlAlchemyDocumentIntelligenceModelRepository,
             SqlAlchemyDocumentRepository,
             SqlAlchemyIngestionRepository,
             SqlAlchemyTenantRepository,
@@ -134,11 +147,15 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         tenant_repo = LockedAsyncProxy(SqlAlchemyTenantRepository(raw_session), db_lock)
         document_repo = LockedAsyncProxy(SqlAlchemyDocumentRepository(raw_session), db_lock)
         ingestion_repo = LockedAsyncProxy(SqlAlchemyIngestionRepository(raw_session), db_lock)
-        chat_project_repo = LockedAsyncProxy(
-            SqlAlchemyChatProjectRepository(raw_session), db_lock
-        )
+        chat_project_repo = LockedAsyncProxy(SqlAlchemyChatProjectRepository(raw_session), db_lock)
         chat_conversation_repo = LockedAsyncProxy(
             SqlAlchemyChatConversationRepository(raw_session), db_lock
+        )
+        document_intelligence_model_repo = LockedAsyncProxy(
+            SqlAlchemyDocumentIntelligenceModelRepository(raw_session), db_lock
+        )
+        document_extraction_repo = LockedAsyncProxy(
+            SqlAlchemyDocumentExtractionRepository(raw_session), db_lock
         )
         parsing_audit_repo = LockedAsyncProxy(
             SqlAlchemyParsingAuditRepository(raw_session), db_lock
@@ -180,6 +197,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         ingestion_repo=ingestion_repo,
         chat_project_repo=chat_project_repo,
         chat_conversation_repo=chat_conversation_repo,
+        document_intelligence_model_repo=document_intelligence_model_repo,
+        document_extraction_repo=document_extraction_repo,
         parsing_audit_repo=parsing_audit_repo,
         usage_repo=usage_repo,
         auto_process_ingest=os.environ.get("INGEST_EXECUTION", "worker").strip().lower()
@@ -189,6 +208,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         on_commit=on_commit,
         enable_semantic_graph=os.environ.get("SEMANTIC_GRAPH", "true").strip().lower()
         not in {"0", "false", "no"},
+        parser_registry=_build_parser_registry(resolved),
     )
     if ready_checks:
         container.ready_checks = list(container.ready_checks) + ready_checks

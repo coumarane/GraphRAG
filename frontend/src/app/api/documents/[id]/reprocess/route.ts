@@ -1,4 +1,4 @@
-import { getRagApiUrl, tenantHeaders } from "@/lib/rag";
+import { proxyJson } from "@/lib/rag";
 
 export const runtime = "nodejs";
 
@@ -10,15 +10,6 @@ export async function POST(request: Request, { params }: Params) {
   const path = qs
     ? `/api/v1/documents/${id}/reprocess?${qs}`
     : `/api/v1/documents/${id}/reprocess`;
-  const upstream = await fetch(`${getRagApiUrl()}${path}`, {
-    method: "POST",
-    headers: tenantHeaders(request),
-  });
-  const text = await upstream.text();
-  return new Response(text, {
-    status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("Content-Type") || "application/json",
-    },
-  });
+  const body = await request.text();
+  return proxyJson(path, { request, method: "POST", body: body || undefined });
 }

@@ -7,6 +7,12 @@ from graph_rag.domain.conversation.records import (
     ChatMessageRecord,
     ChatProjectRecord,
 )
+from graph_rag.domain.document_intelligence.records import (
+    DocumentExtractedFieldRecord,
+    DocumentExtractionRunRecord,
+    DocumentIntelligenceModelFieldRecord,
+    DocumentIntelligenceModelRecord,
+)
 from graph_rag.domain.ingestion.records import (
     DocumentRecord,
     DocumentVersionRecord,
@@ -26,6 +32,10 @@ from graph_rag.infrastructure.persistence.postgres.models import (
     ChatConversationModel,
     ChatMessageModel,
     ChatProjectModel,
+    DocumentExtractedFieldModel,
+    DocumentExtractionRunModel,
+    DocumentIntelligenceModelFieldModel,
+    DocumentIntelligenceModelModel,
     DocumentModel,
     DocumentVersionModel,
     IngestionRunModel,
@@ -204,6 +214,88 @@ def chat_message_to_record(model: ChatMessageModel) -> ChatMessageRecord:
         retrieval_mode=model.retrieval_mode,
         retrieval_trace_id=model.retrieval_trace_id,
         graph_paths=[dict(item) for item in (model.graph_paths or [])],
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def document_intelligence_model_field_to_record(
+    model: DocumentIntelligenceModelFieldModel,
+) -> DocumentIntelligenceModelFieldRecord:
+    return DocumentIntelligenceModelFieldRecord(
+        field_id=model.field_id,
+        model_id=model.model_id,
+        tenant_id=model.tenant_id,
+        name=model.name,
+        label=model.label,
+        field_type=model.field_type,
+        default_selected=model.default_selected,
+        promote_to_document_metadata=model.promote_to_document_metadata,
+        sort_order=model.sort_order,
+    )
+
+
+def document_intelligence_model_to_record(
+    model: DocumentIntelligenceModelModel,
+    fields: list[DocumentIntelligenceModelFieldModel],
+) -> DocumentIntelligenceModelRecord:
+    return DocumentIntelligenceModelRecord(
+        model_id=model.model_id,
+        tenant_id=model.tenant_id,
+        model_key=model.model_key,
+        name=model.name,
+        model_type=model.model_type,
+        version=model.version,
+        provider=model.provider,
+        is_builtin=model.is_builtin,
+        created_by_user_id=model.created_by_user_id,
+        field_entity_mappings=dict((model.metadata_json or {}).get("field_entity_mappings") or {}),
+        fields=[document_intelligence_model_field_to_record(field) for field in fields],
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def document_extraction_run_to_record(
+    model: DocumentExtractionRunModel,
+) -> DocumentExtractionRunRecord:
+    return DocumentExtractionRunRecord(
+        run_id=model.run_id,
+        tenant_id=model.tenant_id,
+        document_id=model.document_id,
+        version_id=model.version_id,
+        ingestion_run_id=model.ingestion_run_id,
+        model_id=model.model_id,
+        model_key=model.model_key,
+        provider=model.provider,
+        plugin_version=model.plugin_version,
+        status=model.status,
+        fingerprint=model.fingerprint,
+        selected_fields=list(model.selected_fields_json or []),
+        error_code=model.error_code,
+        error_message=model.error_message,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def document_extracted_field_to_record(
+    model: DocumentExtractedFieldModel,
+) -> DocumentExtractedFieldRecord:
+    return DocumentExtractedFieldRecord(
+        extracted_field_id=model.extracted_field_id,
+        tenant_id=model.tenant_id,
+        run_id=model.run_id,
+        name=model.name,
+        value=model.value_json,
+        normalized_value=model.normalized_value_json,
+        confidence=model.confidence,
+        confidence_band=model.confidence_band,
+        page=model.page,
+        source_text=model.source_text,
+        bounding_box=model.bounding_box_json,
+        extraction_method=model.extraction_method,
+        model_name=model.model_name,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

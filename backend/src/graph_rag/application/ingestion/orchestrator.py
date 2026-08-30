@@ -43,6 +43,15 @@ StagePersistFn = Callable[
     Awaitable[None] | None,
 ]
 
+# RetryPolicy.max_attempts only bounds retries *within* one _execute_with_retries
+# call. Nothing stopped a stage that already exhausted those from being
+# re-attempted by a brand new orchestrator.run() invocation (e.g. a duplicate
+# outbox/stream redispatch) -- mark_running has no guard against restarting a
+# FAILED stage, so attempt_count could climb indefinitely across dispatches. A
+# real run was observed retrying the same stage 70+ times over 12+ hours this
+# way. This is a hard, dispatch-count-independent ceiling on top of that.
+MAX_TOTAL_STAGE_ATTEMPTS = 10
+
 
 @dataclass
 class OrchestrationResult:
@@ -223,6 +232,40 @@ class IngestionOrchestrator:
     ) -> tuple[StageOutcome, DeadLetterRecord | None]:
         metrics = get_metrics()
         while True:
+            current = machine.get_stage(stage)
+            if current.attempt_count >= MAX_TOTAL_STAGE_ATTEMPTS:
+                error_code = current.error_code or "max_attempts_exceeded"
+                error_message = current.error_message or (
+                    f"Stage exceeded {MAX_TOTAL_STAGE_ATTEMPTS} total attempts "
+                    "across retries/redispatches"
+                )
+                if current.status is not StageStatus.FAILED:
+                    machine.mark_failed(stage, error_code=error_code, error_message=error_message)
+                    await self._persist_progress(run, stage_records, machine, stage)
+                outcome = StageOutcome(
+                    status=StageOutcomeStatus.FAILED,
+                    error_code=error_code,
+                    error_message=error_message,
+                    retryable=False,
+                )
+                dead = DeadLetterRecord(
+                    tenant_id=context.tenant.tenant_id,
+                    ingestion_run_id=context.ingestion_run_id,
+                    stage=stage,
+                    attempt_count=current.attempt_count,
+                    error_code=error_code,
+                    error_message=error_message,
+                    correlation_id=context.correlation_id,
+                    payload={
+                        "document_id": str(context.document_id),
+                        "version_id": str(context.version_id),
+                        "content_hash": context.content_hash,
+                        "config_fingerprint": context.config_fingerprint,
+                        "failed_stage": stage.value,
+                        "attempt_count": current.attempt_count,
+                    },
+                )
+                return outcome, dead
             machine.mark_running(
                 stage,
                 idempotency_key=idempotency_key,

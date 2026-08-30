@@ -8,6 +8,9 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.deletion import DeleteDocumentService, ReindexDocumentService
+from graph_rag.application.document_intelligence.providers.internal import (
+    InternalExtractionProvider,
+)
 from graph_rag.application.generation import GenerateAnswerService, QueryDocumentsService
 from graph_rag.application.ingestion import RegisterSourceService
 from graph_rag.application.ingestion.local_pipeline import ProcessRegisteredDocumentService
@@ -17,6 +20,10 @@ from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.conversation.protocols import (
     ChatConversationRepository,
     ChatProjectRepository,
+)
+from graph_rag.domain.document_intelligence.protocols import (
+    DocumentExtractionRepository,
+    DocumentIntelligenceModelRepository,
 )
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ingestion.protocols import (
@@ -49,6 +56,8 @@ from graph_rag.infrastructure.persistence.chunks.lexical_qdrant import (
 from graph_rag.infrastructure.persistence.memory import (
     InMemoryChatConversationRepository,
     InMemoryChatProjectRepository,
+    InMemoryDocumentExtractionRepository,
+    InMemoryDocumentIntelligenceModelRepository,
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
     InMemoryObjectStore,
@@ -149,6 +158,15 @@ def _resolve_models(
     )
 
 
+def _parse_service_from_registry(parser_registry: Any | None) -> Any | None:
+    if parser_registry is None:
+        return None
+    from graph_rag.infrastructure.parsers.registry import ParseDocumentService
+
+    inspector_name = getattr(parser_registry, "inspector_name", None)
+    return ParseDocumentService(registry=parser_registry, inspector_name=inspector_name)
+
+
 def build_local_container(
     *,
     max_upload_bytes: int = 50_000_000,
@@ -162,6 +180,9 @@ def build_local_container(
     ingestion_repo: IngestionRepository | None = None,
     chat_project_repo: ChatProjectRepository | None = None,
     chat_conversation_repo: ChatConversationRepository | None = None,
+    document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None,
+    document_intelligence_provider: InternalExtractionProvider | None = None,
+    document_extraction_repo: DocumentExtractionRepository | None = None,
     parsing_audit_repo: ParsingAuditRepository | None = None,
     usage_repo: UsageRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
@@ -170,6 +191,7 @@ def build_local_container(
     max_pages: int = 2_000,
     on_commit: Callable[[], Awaitable[None]] | None = None,
     enable_semantic_graph: bool = True,
+    parser_registry: Any | None = None,
 ) -> ServiceContainer:
     """Wire adapters for tests, CLI, and local/dev API.
 
@@ -189,6 +211,10 @@ def build_local_container(
             if isinstance(chat_conversation_repo, InMemoryChatConversationRepository)
             else None
         )
+    document_intelligence_model_repo = (
+        document_intelligence_model_repo or InMemoryDocumentIntelligenceModelRepository()
+    )
+    document_extraction_repo = document_extraction_repo or InMemoryDocumentExtractionRepository()
     parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
     usage_repo = usage_repo or InMemoryUsageRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
@@ -223,6 +249,18 @@ def build_local_container(
         chat = chat_model or FakeChatModel(
             text='{"answer":"No indexed evidence yet.","citation_ids":[]}'
         )
+    vision_max_pages_value = int(os.environ.get("VISION_MAX_PAGES", "0") or "0")
+    if document_intelligence_provider is None:
+        from graph_rag.config.settings import get_settings as _get_settings
+
+        di_settings = _get_settings().document_intelligence
+        document_intelligence_provider = InternalExtractionProvider(
+            embedding_model=embedder,
+            chat_model=chat,
+            enable_llm_tier=di_settings.enable_llm_tier,
+            enable_vision_tier=di_settings.enable_vision_tier,
+            vision_max_pages=vision_max_pages_value,
+        )
     extractor = structured_extractor
     if extractor is None and use_live_models:
         from graph_rag.infrastructure.models.openai_direct import ChatStructuredExtractor
@@ -242,12 +280,10 @@ def build_local_container(
         ready = [
             item
             for item in items
-            if item.status
-            in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}
+            if item.status in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}
         ]
         return [
-            item.document_id
-            for item in filter_authorized_documents(authorization, tenant, ready)
+            item.document_id for item in filter_authorized_documents(authorization, tenant, ready)
         ]
 
     async def document_titles(tenant: TenantContext) -> dict[UUID, str]:
@@ -286,10 +322,14 @@ def build_local_container(
         chat_model=chat,
         structured_extractor=extractor,
         parsing_audit_repo=parsing_audit_repo,
+        document_intelligence_provider=document_intelligence_provider,
+        document_extraction_repo=document_extraction_repo,
+        document_intelligence_model_repo=document_intelligence_model_repo,
         max_pages=max_pages,
-        vision_max_pages=int(os.environ.get("VISION_MAX_PAGES", "0") or "0"),
+        vision_max_pages=vision_max_pages_value,
         semantic_graph=enable_semantic_graph,
         on_commit=on_commit,
+        parse_service=_parse_service_from_registry(parser_registry),
     )
 
     def chunk_ids_for_version(
@@ -315,12 +355,14 @@ def build_local_container(
         lexical_store=lexical,
         cache=InMemoryCacheInvalidator(),
         chunk_id_provider=chunk_ids_for_version,
+        ingestion_repo=ingestion_repo,
     )
     reindex_service = ReindexDocumentService(
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
         vector_store=vectors,
         graph_store=graph,
+        object_store=object_store,
     )
     container = ServiceContainer(
         tenant_repo=tenant_repo,
@@ -328,6 +370,8 @@ def build_local_container(
         ingestion_repo=ingestion_repo,
         chat_project_repo=chat_project_repo,
         chat_conversation_repo=chat_conversation_repo,
+        document_intelligence_model_repo=document_intelligence_model_repo,
+        document_extraction_repo=document_extraction_repo,
         object_store=object_store,
         register_source=register,
         retrieve=retrieve,
@@ -343,6 +387,7 @@ def build_local_container(
         process_ingestion=process,
         auto_process_ingest=auto_process_ingest,
         ready_checks=[lambda: True],
+        parser_registry=parser_registry,
     )
     from graph_rag.application.authorization.service import PolicyAuthorizationService
     from graph_rag.application.quotas.service import InMemoryQuotaService

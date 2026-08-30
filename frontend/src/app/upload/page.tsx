@@ -3,11 +3,24 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { FileUp, Upload as UploadIcon, X } from "lucide-react";
 import { readTenantKey } from "@/components/AppShell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DocumentIntelligencePanel } from "@/components/document-intelligence/DocumentIntelligencePanel";
+import type {
+  DocumentExtractionRunItem,
+  DocumentIntelligencePanelValue,
+} from "@/components/document-intelligence/types";
 import { cn } from "@/lib/utils";
+import { buildIngestFormData } from "./uploadPayload";
+
+const CONFIDENCE_BADGE_VARIANT: Record<string, "success" | "warning" | "danger"> = {
+  HIGH: "success",
+  MEDIUM: "warning",
+  LOW: "danger",
+};
 
 type IngestResult = {
   ingestion_run_id: string;
@@ -60,9 +73,15 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IngestResult | null>(null);
   const [run, setRun] = useState<RunStatus | null>(null);
+  const [diValue, setDiValue] = useState<DocumentIntelligencePanelValue>({
+    enabled: false,
+    payload: null,
+  });
+  const [extractions, setExtractions] = useState<DocumentExtractionRunItem[] | null>(null);
   const pollRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
+  const submittedWithExtraction = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -77,7 +96,7 @@ export default function UploadPage() {
     }
   }
 
-  function startPolling(runId: string) {
+  function startPolling(runId: string, documentId: string) {
     stopPolling();
     const tick = async () => {
       try {
@@ -91,6 +110,9 @@ export default function UploadPage() {
         if (TERMINAL.has(body.status)) {
           stopPolling();
           setBusy(false);
+          if (submittedWithExtraction.current) {
+            void fetchExtractions(documentId);
+          }
         }
       } catch {
         /* keep polling */
@@ -98,6 +120,20 @@ export default function UploadPage() {
     };
     void tick();
     pollRef.current = window.setInterval(() => void tick(), 1500);
+  }
+
+  async function fetchExtractions(documentId: string) {
+    try {
+      const res = await fetch(`/api/documents/${documentId}/extractions`, {
+        credentials: "include",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as { items: DocumentExtractionRunItem[] };
+      setExtractions(body.items);
+    } catch {
+      /* results view stays empty on failure */
+    }
   }
 
   function titleFromFilename(name: string): string {
@@ -159,12 +195,11 @@ export default function UploadPage() {
     setError(null);
     setResult(null);
     setRun(null);
+    setExtractions(null);
     stopPolling();
     try {
-      const form = new FormData();
-      form.append("file", file);
-      if (title.trim()) form.append("title", title.trim());
-      form.append("parser_requested", "auto");
+      const form = buildIngestFormData(file, title, diValue);
+      submittedWithExtraction.current = diValue.enabled;
 
       const response = await fetch("/api/ingest", {
         credentials: "include",
@@ -195,7 +230,7 @@ export default function UploadPage() {
       setFile(null);
       setTitle("");
       if (inputRef.current) inputRef.current.value = "";
-      startPolling(body.ingestion_run_id);
+      startPolling(body.ingestion_run_id, body.document_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
@@ -303,6 +338,8 @@ export default function UploadPage() {
           />
         </div>
 
+        <DocumentIntelligencePanel value={diValue} onChange={setDiValue} disabled={busy} />
+
         <Button type="submit" disabled={busy || !file}>
           {busy ? "Processing…" : "Upload & register"}
         </Button>
@@ -363,6 +400,33 @@ export default function UploadPage() {
                 ) : null}
               </div>
             ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {extractions && extractions.length > 0 ? (
+        <Card>
+          <CardContent className="space-y-3 pt-5">
+            {extractions.map((extraction) => (
+              <div key={extraction.run_id} className="space-y-2">
+                <p className="text-xs text-muted">
+                  {extraction.model_key || "ad hoc"} · {extraction.status}
+                </p>
+                <ul className="space-y-1.5">
+                  {extraction.fields.map((field) => (
+                    <li key={field.name} className="flex items-center gap-2 text-sm">
+                      <span className="min-w-40 text-muted">{field.name}</span>
+                      <span className="flex-1 truncate">{String(field.value ?? "")}</span>
+                      <Badge
+                        variant={CONFIDENCE_BADGE_VARIANT[field.confidence_band] || "muted"}
+                      >
+                        {field.confidence_band}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </CardContent>
         </Card>
       ) : null}

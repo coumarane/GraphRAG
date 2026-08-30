@@ -12,6 +12,7 @@ from graph_rag.domain.ingestion.records import (
     DocumentVersionRecord,
     TenantRecord,
 )
+from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.infrastructure.persistence.postgres.mappers import (
     document_to_record,
@@ -134,15 +135,23 @@ class SqlAlchemyDocumentRepository:
     ) -> tuple[list[DocumentRecord], int]:
         tenant.ensure_authorized()
         await set_tenant_context(self._session, tenant)
-        base = select(DocumentModel).where(DocumentModel.tenant_id == tenant.tenant_id)
+        # Soft-deleted rows (status=deleted) stay out of the default catalog.
+        # Hard-delete is preferred, but the fallback soft-delete path and any
+        # legacy rows must not resurface in list views or skew pagination.
+        active = (
+            DocumentModel.tenant_id == tenant.tenant_id,
+            DocumentModel.status != DocumentLifecycleStatus.DELETED.value,
+        )
         total_result = await self._session.execute(
-            select(DocumentModel.document_id).where(
-                DocumentModel.tenant_id == tenant.tenant_id
-            )
+            select(DocumentModel.document_id).where(*active)
         )
         total = len(list(total_result.scalars().all()))
         result = await self._session.execute(
-            base.order_by(DocumentModel.updated_at.desc().nullslast()).offset(offset).limit(limit)
+            select(DocumentModel)
+            .where(*active)
+            .order_by(DocumentModel.updated_at.desc().nullslast())
+            .offset(offset)
+            .limit(limit)
         )
         models = list(result.scalars().all())
         return [document_to_record(model) for model in models], total
@@ -271,6 +280,30 @@ class SqlAlchemyDocumentRepository:
             text("SELECT pg_advisory_xact_lock(:lock_key)"),
             {"lock_key": lock_key},
         )
+
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> bool:
+        tenant.ensure_authorized()
+        await set_tenant_context(self._session, tenant)
+        result = await self._session.execute(
+            select(DocumentModel).where(
+                DocumentModel.document_id == document_id,
+                DocumentModel.tenant_id == tenant.tenant_id,
+            )
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return False
+        # ON DELETE CASCADE (see alembic/versions/0001_lifecycle.py and
+        # 0008_document_intelligence.py) removes document_versions,
+        # ingestion_runs/stages, parser_attempts, parsing-audit rows, and
+        # document_extraction_runs/fields in the same statement.
+        await self._session.delete(model)
+        await self._session.flush()
+        return True
 
 
 def assert_tenant_context_present(tenant: TenantContext | None) -> TenantContext:

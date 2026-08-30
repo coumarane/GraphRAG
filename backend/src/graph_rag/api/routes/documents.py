@@ -2,33 +2,54 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import tempfile
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import Response
+from pydantic import ValidationError as PydanticValidationError
 
 from graph_rag.api.dependencies import ContainerDep, TenantDep
 from graph_rag.api.schemas import (
     ChunkListResponse,
     ChunkPreviewItem,
     DeletionAcceptedResponse,
+    DocumentExtractionListResponse,
+    DocumentExtractionRunItem,
     DocumentListResponse,
     DocumentResponse,
     ElementItem,
     ElementListResponse,
+    ExtractedFieldItem,
     GraphViewResponse,
     IngestAcceptedResponse,
     IngestionRunResponse,
+    PageBoundingBox,
+    PageElementItem,
+    PageLayoutResponse,
     ReprocessAcceptedResponse,
+    ReprocessRequest,
 )
 from graph_rag.application.authorization.filters import filter_authorized_documents
 from graph_rag.application.authorization.gate import ensure_document_read, require_action
+from graph_rag.application.document_intelligence.models import (
+    DocumentIntelligenceIngestOptions,
+)
 from graph_rag.application.ingestion.register_source import RegisterSourceRequest
+from graph_rag.application.ingestion.stage_pipeline import artifact_key
+from graph_rag.application.ingestion.visual_enrichment import render_visual_png
 from graph_rag.application.runtime.container import ServiceContainer
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.deletion.stages import ReindexScope
+from graph_rag.domain.document_intelligence.records import (
+    DocumentExtractedFieldRecord,
+    DocumentExtractionRunRecord,
+)
+from graph_rag.domain.documents.document import NormalizedDocument
+from graph_rag.domain.elements.base import ElementBase
 from graph_rag.domain.ingestion.records import DocumentRecord
 from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from graph_rag.domain.modality import Modality
@@ -39,6 +60,23 @@ from graph_rag.shared.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def _parse_document_intelligence_options(
+    raw: str | None,
+) -> DocumentIntelligenceIngestOptions | None:
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValidationError("document_intelligence must be a JSON object") from exc
+    try:
+        return DocumentIntelligenceIngestOptions.model_validate(payload)
+    except PydanticValidationError as exc:
+        raise ValidationError(
+            "document_intelligence is invalid", details={"errors": exc.errors()}
+        ) from exc
 
 
 async def _run_local_ingest(
@@ -69,13 +107,13 @@ async def ingest_document(
     tags: str | None = Form(default=None),
     security_labels: str | None = Form(default=None),
     force_new_version: bool = Form(default=False),
+    document_intelligence: str | None = Form(default=None),
 ) -> IngestAcceptedResponse:
     container.metrics["requests_total"] = container.metrics.get("requests_total", 0) + 1
     service = container.require_register_source()
     tag_list = [part.strip() for part in (tags or "").split(",") if part.strip()]
-    label_list = [
-        part.strip() for part in (security_labels or "").split(",") if part.strip()
-    ]
+    label_list = [part.strip() for part in (security_labels or "").split(",") if part.strip()]
+    document_intelligence_options = _parse_document_intelligence_options(document_intelligence)
 
     tmp_path: Path | None = None
     try:
@@ -98,6 +136,7 @@ async def ingest_document(
                 security_labels=label_list,
                 parser_requested=parser_requested,
                 force_new_version=force_new_version,
+                document_intelligence=document_intelligence_options,
             ),
         )
     finally:
@@ -111,10 +150,7 @@ async def ingest_document(
             tenant,
             result.ingestion_run_id,
         )
-    elif (
-        container.outbox_store is not None
-        and not result.duplicate_version
-    ):
+    elif container.outbox_store is not None and not result.duplicate_version:
         from graph_rag.application.ingestion.enqueue import enqueue_ingest_ids
 
         run = await container.require_ingestion_repo().get_run(tenant, result.ingestion_run_id)
@@ -190,6 +226,7 @@ async def list_documents(
     items, total = await container.require_document_repo().list_documents(
         tenant, offset=0, limit=max(offset + limit, 200)
     )
+    items = [item for item in items if item.status is not DocumentLifecycleStatus.DELETED]
     authz = container.require_authorization()
     allowed = filter_authorized_documents(authz, tenant, items)
     total = len(allowed)
@@ -226,13 +263,14 @@ async def reprocess_document(
     container: ContainerDep,
     background_tasks: BackgroundTasks,
     scope: str = "full",
+    body: ReprocessRequest | None = None,
 ) -> ReprocessAcceptedResponse:
     """Re-index an already stored document without re-uploading the file."""
     try:
         reindex_scope = ReindexScope(scope.lower())
     except ValueError as exc:
         raise ValidationError(
-            "scope must be one of: full, vectors, graph",
+            "scope must be one of: full, vectors, graph, document_intelligence",
             details={"scope": scope},
         ) from exc
 
@@ -249,16 +287,22 @@ async def reprocess_document(
         tenant,
         document_id=document_id,
         scope=reindex_scope,
+        document_intelligence=body.document_intelligence if body else None,
     )
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is not None:
         document.status = DocumentLifecycleStatus.INGESTING
         await container.require_document_repo().update_document(tenant, document)
 
+    auto_run_scopes = {
+        ReindexScope.FULL,
+        ReindexScope.VECTORS,
+        ReindexScope.DOCUMENT_INTELLIGENCE,
+    }
     if (
         container.auto_process_ingest
         and result.ingestion_run_id is not None
-        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+        and reindex_scope in auto_run_scopes
     ):
         background_tasks.add_task(
             _run_local_ingest,
@@ -269,7 +313,7 @@ async def reprocess_document(
     elif (
         container.outbox_store is not None
         and result.ingestion_run_id is not None
-        and reindex_scope in {ReindexScope.FULL, ReindexScope.VECTORS}
+        and reindex_scope in auto_run_scopes
     ):
         from graph_rag.application.ingestion.enqueue import enqueue_ingest_ids
 
@@ -372,6 +416,59 @@ async def list_document_chunks(
     )
 
 
+def _extraction_run_response(
+    run: DocumentExtractionRunRecord,
+    fields: list[DocumentExtractedFieldRecord],
+) -> DocumentExtractionRunItem:
+    return DocumentExtractionRunItem(
+        run_id=run.run_id,
+        status=run.status,
+        model_key=run.model_key,
+        provider=run.provider,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        error_code=run.error_code,
+        error_message=run.error_message,
+        fields=[
+            ExtractedFieldItem(
+                name=field.name,
+                value=field.value,
+                normalized_value=field.normalized_value,
+                confidence=field.confidence,
+                confidence_band=field.confidence_band,
+                page=field.page,
+                source_text=field.source_text,
+                extraction_method=field.extraction_method,
+                model_name=field.model_name,
+            )
+            for field in fields
+        ],
+    )
+
+
+@router.get("/{document_id}/extractions", response_model=DocumentExtractionListResponse)
+async def list_document_extractions(
+    document_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> DocumentExtractionListResponse:
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    ensure_document_read(container.require_authorization(), tenant, document)
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        return DocumentExtractionListResponse(items=[])
+    repo = container.require_document_extraction_repo()
+    runs = await repo.list_runs_for_version(tenant, document_id, resolved_version)
+    items = []
+    for run in runs:
+        fields = await repo.list_fields_for_run(tenant, run.run_id)
+        items.append(_extraction_run_response(run, fields))
+    return DocumentExtractionListResponse(items=items)
+
+
 @router.get("/{document_id}/original")
 async def download_original(
     document_id: UUID,
@@ -406,6 +503,133 @@ async def download_original(
             "Cache-Control": "private, max-age=60",
         },
     )
+
+
+@router.get("/{document_id}/pages/{page}/render")
+async def render_document_page(
+    document_id: UUID,
+    page: int,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> Response:
+    """Rasterize one page of the original document to PNG.
+
+    Used by the "Parsed content" viewer to render a page image that JS can
+    overlay clickable element bounding boxes on -- something an
+    iframe-embedded native PDF viewer (used by /original) can't support.
+    """
+    if page < 1:
+        raise ValidationError("page must be >= 1")
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        raise NotFoundError(
+            "Document has no version to render",
+            details={"document_id": str(document_id)},
+        )
+    version = await container.require_document_repo().get_version(tenant, resolved_version)
+    if version is None or not version.original_object_key:
+        raise NotFoundError(
+            "Original object not found",
+            details={"document_id": str(document_id), "version_id": str(resolved_version)},
+        )
+    if version.page_count is not None and page > version.page_count:
+        raise NotFoundError(
+            "Page out of range",
+            details={
+                "document_id": str(document_id),
+                "page": page,
+                "page_count": version.page_count,
+            },
+        )
+    data = await container.require_object_store().get_bytes(
+        tenant, object_key=version.original_object_key
+    )
+    try:
+        png_bytes = await asyncio.to_thread(render_visual_png, data, page, None)
+    except Exception as exc:  # pypdfium2 raises on corrupt/out-of-range pages
+        raise NotFoundError(
+            "Unable to render page",
+            details={"document_id": str(document_id), "page": page},
+        ) from exc
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/{document_id}/pages/{page}/layout", response_model=PageLayoutResponse)
+async def get_page_layout(
+    document_id: UUID,
+    page: int,
+    tenant: TenantDep,
+    container: ContainerDep,
+    version_id: UUID | None = None,
+) -> PageLayoutResponse:
+    """Element bounding boxes + text for one page, for the click-to-highlight overlay.
+
+    Sourced from the cached "normalized" object-store artifact rather than
+    the (dead, never-populated) /elements route -- see that route's own
+    ElementView projection, which nothing in the codebase ever constructs.
+    """
+    if page < 1:
+        raise ValidationError("page must be >= 1")
+    document = await container.require_document_repo().get_document(tenant, document_id)
+    if document is None:
+        raise NotFoundError("Document not found", details={"document_id": str(document_id)})
+    resolved_version = version_id or document.current_version_id
+    if resolved_version is None:
+        raise NotFoundError(
+            "Document has no version",
+            details={"document_id": str(document_id)},
+        )
+    key = artifact_key(tenant.tenant_id, document_id, resolved_version, "normalized")
+    try:
+        raw = await container.require_object_store().get_bytes(tenant, object_key=key)
+    except NotFoundError as exc:
+        raise NotFoundError(
+            "Page layout not available yet",
+            details={"document_id": str(document_id), "version_id": str(resolved_version)},
+        ) from exc
+    normalized = NormalizedDocument.model_validate(json.loads(raw.decode("utf-8")))
+    if page > normalized.page_count:
+        raise NotFoundError(
+            "Page out of range",
+            details={
+                "document_id": str(document_id),
+                "page": page,
+                "page_count": normalized.page_count,
+            },
+        )
+    items = [
+        PageElementItem(
+            element_id=element.element_id,
+            element_type=str(element.element_type),
+            page_start=element.page_start,
+            page_end=element.page_end,
+            bounding_box=_first_bbox_for_page(element, page),
+            text=element.normalized_content or element.raw_content or "",
+        )
+        for element in normalized.elements
+        if element.page_start <= page <= element.page_end
+    ]
+    return PageLayoutResponse(
+        document_id=document_id,
+        version_id=resolved_version,
+        page=page,
+        elements=items,
+    )
+
+
+def _first_bbox_for_page(element: ElementBase, page: int) -> PageBoundingBox | None:
+    for bbox in element.bounding_boxes:
+        if bbox.page_number == page:
+            return PageBoundingBox(x0=bbox.x0, y0=bbox.y0, x1=bbox.x1, y1=bbox.y1)
+    return None
 
 
 @router.get("/{document_id}/elements", response_model=ElementListResponse)
@@ -512,6 +736,9 @@ async def delete_document(
     document_id: UUID,
     tenant: TenantDep,
     container: ContainerDep,
+    delete_vectors: bool = True,
+    delete_graph: bool = True,
+    delete_objects: bool = True,
 ) -> DeletionAcceptedResponse:
     document = await container.require_document_repo().get_document(tenant, document_id)
     if document is None:
@@ -522,7 +749,17 @@ async def delete_document(
         Action.DOCUMENT_DELETE,
         document=document,
     )
-    operation = await container.submit_deletion(tenant, document_id)
+    operation = await container.submit_deletion(
+        tenant,
+        document_id,
+        delete_vectors=delete_vectors,
+        delete_graph=delete_graph,
+        delete_objects=delete_objects,
+    )
+    # Without an explicit commit the Postgres row delete stays in the
+    # process-local session and never reaches the database (and other API
+    # replicas keep serving the "deleted" document).
+    await container.commit_db()
     result = operation.result
     return DeletionAcceptedResponse(
         operation_id=operation.operation_id,

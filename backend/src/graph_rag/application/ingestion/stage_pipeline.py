@@ -9,10 +9,27 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.document_intelligence.catalog import builtin_model_by_key
+from graph_rag.application.document_intelligence.models import (
+    DocumentExtractionRunStatus,
+    DocumentIntelligenceExtractionRequest,
+    DocumentIntelligenceExtractionResult,
+    DocumentIntelligenceIngestOptions,
+)
+from graph_rag.application.document_intelligence.providers import INTERNAL_PROVIDER_VERSION
+from graph_rag.application.document_intelligence.resolution import (
+    find_custom_model,
+    resolve_requested_fields,
+)
+from graph_rag.application.document_intelligence.reuse import (
+    clone_field_for_new_run,
+    compute_fingerprint,
+    select_reuse_candidate,
+    split_reused_and_delta_fields,
+)
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from graph_rag.application.ingestion.handlers import CallableStageHandler
 from graph_rag.application.ingestion.local_pipeline import (
-    _STRUCTURED_PARSERS,
     ProcessRegisteredDocumentService,
     _parse_document_raw,
     _stamp_hybrid_vision_provenance,
@@ -25,13 +42,20 @@ from graph_rag.application.ingestion.orchestrator import (
 )
 from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
 from graph_rag.application.ingestion.visual_enrichment import collect_visual_targets
+from graph_rag.application.plugins.parsers import is_structured_parser
 from graph_rag.application.usage.context import usage_context
 from graph_rag.config.settings import get_settings
 from graph_rag.domain.chunks.models import ChunkBase
 from graph_rag.domain.chunks.vectors import ChunkingResult, ChunkVectorRecord
+from graph_rag.domain.document_intelligence.records import (
+    DocumentExtractedFieldRecord,
+    DocumentExtractionRunRecord,
+    DocumentIntelligenceModelRecord,
+)
 from graph_rag.domain.documents.document import NormalizedDocument
+from graph_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
-from graph_rag.domain.ids import content_sha256_hex, deterministic_id
+from graph_rag.domain.ids import content_sha256_hex, deterministic_id, new_id
 from graph_rag.domain.ingestion.handlers import StageContext, StageOutcome, StageOutcomeStatus
 from graph_rag.domain.ingestion.records import ParserAttemptRecord
 from graph_rag.domain.ingestion.retry import RetryPolicy
@@ -49,16 +73,23 @@ from graph_rag.domain.parsing.audit import (
     StageRunStatus,
 )
 from graph_rag.domain.parsing.normalize import normalize_parser_result
-from graph_rag.domain.parsing.types import ParserName, ParseSource, RawParserResult
+from graph_rag.domain.parsing.types import ParseSource, RawParserResult
 from graph_rag.domain.storage.protocols import version_prefix
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.parsers.registry import ParseDocumentService
 from graph_rag.shared.exceptions import NotFoundError, PermanentError
 from graph_rag.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def _artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str) -> str:
+def artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str) -> str:
+    """Object-store key for a stage artifact, keyed by (tenant, document, version) -- not run_id.
+
+    Public since ``application/deletion/reindex.py`` needs to compute and
+    delete these same keys to invalidate stale cached derived data (see its
+    own module docstring for why).
+    """
     prefix = version_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
     return f"{prefix}artifacts/{name}.json"
 
@@ -91,7 +122,7 @@ class PipelineWorkspace:
 
     def _key(self, name: str) -> str:
         assert self.tenant is not None and self.run is not None
-        return _artifact_key(
+        return artifact_key(
             self.tenant.tenant_id,
             self.run.document_id,
             self.run.version_id,
@@ -148,6 +179,9 @@ class DocumentPipeline:
             IngestionStageName.ENRICH_TABLES: self.stage_skip_optional,
             IngestionStageName.ENRICH_EQUATIONS: self.stage_skip_optional,
             IngestionStageName.BUILD_CONTEXT: self.stage_skip_optional,
+            IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE: (
+                self.stage_extract_document_intelligence
+            ),
             IngestionStageName.CHUNK: self.stage_chunk,
             IngestionStageName.EMBED: self.stage_embed,
             IngestionStageName.INDEX_VECTOR: self.stage_index_vector,
@@ -266,7 +300,7 @@ class DocumentPipeline:
             w.selected_parser = stored.get("selected_parser")
             return StageOutcome(status=StageOutcomeStatus.COMPLETED)
         requested = w.run.parser_requested if w.run else None
-        selected = ParserName.DOCLING.value
+        selected = "docling"
         reason = "selection_occurs_at_parse"
         if requested and requested not in {"auto", None}:
             selected = str(requested)
@@ -298,6 +332,9 @@ class DocumentPipeline:
             version_id=context.version_id,
             parser_requested=w.run.parser_requested,
             max_pages=w.service.max_pages,
+            parse_service=w.service.parse_service
+            if isinstance(w.service.parse_service, ParseDocumentService)
+            else None,
         )
         w.raw = outcome.raw
         w.attempted = outcome.attempted
@@ -607,6 +644,232 @@ class DocumentPipeline:
             status=StageOutcomeStatus.SKIPPED, warning="community summarization disabled"
         )
 
+    async def stage_extract_document_intelligence(self, context: StageContext) -> StageOutcome:
+        """Cheap-tier (no LLM/vision) field extraction; never fails the run.
+
+        A bad ``model_id`` or extraction gap is recorded on the extraction
+        run row and surfaced as a stage warning, never as
+        ``StageOutcomeStatus.FAILED`` -- that status halts the entire
+        ingestion run (blocks chunk/embed/graph indexing), and Document
+        Intelligence is optional enrichment, same tier as
+        ``BUILD_CONTEXT``/``ENRICH_TABLES``.
+        """
+        if not get_settings().document_intelligence.enabled:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED,
+                warning="document_intelligence disabled globally",
+            )
+        await self.ensure_loaded(context)
+        w = self.w
+        raw_options = (w.run.metadata or {}).get("document_intelligence") if w.run else None
+        if not raw_options:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED, warning="document_intelligence not requested"
+            )
+        options = DocumentIntelligenceIngestOptions.model_validate(raw_options)
+        if not options.enabled:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED,
+                warning="document_intelligence disabled for this upload",
+            )
+        provider = w.service.document_intelligence_provider
+        repo = w.service.document_extraction_repo
+        if provider is None or repo is None:
+            return StageOutcome(
+                status=StageOutcomeStatus.SKIPPED,
+                warning="document_intelligence provider/repository not configured",
+            )
+        if w.normalized is None:
+            raise PermanentError(
+                "NORMALIZE must complete before EXTRACT_DOCUMENT_INTELLIGENCE",
+                code="missing_normalized",
+            )
+
+        # Idempotency on retry: keyed by ingestion_run_id, NOT (tenant,
+        # document, version) like parse_raw/normalized are -- DI options are
+        # a per-run user choice, not a pure function of the document bytes,
+        # so two runs against the same version could legitimately request
+        # different models/fields.
+        cache_name = f"document_intelligence_{context.ingestion_run_id.hex}"
+        cached = await w.load_json(cache_name)
+        if cached is not None:
+            return StageOutcome.model_validate(cached)
+
+        model_repo = w.service.document_intelligence_model_repo
+        custom_models: list[DocumentIntelligenceModelRecord] = []
+        if (
+            options.model_id
+            and builtin_model_by_key(options.model_id) is None
+            and model_repo is not None
+        ):
+            custom_models = await model_repo.list_models(context.tenant)
+
+        resolution = resolve_requested_fields(options, custom_models=custom_models)
+        fingerprint = compute_fingerprint(
+            content_hash=(w.version.content_hash if w.version else None) or "",
+            plugin_version=INTERNAL_PROVIDER_VERSION,
+            model_key=resolution.model_key,
+            fields=resolution.fields,
+        )
+        if not resolution.fields:
+            await repo.create_run(
+                context.tenant,
+                DocumentExtractionRunRecord(
+                    run_id=new_id(),
+                    tenant_id=context.tenant.tenant_id,
+                    document_id=context.document_id,
+                    version_id=context.version_id,
+                    ingestion_run_id=context.ingestion_run_id,
+                    model_key=resolution.model_key,
+                    provider="internal",
+                    plugin_version=INTERNAL_PROVIDER_VERSION,
+                    status=DocumentExtractionRunStatus.FAILED.value,
+                    fingerprint=fingerprint,
+                    selected_fields=list(options.selected_fields or []),
+                    error_code="model_unresolved",
+                    error_message="; ".join(resolution.warnings) or "no fields resolved",
+                ),
+            )
+            await w.service._flush()
+            outcome = StageOutcome(
+                status=StageOutcomeStatus.COMPLETED_WITH_WARNINGS,
+                warning=f"document_intelligence: could not resolve model {options.model_id!r}",
+            )
+            await w.save_json(cache_name, outcome.model_dump(mode="json"))
+            return outcome
+
+        # Cost-control reuse: split requested fields into what a prior run
+        # against this same document/model/provider/version already has a
+        # row for (reused, cloned rather than re-extracted) vs. what doesn't
+        # (delta, the only fields actually sent to the provider). See
+        # reuse.py's module docstring for why this is one row-presence-based
+        # mechanism rather than a separate exact-fingerprint short-circuit.
+        prior_runs = await repo.list_runs_for_version(
+            context.tenant, context.document_id, context.version_id
+        )
+        candidate = select_reuse_candidate(
+            prior_runs,
+            model_key=resolution.model_key,
+            provider="internal",
+            plugin_version=INTERNAL_PROVIDER_VERSION,
+        )
+        candidate_fields = (
+            await repo.list_fields_for_run(context.tenant, candidate.run_id)
+            if candidate is not None
+            else []
+        )
+        reused_rows, delta_fields = split_reused_and_delta_fields(
+            resolution.fields, candidate_fields
+        )
+
+        if delta_fields:
+            result = await provider.extract(
+                DocumentIntelligenceExtractionRequest(
+                    document=w.normalized,
+                    fields=delta_fields,
+                    model_name=resolution.model_name,
+                    raw_parser_result=w.raw,
+                    document_bytes=w.data,
+                )
+            )
+        else:
+            result = DocumentIntelligenceExtractionResult(
+                fields=[],
+                requested_field_names=[field.name for field in resolution.fields],
+                unresolved_field_names=[],
+            )
+
+        covered_names = {row.name for row in reused_rows} | {field.name for field in result.fields}
+        unresolved_field_names = [
+            field.name for field in resolution.fields if field.name not in covered_names
+        ]
+        run_status = (
+            DocumentExtractionRunStatus.COMPLETED_WITH_WARNINGS
+            if unresolved_field_names
+            else DocumentExtractionRunStatus.COMPLETED
+        )
+        created_run = await repo.create_run(
+            context.tenant,
+            DocumentExtractionRunRecord(
+                run_id=new_id(),
+                tenant_id=context.tenant.tenant_id,
+                document_id=context.document_id,
+                version_id=context.version_id,
+                ingestion_run_id=context.ingestion_run_id,
+                model_key=resolution.model_key,
+                provider="internal",
+                plugin_version=INTERNAL_PROVIDER_VERSION,
+                status=run_status.value,
+                fingerprint=fingerprint,
+                selected_fields=[field.name for field in resolution.fields],
+            ),
+        )
+        new_field_records = [
+            clone_field_for_new_run(
+                row, new_extracted_field_id=new_id(), new_run_id=created_run.run_id
+            )
+            for row in reused_rows
+        ] + [
+            DocumentExtractedFieldRecord(
+                extracted_field_id=new_id(),
+                tenant_id=context.tenant.tenant_id,
+                run_id=created_run.run_id,
+                name=field.name,
+                value=field.value,
+                normalized_value=field.normalized_value,
+                confidence=field.confidence,
+                confidence_band=field.confidence_band.value,
+                page=field.page,
+                source_text=field.source_text,
+                bounding_box=field.bounding_box.model_dump(mode="json")
+                if field.bounding_box
+                else None,
+                extraction_method=field.extraction_method.value,
+                model_name=field.model_name,
+            )
+            for field in result.fields
+        ]
+        promote_names = {
+            field.name for field in resolution.fields if field.promote_to_document_metadata
+        }
+        if promote_names:
+            await w.save_json(
+                f"document_intelligence_promoted_{context.ingestion_run_id.hex}",
+                {
+                    "fields": [
+                        {"name": row.name, "value": row.value, "page": row.page}
+                        for row in new_field_records
+                        if row.name in promote_names
+                    ]
+                },
+            )
+        if new_field_records:
+            await repo.add_extracted_fields(context.tenant, created_run.run_id, new_field_records)
+        await w.service._flush()
+
+        reused_count, extracted_count = len(reused_rows), len(result.fields)
+        warning_bits: list[str] = []
+        if reused_count:
+            assert candidate is not None
+            warning_bits.append(
+                f"reused {reused_count}/{len(resolution.fields)} fields from run "
+                f"{candidate.run_id}; extracted {extracted_count} new"
+            )
+        if unresolved_field_names:
+            warning_bits.append(f"missing={unresolved_field_names}")
+        warning = ("document_intelligence: " + "; ".join(warning_bits)) if warning_bits else None
+        outcome = StageOutcome(
+            status=(
+                StageOutcomeStatus.COMPLETED_WITH_WARNINGS
+                if unresolved_field_names
+                else StageOutcomeStatus.COMPLETED
+            ),
+            warning=warning,
+            elements_processed=(reused_count + extracted_count) or None,
+        )
+        await w.save_json(cache_name, outcome.model_dump(mode="json"))
+        return outcome
+
     async def stage_enrich_images(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)
         w = self.w
@@ -636,10 +899,26 @@ class DocumentPipeline:
         doc_title = (
             (w.document.title or "").strip() if w.document is not None else ""
         ) or w.filename
+        promoted_stored = await w.load_json(
+            f"document_intelligence_promoted_{context.ingestion_run_id.hex}"
+        )
+        promoted_fields = (promoted_stored or {}).get("fields") or []
+        doc_level_fields = {
+            item["name"]: item["value"] for item in promoted_fields if item.get("page") is None
+        }
+        promoted_by_page: dict[int, dict[str, Any]] = {}
+        for item in promoted_fields:
+            if item.get("page") is not None:
+                promoted_by_page.setdefault(item["page"], {})[item["name"]] = item["value"]
         stamped: list[ChunkBase] = []
         for chunk in all_chunks:
             meta = dict(chunk.metadata)
             meta["document_name"] = doc_title
+            di_meta = dict(doc_level_fields)
+            for page in range(chunk.page_start, chunk.page_end + 1):
+                di_meta.update(promoted_by_page.get(page, {}))
+            if di_meta:
+                meta["document_intelligence"] = di_meta
             stamped.append(chunk.model_copy(update={"metadata": meta}))
         w.chunks = stamped
         w.audit.mark_downstream(chunking=True)
@@ -756,9 +1035,91 @@ class DocumentPipeline:
                 w.raw.warnings.append(f"semantic_graph_failed:{type(graph_exc).__name__}")
             projected = StructuralGraphBuilder().build(w.normalized, chunking_result)
             w.graph_counts = await w.service.graph_store.upsert_graph(context.tenant, projected)
+        mapped_nodes, mapped_rels = await self._build_mapped_entity_graph(context)
+        if mapped_nodes:
+            mapped_counts = await w.service.graph_store.upsert_graph(
+                context.tenant,
+                ProjectedGraph(
+                    tenant_id=context.tenant.tenant_id,
+                    document_id=context.document_id,
+                    version_id=context.version_id,
+                    nodes=mapped_nodes,
+                    relationships=mapped_rels,
+                ),
+            )
+            w.graph_counts = {
+                key: w.graph_counts.get(key, 0) + mapped_counts.get(key, 0)
+                for key in set(w.graph_counts) | set(mapped_counts)
+            }
         w.audit.mark_downstream(graph_index=True)
         await w.save_json("graph", {"counts": w.graph_counts, "upserted": True})
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
+
+    async def _build_mapped_entity_graph(
+        self, context: StageContext
+    ) -> tuple[list[GraphNode], list[GraphRelationship]]:
+        """Configured field->entity nodes for explicitly mapped fields only.
+
+        Never automatic: a field only produces a graph node when the
+        resolved model's ``field_entity_mappings`` names it (set via
+        ``POST /document-intelligence/models``). Returns early with zero
+        repo/graph calls whenever DI wasn't requested or nothing is mapped.
+        """
+        w = self.w
+        raw_options = (w.run.metadata or {}).get("document_intelligence") if w.run else None
+        if not raw_options:
+            return [], []
+        options = DocumentIntelligenceIngestOptions.model_validate(raw_options)
+        if not options.enabled or not options.model_id:
+            return [], []
+        model_repo = w.service.document_intelligence_model_repo
+        extraction_repo = w.service.document_extraction_repo
+        if model_repo is None or extraction_repo is None:
+            return [], []
+        custom_models = await model_repo.list_models(context.tenant)
+        record = find_custom_model(options.model_id, custom_models)
+        if record is None or not record.field_entity_mappings:
+            return [], []
+        runs = await extraction_repo.list_runs_for_version(
+            context.tenant, context.document_id, context.version_id
+        )
+        run = next((r for r in runs if r.ingestion_run_id == context.ingestion_run_id), None)
+        if run is None:
+            return [], []
+        extracted_fields = await extraction_repo.list_fields_for_run(context.tenant, run.run_id)
+        extracted_by_name = {field.name: field for field in extracted_fields}
+        nodes: list[GraphNode] = []
+        relationships: list[GraphRelationship] = []
+        for field_name, mapping in record.field_entity_mappings.items():
+            field = extracted_by_name.get(field_name)
+            if field is None or not isinstance(field.value, str | int | float):
+                continue
+            label = mapping["label"]
+            relationship_type = mapping.get("relationship_type") or "MENTIONS"
+            entity_id = deterministic_id(str(context.tenant.tenant_id), label, str(field.value))
+            nodes.append(
+                GraphNode(
+                    node_id=entity_id,
+                    label=label,
+                    tenant_id=context.tenant.tenant_id,
+                    properties={"name": str(field.value), "value": field.value},
+                )
+            )
+            relationships.append(
+                GraphRelationship(
+                    relationship_id=deterministic_id(
+                        str(context.tenant.tenant_id),
+                        relationship_type,
+                        str(context.document_id),
+                        str(entity_id),
+                    ),
+                    relationship_type=relationship_type,
+                    tenant_id=context.tenant.tenant_id,
+                    source_node_id=context.document_id,
+                    target_node_id=entity_id,
+                )
+            )
+        return nodes, relationships
 
     async def stage_index_graph(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)
@@ -778,7 +1139,7 @@ class DocumentPipeline:
                 "Cannot finalize without normalized document", code="missing_normalized"
             )
         used_parser = w.used_parser or (w.raw.parser_name if w.raw else "unknown")
-        parser_quality_ok = used_parser in _STRUCTURED_PARSERS
+        parser_quality_ok = is_structured_parser(used_parser)
         vision_complete = w.vision_failed == 0
         w.needs_review = not parser_quality_ok or not vision_complete
         if w.raw is not None:

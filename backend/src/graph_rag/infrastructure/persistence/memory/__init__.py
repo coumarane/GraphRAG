@@ -4,6 +4,10 @@ from graph_rag.infrastructure.persistence.memory.conversations import (
     InMemoryChatConversationRepository,
     InMemoryChatProjectRepository,
 )
+from graph_rag.infrastructure.persistence.memory.document_intelligence import (
+    InMemoryDocumentExtractionRepository,
+    InMemoryDocumentIntelligenceModelRepository,
+)
 from graph_rag.infrastructure.persistence.memory.lifecycle import (
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
@@ -15,6 +19,8 @@ from graph_rag.infrastructure.persistence.memory.usage import InMemoryUsageRepos
 __all__ = [
     "InMemoryChatConversationRepository",
     "InMemoryChatProjectRepository",
+    "InMemoryDocumentExtractionRepository",
+    "InMemoryDocumentIntelligenceModelRepository",
     "InMemoryDocumentRepository",
     "InMemoryIngestionRepository",
     "InMemoryObjectStore",

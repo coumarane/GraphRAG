@@ -13,11 +13,13 @@ import {
   Menu,
   MessageSquare,
   Network,
+  Puzzle,
   Search,
   Settings,
   Upload,
   AlertTriangle,
   Users,
+  Workflow,
   X,
 } from "lucide-react";
 import {
@@ -72,6 +74,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/ops", label: "Observability", icon: Activity },
       { href: "/usage", label: "Usage", icon: CircleDollarSign },
+      { href: "/plugins", label: "Plugins", icon: Puzzle, adminOnly: true },
+      {
+        href: "/pipeline-builder",
+        label: "Pipeline Builder",
+        icon: Workflow,
+        adminOnly: true,
+      },
       { href: "/users", label: "Users", icon: Users, adminOnly: true },
       { href: "/settings", label: "Configuration", icon: Settings },
     ],

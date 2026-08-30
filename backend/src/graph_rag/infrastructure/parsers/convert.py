@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.elements.geometry import BoundingBox
 from graph_rag.domain.parsing.types import RawElement, RawPage, RawParserResult
 from graph_rag.shared.exceptions import ParserError
 
@@ -65,6 +66,7 @@ def dict_to_raw_result(parser_name: str, payload: dict[str, Any]) -> RawParserRe
                 parser_confidence=_as_float(item.get("confidence")),
                 ocr_confidence=_as_float(item.get("ocr_confidence")),
                 metadata=metadata,
+                bounding_boxes=_bbox_list(item.get("bbox")),
             )
         )
 
@@ -105,6 +107,23 @@ def dict_to_raw_result(parser_name: str, payload: dict[str, Any]) -> RawParserRe
         warnings=[str(item) for item in warnings],
         metadata=dict(payload.get("metadata") or {}),
     )
+
+
+def _bbox_list(value: object) -> list[BoundingBox]:
+    if not isinstance(value, dict):
+        return []
+    try:
+        return [
+            BoundingBox(
+                page_number=int(value["page_number"]),
+                x0=float(value["x0"]),
+                y0=float(value["y0"]),
+                x1=float(value["x1"]),
+                y1=float(value["y1"]),
+            )
+        ]
+    except (KeyError, TypeError, ValueError):
+        return []
 
 
 def _as_float(value: object) -> float | None:

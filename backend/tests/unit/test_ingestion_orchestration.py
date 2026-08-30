@@ -11,6 +11,7 @@ from graph_rag.application.ingestion import (
     IngestionOrchestrator,
     default_noop_handlers,
 )
+from graph_rag.application.ingestion.orchestrator import MAX_TOTAL_STAGE_ATTEMPTS
 from graph_rag.domain.ids import content_sha256_hex, new_id
 from graph_rag.domain.ingestion import (
     INGESTION_STAGE_ORDER,
@@ -156,6 +157,50 @@ async def test_permanent_failure_dead_letters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_max_total_stage_attempts_caps_runaway_redispatch() -> None:
+    """A stage must never retry forever across separate orchestrator.run()
+    invocations (e.g. a duplicate outbox/stream redispatch), even though
+    RetryPolicy.max_attempts only bounds retries within a single invocation.
+
+    Regression test for an incident where a stage's persisted attempt_count
+    climbed past 70 over 12+ hours because nothing capped re-entry from
+    outside a single _execute_with_retries call.
+    """
+    tenant, run, stages = _run_bundle()
+    call_count = {"n": 0}
+
+    async def always_fails(context: StageContext) -> StageOutcome:
+        _ = context
+        call_count["n"] += 1
+        raise TransientError("still broken")
+
+    handlers = default_noop_handlers(skip_communities=True)
+    handlers[IngestionStageName.VALIDATE] = CallableStageHandler(
+        IngestionStageName.VALIDATE, always_fails
+    )
+    orchestrator = IngestionOrchestrator(
+        handlers,
+        retry_policy=RetryPolicy(max_attempts=3, base_delay_seconds=0.0, jitter=False),
+        sleep_fn=lambda _d: None,
+    )
+
+    # Simulate many separate dispatches of the same run against the same
+    # persisted stage_records, each of which only ever sees up to 3 fresh
+    # attempts internally.
+    result = None
+    for _ in range(10):
+        result = await orchestrator.run(tenant=tenant, run=run, stage_records=stages)
+
+    assert result is not None
+    assert result.run_status is IngestionRunStatus.FAILED
+    validate_stage = next(s for s in stages if s.stage is IngestionStageName.VALIDATE)
+    assert validate_stage.attempt_count <= MAX_TOTAL_STAGE_ATTEMPTS
+    # The handler itself must stop being invoked once the ceiling is hit --
+    # proving this is a real circuit breaker, not just a status label.
+    assert call_count["n"] <= MAX_TOTAL_STAGE_ATTEMPTS
+
+
+@pytest.mark.asyncio
 async def test_worker_processes_queue_and_persists_dead_letter() -> None:
     tenant, run, stages = _run_bundle()
     store = {"run": run, "stages": stages}
@@ -218,4 +263,4 @@ async def test_worker_processes_queue_and_persists_dead_letter() -> None:
     assert len(listed) == 1
     assert isinstance(listed[0], DeadLetterRecord)
     assert store["run"].status is IngestionRunStatus.FAILED
-    assert len(INGESTION_STAGE_ORDER) == 22
+    assert len(INGESTION_STAGE_ORDER) == 23

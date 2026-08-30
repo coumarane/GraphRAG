@@ -15,3 +15,6 @@ concurrency:
 security:
   max_upload_bytes: 104857600
   max_pages: 2000
+
+plugins:
+  allowlist: []

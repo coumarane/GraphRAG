@@ -25,6 +25,7 @@ from graph_rag.domain.parsing.types import (
     RawElement,
     RawPage,
     RawParserResult,
+    parser_key,
 )
 
 __all__ = [
@@ -47,6 +48,7 @@ __all__ = [
     "RawParserResult",
     "detect_boilerplate",
     "normalize_parser_result",
+    "parser_key",
     "reclassify_boilerplate_elements",
     "recommend_from_inspection",
 ]

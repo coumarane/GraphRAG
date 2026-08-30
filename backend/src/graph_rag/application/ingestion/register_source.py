@@ -8,6 +8,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from graph_rag.application.document_intelligence.models import (
+    DocumentIntelligenceIngestOptions,
+)
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.ingestion.protocols import (
     DocumentRepository,
@@ -28,6 +31,7 @@ from graph_rag.domain.ingestion.state_machine import build_persisted_stage_recor
 from graph_rag.domain.storage.object_keys import original_object_key, sanitize_filename
 from graph_rag.domain.storage.protocols import ObjectStore, SourceBytes, SourceLoader
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.domain.types import JsonValue
 from graph_rag.shared.exceptions import ConflictError
 
 
@@ -47,7 +51,12 @@ def _title_from_source(
         stem = PurePosixPath(sanitize_filename(source_filename)).stem
         return stem.replace("_", " ")
     explicit = (request_title or "").strip()
-    return explicit or (file_stem.replace("_", " ") if file_stem else None) or loaded_filename or "Untitled"
+    return (
+        explicit
+        or (file_stem.replace("_", " ") if file_stem else None)
+        or loaded_filename
+        or "Untitled"
+    )
 
 
 class RegisterSourceRequest(BaseModel):
@@ -66,6 +75,7 @@ class RegisterSourceRequest(BaseModel):
     parser_requested: str | None = "auto"
     correlation_id: str | None = None
     force_new_version: bool = False
+    document_intelligence: DocumentIntelligenceIngestOptions | None = None
 
 
 class RegisterSourceResult(BaseModel):
@@ -182,6 +192,15 @@ class RegisterSourceService:
                     None,
                     content_hash,
                 )
+                if duplicate is not None:
+                    # Versions have no persisted status flip of their own (no
+                    # update_version in this protocol) -- deletion only ever
+                    # marks the owning DOCUMENT as DELETED. Without this check
+                    # a deleted document's old version permanently blocks any
+                    # future re-upload of the same bytes.
+                    owner = await self.document_repo.get_document(tenant, duplicate.document_id)
+                    if owner is not None and owner.status is DocumentLifecycleStatus.DELETED:
+                        duplicate = None
                 if duplicate is not None and duplicate.original_object_key:
                     raise ConflictError(
                         "This document is already uploaded. Identical content was found.",
@@ -284,6 +303,7 @@ class RegisterSourceService:
                 content_hash=content_hash,
                 parser_requested=request.parser_requested,
                 correlation_id=request.correlation_id,
+                document_intelligence=request.document_intelligence,
             )
 
             if self.quotas is not None and doc_reservation is not None:
@@ -360,12 +380,16 @@ class RegisterSourceService:
         content_hash: str,
         parser_requested: str | None,
         correlation_id: str | None,
+        document_intelligence: DocumentIntelligenceIngestOptions | None = None,
     ) -> IngestionRunRecord:
         run_id = new_id()
         stages = build_persisted_stage_records(
             tenant_id=tenant.tenant_id,
             ingestion_run_id=run_id,
         )
+        metadata: dict[str, JsonValue] = {}
+        if document_intelligence is not None:
+            metadata["document_intelligence"] = document_intelligence.model_dump(mode="json")
         return await self.ingestion_repo.create_run(
             tenant,
             IngestionRunRecord(
@@ -378,6 +402,7 @@ class RegisterSourceService:
                 config_fingerprint=self.config_fingerprint,
                 content_hash=content_hash,
                 correlation_id=correlation_id,
+                metadata=metadata,
             ),
             stages,
         )

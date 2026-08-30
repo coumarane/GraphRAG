@@ -6,6 +6,10 @@ import pytest
 
 from graph_rag.application.chunking import EmbedChunksService
 from graph_rag.application.retrieval import RetrieveEvidenceService
+from graph_rag.application.retrieval.retrieve import (
+    _boost_exact_token_matches,
+    _looks_like_exact_token,
+)
 from graph_rag.domain.chunks.models import ChunkBase, ChunkType
 from graph_rag.domain.graph.models import GraphNode, GraphRelationship, ProjectedGraph
 from graph_rag.domain.graph.vocabulary import (
@@ -725,3 +729,66 @@ async def test_mix_runs_multiple_branches() -> None:
     assert outcome.result.mode is RetrievalMode.MIX
     assert len(outcome.branch_counts) >= 2
     assert outcome.result.evidence
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        ("chunk_overlap", True),
+        ("v1.2", True),
+        ("SKU-1234", True),
+        ("hello", False),
+        ("temperature", False),
+    ],
+)
+def test_looks_like_exact_token(token: str, expected: bool) -> None:
+    assert _looks_like_exact_token(token) is expected
+
+
+def test_boost_exact_token_matches_promotes_verbatim_hit() -> None:
+    tenant_id = new_id()
+    document_id = new_id()
+    version_id = new_id()
+    matching = _chunk(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text="The chunk_overlap parameter controls how much text repeats between chunks.",
+    )
+    other = _chunk(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text="General discussion of document segmentation strategies.",
+    )
+    evidence = [
+        chunk_to_evidence(other, score=0.9, score_components={"dense": 0.9}),
+        chunk_to_evidence(matching, score=0.2, score_components={"dense": 0.2}),
+    ]
+
+    boosted = _boost_exact_token_matches(evidence, "What does chunk_overlap do?")
+
+    assert boosted[0].chunk_id == matching.chunk_id
+    assert boosted[0].score_components["exact_token_match"] == 1.5
+    assert "exact_token_match" not in boosted[1].score_components
+
+
+def test_boost_exact_token_matches_leaves_prose_queries_unchanged() -> None:
+    tenant_id = new_id()
+    document_id = new_id()
+    version_id = new_id()
+    chunk = _chunk(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        text="A plain prose sentence about suppliers.",
+    )
+    evidence = [chunk_to_evidence(chunk, score=0.5, score_components={"dense": 0.5})]
+
+    boosted = _boost_exact_token_matches(evidence, "What suppliers are compliant?")
+
+    assert boosted == evidence
+
+
+def test_boost_exact_token_matches_handles_empty_evidence() -> None:
+    assert _boost_exact_token_matches([], "chunk_overlap") == []

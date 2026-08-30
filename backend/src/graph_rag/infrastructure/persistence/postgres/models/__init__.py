@@ -15,6 +15,12 @@ from graph_rag.infrastructure.persistence.postgres.models.conversations import (
     ChatMessageModel,
     ChatProjectModel,
 )
+from graph_rag.infrastructure.persistence.postgres.models.document_intelligence import (
+    DocumentExtractedFieldModel,
+    DocumentExtractionRunModel,
+    DocumentIntelligenceModelFieldModel,
+    DocumentIntelligenceModelModel,
+)
 from graph_rag.infrastructure.persistence.postgres.models.documents import (
     DocumentModel,
     DocumentVersionModel,
@@ -38,6 +44,10 @@ from graph_rag.infrastructure.persistence.postgres.models.parsing_audit import (
     ProcessingStageRunModel,
     RoutingDecisionModel,
 )
+from graph_rag.infrastructure.persistence.postgres.models.plugins import (
+    PluginConfigurationModel,
+    PluginModel,
+)
 from graph_rag.infrastructure.persistence.postgres.models.usage import ModelUsageEventModel
 from graph_rag.infrastructure.persistence.postgres.models.users import UserModel
 
@@ -47,6 +57,10 @@ __all__ = [
     "ChatMessageModel",
     "ChatProjectModel",
     "ContentLossRecordModel",
+    "DocumentExtractedFieldModel",
+    "DocumentExtractionRunModel",
+    "DocumentIntelligenceModelFieldModel",
+    "DocumentIntelligenceModelModel",
     "DocumentModel",
     "DocumentParseReportModel",
     "DocumentVersionModel",
@@ -59,6 +73,8 @@ __all__ = [
     "OutboxEventModel",
     "PageParseReportModel",
     "ParserAttemptModel",
+    "PluginConfigurationModel",
+    "PluginModel",
     "PolicyVersionModel",
     "ProcessingStageRunModel",
     "QuotaAssignmentModel",

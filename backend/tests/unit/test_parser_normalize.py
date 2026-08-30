@@ -96,6 +96,31 @@ def test_dict_to_raw_and_normalize_matches_contract() -> None:
     assert_matches_contract("normalized-document", document.model_dump(mode="json"))
 
 
+def test_dict_to_raw_result_reads_bbox_into_bounding_boxes() -> None:
+    payload = _sample_payload()
+    payload["elements"][0]["bbox"] = {
+        "page_number": 1,
+        "x0": 0.1,
+        "y0": 0.2,
+        "x1": 0.3,
+        "y1": 0.4,
+    }
+    raw = dict_to_raw_result("docling", payload)
+    boxed = raw.elements[0]
+    assert len(boxed.bounding_boxes) == 1
+    box = boxed.bounding_boxes[0]
+    assert (box.page_number, box.x0, box.y0, box.x1, box.y1) == (1, 0.1, 0.2, 0.3, 0.4)
+    # Elements without a "bbox" key stay empty rather than crashing.
+    assert raw.elements[1].bounding_boxes == []
+
+
+def test_dict_to_raw_result_ignores_malformed_bbox() -> None:
+    payload = _sample_payload()
+    payload["elements"][0]["bbox"] = {"x0": 0.1}  # missing required keys
+    raw = dict_to_raw_result("docling", payload)
+    assert raw.elements[0].bounding_boxes == []
+
+
 def test_normalize_rejects_invalid_page_range() -> None:
     source = empty_parse_source(filename="bad.pdf", mime_type="application/pdf")
     raw = RawParserResult(
@@ -143,6 +168,47 @@ async def test_docling_adapter_with_injected_convert() -> None:
     document = normalize_parser_result(raw, source)
     assert document.parser_info.parser_name == ParserName.DOCLING.value
     assert_matches_contract("normalized-document", document.model_dump(mode="json"))
+
+
+@pytest.mark.asyncio
+async def test_docling_adapter_times_out_a_hanging_convert_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stuck Docling conversion must fail cleanly, not hang PARSE forever.
+
+    Regression test: DoclingParser.parse() called run_parser_sync() without
+    a timeout, despite run_parser_sync already supporting one -- a stalled
+    layout/table model or hung I/O call inside the SDK could block the
+    whole PARSE stage indefinitely with no way to recover, exactly like the
+    vision-LLM call fixed earlier (a separate, narrower gap in the same
+    ingestion run).
+    """
+    import asyncio
+    import threading
+
+    from graph_rag.infrastructure.parsers.docling import adapter as docling_adapter
+    from graph_rag.shared.exceptions import TransientError
+
+    monkeypatch.setattr(docling_adapter, "DEFAULT_PARSE_TIMEOUT_SECONDS", 0.05)
+
+    # A bounded wait, not a true infinite sleep: asyncio.wait_for only
+    # detaches the *caller* from a timed-out thread-pool call, it does not
+    # kill the underlying OS thread -- a genuinely unbounded sleep here
+    # would leak a live thread that blocks the test process's own clean
+    # shutdown (ThreadPoolExecutor joins outstanding workers at exit).
+    stall = threading.Event()
+
+    def _hangs_past_the_timeout(_data: bytes, _name: str) -> dict[str, object]:
+        stall.wait(timeout=2.0)
+        raise AssertionError("must be timed out before returning")
+
+    parser = DoclingParser(convert_fn=_hangs_past_the_timeout)
+    source = empty_parse_source(
+        filename="enterprise.pdf", mime_type="application/pdf", content=b"%PDF"
+    )
+
+    with pytest.raises(TransientError, match="timed out"):
+        await asyncio.wait_for(parser.parse(source, ParseOptions()), timeout=5.0)
 
 
 def test_docling_page_helpers_use_provenance() -> None:
@@ -197,7 +263,7 @@ async def test_parse_service_fallback_chain() -> None:
         source,
         ParseOptions(parser_override=ParserName.DOCLING, fallback_parsers=[ParserName.MARKER]),
     )
-    assert selection.primary is ParserName.DOCLING
+    assert selection.primary == ParserName.DOCLING
     assert attempted == ["docling", "marker"]
     assert document.parser_info.parser_name == "marker"
     assert document.parser_info.attempted_parsers == attempted

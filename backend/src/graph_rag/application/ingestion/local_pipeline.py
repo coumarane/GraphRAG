@@ -14,6 +14,9 @@ from typing import Any
 from uuid import UUID
 
 from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
+from graph_rag.application.document_intelligence.providers.internal import (
+    InternalExtractionProvider,
+)
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
 from graph_rag.application.ingestion.parsing_audit_collector import ParsingAuditCollector
 from graph_rag.application.ingestion.visual_enrichment import (
@@ -21,10 +24,19 @@ from graph_rag.application.ingestion.visual_enrichment import (
     prompt_for_target,
     render_visual_png,
 )
+from graph_rag.application.plugins.parsers import (
+    is_structured_parser,
+    parser_is_installed,
+)
 from graph_rag.application.usage.context import usage_context
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.chunks.vectors import ChunkingResult
+from graph_rag.domain.document_intelligence.protocols import (
+    DocumentExtractionRepository,
+    DocumentIntelligenceModelRepository,
+)
 from graph_rag.domain.elements.enums import ElementType
+from graph_rag.domain.elements.geometry import BoundingBox
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.graph.structural import StructuralGraphBuilder
 from graph_rag.domain.ids import new_id
@@ -54,11 +66,11 @@ from graph_rag.domain.parsing.normalize import normalize_parser_result
 from graph_rag.domain.parsing.types import (
     OcrMode,
     ParseOptions,
-    ParserName,
     ParserProfile,
     ParseSource,
     RawElement,
     RawParserResult,
+    parser_key,
 )
 from graph_rag.domain.retrieval.condition_facets import (
     extract_condition_facets,
@@ -69,7 +81,6 @@ from graph_rag.domain.retrieval.condition_facets import (
 from graph_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from graph_rag.domain.storage.protocols import ObjectStore
 from graph_rag.domain.tenant import TenantContext
-from graph_rag.infrastructure.parsers.availability import parser_is_installed
 from graph_rag.infrastructure.parsers.pdfium.extractor import (
     extract_pdf_raw as _extract_pdf_raw,
 )
@@ -91,16 +102,6 @@ extract_pdf_raw = _extract_pdf_raw
 extract_text_raw = _extract_text_raw
 
 logger = get_logger(__name__)
-
-_STRUCTURED_PARSERS = frozenset(
-    {
-        ParserName.DOCLING.value,
-        ParserName.MINERU.value,
-        ParserName.MARKER.value,
-        ParserName.PADDLEOCR.value,
-        ParserName.TEXT.value,
-    }
-)
 
 
 @dataclass
@@ -155,6 +156,12 @@ _MAP_LOCATION_HINT = re.compile(
     r"research and development|location|sites?|plant)\b"
 )
 _PERCENT_TOKEN = re.compile(r"(?<!\d)\d{1,3}(?:\.\d+)?\s*%")
+# Backstop for a hung ChatModel.generate() call -- a stalled socket (proxy
+# holding the connection open, provider outage) never raises, so the
+# per-target retry/backoff below never fires and PARSE wedges forever with
+# no timeout to recover from. Longer than OpenAIChatModel's own default
+# per-request timeout so that client-level error surfaces first when it can.
+_VISION_CALL_TIMEOUT_SECONDS = 120.0
 _FLAT_CHART_HINT = re.compile(
     r"(?i)\b("
     r"irritation|patch test|concentration level|response\s*,?\s*%|"
@@ -216,16 +223,13 @@ Rules:
 """
 
 
-def _parse_parser_name(value: str | None) -> ParserName | None:
+def _parse_parser_name(value: str | None) -> str | None:
     if not value:
         return None
     lowered = value.strip().casefold()
     if lowered in {"", "auto"}:
         return None
-    try:
-        return ParserName(lowered)
-    except ValueError:
-        return None
+    return lowered
 
 
 def _failure_category(exc: Exception) -> str:
@@ -278,6 +282,7 @@ async def _parse_document_raw(
     version_id: UUID,
     parser_requested: str | None,
     max_pages: int,
+    parse_service: ParseDocumentService | None = None,
 ) -> DocumentParseOutcome:
     """Parse via registry routing with pdfium always available as final fallback."""
     source = ParseSource(
@@ -295,42 +300,38 @@ async def _parse_document_raw(
         ocr_mode=OcrMode.AUTO,
         failure_mode="fallback",
     )
-    service = ParseDocumentService()
+    service = parse_service or ParseDocumentService()
     attempted: list[str] = []
     attempts: list[ParserAttemptOutcome] = []
-    selected = ParserName.DOCLING.value
+    selected = "docling"
     reason = "default enterprise parser"
     try:
         selection = await service.select_parser(source, options)
-        selected = selection.primary.value
+        selected = parser_key(selection.primary)
         reason = selection.reason
-        chain = [selection.primary, *selection.fallbacks]
-        if ParserName.PDFIUM not in chain:
-            chain.append(ParserName.PDFIUM)
+        chain = [parser_key(item) for item in (selection.primary, *selection.fallbacks)]
+        if "pdfium" not in chain:
+            chain.append("pdfium")
         last_error: Exception | None = None
         for parser_name in chain:
-            attempted.append(parser_name.value)
+            attempted.append(parser_name)
             started = time.perf_counter()
             try:
-                if (
-                    parser_name is not ParserName.PDFIUM
-                    and parser_name is not ParserName.TEXT
-                    and not parser_is_installed(parser_name.value)
-                ):
+                if parser_name not in {"pdfium", "text"} and not parser_is_installed(parser_name):
                     raise ConfigurationError(
-                        f"Optional dependency for {parser_name.value} is not installed",
-                        details={"parser": parser_name.value},
+                        f"Optional dependency for {parser_name} is not installed",
+                        details={"parser": parser_name},
                     )
                 raw = await service.parse_raw(source, parser_name, options)
                 duration_ms = (time.perf_counter() - started) * 1000.0
-                if not raw.elements and parser_name is not ParserName.PDFIUM:
+                if not raw.elements and parser_name != "pdfium":
                     raise ParserError(
                         "Parser returned no elements",
-                        details={"parser": parser_name.value},
+                        details={"parser": parser_name},
                     )
                 attempts.append(
                     ParserAttemptOutcome(
-                        parser_name=parser_name.value,
+                        parser_name=parser_name,
                         success=True,
                         duration_ms=duration_ms,
                         element_count=len(raw.elements),
@@ -357,7 +358,7 @@ async def _parse_document_raw(
                 last_error = exc
                 attempts.append(
                     ParserAttemptOutcome(
-                        parser_name=parser_name.value,
+                        parser_name=parser_name,
                         success=False,
                         duration_ms=duration_ms,
                         failure_category=_failure_category(exc),
@@ -366,7 +367,7 @@ async def _parse_document_raw(
                 )
                 logger.warning(
                     "ingest_parser_attempt_failed",
-                    parser=parser_name.value,
+                    parser=parser_name,
                     error=str(exc),
                     failure_category=_failure_category(exc),
                 )
@@ -593,9 +594,7 @@ async def _vision_enrich_pages(
     ``max_pages <= 0`` means no cap (every visual target). Returns
     ``(extra_elements, enriched_page_numbers, target_count, failed_count)``.
     """
-    vision_targets = [
-        target for target in collect_visual_targets(raw) if target.tool == "vision"
-    ]
+    vision_targets = [target for target in collect_visual_targets(raw) if target.tool == "vision"]
     if max_pages > 0:
         vision_targets = vision_targets[:max_pages]
     if not vision_targets:
@@ -625,24 +624,27 @@ async def _vision_enrich_pages(
                 png = await asyncio.to_thread(
                     render_visual_png, data, target.page_number, target.bbox
                 )
-                response = await chat.generate(
-                    GenerationRequest(
-                        messages=[
-                            ChatMessage(
-                                role=MessageRole.USER,
-                                content=[
-                                    TextContentPart(
-                                        text=prompt_for_target(target, _VISION_PROMPT)
-                                    ),
-                                    ImageBytesContentPart(data=png, mime_type="image/png"),
-                                ],
-                            )
-                        ],
-                        role=ModelRole.VISION,
-                        model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
-                        temperature=0.0,
-                        prompt_version="local-pdf-vision-v6-per-element",
-                    )
+                response = await asyncio.wait_for(
+                    chat.generate(
+                        GenerationRequest(
+                            messages=[
+                                ChatMessage(
+                                    role=MessageRole.USER,
+                                    content=[
+                                        TextContentPart(
+                                            text=prompt_for_target(target, _VISION_PROMPT)
+                                        ),
+                                        ImageBytesContentPart(data=png, mime_type="image/png"),
+                                    ],
+                                )
+                            ],
+                            role=ModelRole.VISION,
+                            model_name=os.environ.get("OPENAI_VISION_MODEL") or None,
+                            temperature=0.0,
+                            prompt_version="local-pdf-vision-v6-per-element",
+                        )
+                    ),
+                    timeout=_VISION_CALL_TIMEOUT_SECONDS,
                 )
                 payload = _parse_vision_json(response.text)
                 break
@@ -654,9 +656,7 @@ async def _vision_enrich_pages(
                         kind=target.kind,
                         error=str(exc),
                     )
-                    raw.warnings.append(
-                        f"vision_failed_{target.kind}_page_{target.page_number}"
-                    )
+                    raw.warnings.append(f"vision_failed_{target.kind}_page_{target.page_number}")
                     payload = {}
                 else:
                     await asyncio.sleep(1.5 * (attempt + 1))
@@ -673,6 +673,13 @@ async def _vision_enrich_pages(
 
         before = len(extras)
         page_number = target.page_number
+        # target.bbox is None for a full-page vision pass (no crop) -- fall
+        # back to the whole page so the "Parsed content" viewer's overlay
+        # still has something to highlight instead of silently rendering
+        # nothing for every vision-enriched element.
+        element_bbox = target.bbox or BoundingBox(
+            page_number=page_number, x0=0.0, y0=0.0, x1=1.0, y1=1.0
+        )
         ocr = str(payload.get("ocr_text") or "").strip()
         summary = str(payload.get("page_summary") or "").strip()
         conditions = str(payload.get("measurement_conditions") or "").strip()
@@ -761,8 +768,7 @@ async def _vision_enrich_pages(
                         )
                         gap_lines.append(
                             f"- {category or 'category'}: {leader or 'n/a'} "
-                            f"({strength or 'unspecified'})"
-                            + (f" — {note}" if note else "")
+                            f"({strength or 'unspecified'})" + (f" — {note}" if note else "")
                         )
                 values_block = ""
                 if values_md:
@@ -846,6 +852,7 @@ async def _vision_enrich_pages(
                         raw_content=chart_text,
                         normalized_content=chart_text,
                         ocr_confidence=0.75,
+                        bounding_boxes=[element_bbox],
                         metadata=chart_meta,
                     )
                 )
@@ -857,7 +864,9 @@ async def _vision_enrich_pages(
                     tables = [
                         *tables,
                         {
-                            "caption": str(figure.get("title") or summary or f"Page {page_number} chart").strip(),
+                            "caption": str(
+                                figure.get("title") or summary or f"Page {page_number} chart"
+                            ).strip(),
                             "markdown": values_md,
                         },
                     ]
@@ -885,6 +894,7 @@ async def _vision_enrich_pages(
                     raw_content=description,
                     normalized_content=description,
                     ocr_confidence=0.7,
+                    bounding_boxes=[element_bbox],
                     metadata=image_meta,
                 )
             )
@@ -906,6 +916,7 @@ async def _vision_enrich_pages(
                     section_path=page_path,
                     raw_content=markdown,
                     normalized_content=markdown,
+                    bounding_boxes=[element_bbox],
                     metadata={"caption": caption, "source": "openai_vision_table"},
                 )
             )
@@ -927,6 +938,7 @@ async def _vision_enrich_pages(
                     section_path=page_path,
                     raw_content=text or formula_description,
                     normalized_content=formula_description or text,
+                    bounding_boxes=[element_bbox],
                     metadata={
                         "latex": text or formula_description,
                         "semantic_description": formula_description or text,
@@ -998,10 +1010,14 @@ class ProcessRegisteredDocumentService:
     chat_model: ChatModel | None = None
     structured_extractor: StructuredExtractor | None = None
     parsing_audit_repo: ParsingAuditRepository | None = None
+    document_intelligence_provider: InternalExtractionProvider | None = None
+    document_extraction_repo: DocumentExtractionRepository | None = None
+    document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None
     max_pages: int = 2_000
     vision_max_pages: int = 0
     semantic_graph: bool = True
     on_commit: object | None = None
+    parse_service: object | None = None
 
     async def _flush(self) -> None:
         """Commit mid-ingest so an OOM/kill cannot leave the document stuck."""
@@ -1024,6 +1040,15 @@ class ProcessRegisteredDocumentService:
         document = await self.document_repo.get_document(tenant, document_id)
         if document is None:
             return None
+        if document.status in {
+            DocumentLifecycleStatus.DELETED,
+            DocumentLifecycleStatus.DELETING,
+        }:
+            # Deletion is final -- a run that was in flight when the document
+            # was deleted (or a retry that outlives it) must never resurrect
+            # it back into "ingesting"/"ready"/"failed". Guard DELETING too so
+            # a mid-delete worker failure cannot flip the row back to FAILED.
+            return document
         if metadata_updates:
             meta = dict(document.metadata)
             meta.update(metadata_updates)
@@ -1095,9 +1120,7 @@ class ProcessRegisteredDocumentService:
             ingestion_run_id=ingestion_run_id,
         )
         try:
-            data = await self.object_store.get_bytes(
-                tenant, object_key=version.original_object_key
-            )
+            data = await self.object_store.get_bytes(tenant, object_key=version.original_object_key)
             filename = version.source_filename or Path(version.original_object_key).name
             mime = (version.mime_type or "").lower()
             embed_name = resolve_model_label(self.embedding_model)
@@ -1125,6 +1148,9 @@ class ProcessRegisteredDocumentService:
                 version_id=run.version_id,
                 parser_requested=run.parser_requested,
                 max_pages=self.max_pages,
+                parse_service=self.parse_service
+                if isinstance(self.parse_service, ParseDocumentService)
+                else None,
             )
             raw = outcome.raw
             attempted = outcome.attempted
@@ -1144,8 +1170,8 @@ class ProcessRegisteredDocumentService:
                         failure_category=attempt.failure_category,
                         warnings=[],
                         metadata={
-                "error": attempt.error or "",
-                "element_count": attempt.element_count,
+                            "error": attempt.error or "",
+                            "element_count": attempt.element_count,
                             "selected_parser": selected_parser,
                         },
                     ),
@@ -1218,9 +1244,7 @@ class ProcessRegisteredDocumentService:
                     bbox=bbox,
                     section_path=list(element.section_path),
                     confidence_score=element.parser_confidence,
-                    confidence_source=(
-                        "parser" if element.parser_confidence is not None else None
-                    ),
+                    confidence_source=("parser" if element.parser_confidence is not None else None),
                 )
                 page = audit.ensure_page(page_no)
                 audit._pages[page_no] = page.model_copy(
@@ -1256,9 +1280,7 @@ class ProcessRegisteredDocumentService:
             )
 
             vision_needed = [
-                target
-                for target in collect_visual_targets(raw)
-                if target.tool == "vision"
+                target for target in collect_visual_targets(raw) if target.tool == "vision"
             ]
             vision_target_count = len(vision_needed)
             vision_failed = 0
@@ -1393,11 +1415,7 @@ class ProcessRegisteredDocumentService:
             audit.stage_started("CHUNK", tool="HierarchicalMultimodalChunker")
             chunks = HierarchicalMultimodalChunker().chunk(normalized)
             all_chunks = list(chunks.all_chunks)
-            doc_title = (
-                (document.title or "").strip()
-                if document is not None
-                else ""
-            ) or filename
+            doc_title = ((document.title or "").strip() if document is not None else "") or filename
             stamped: list = []
             for chunk in all_chunks:
                 meta = dict(chunk.metadata)
@@ -1467,12 +1485,8 @@ class ProcessRegisteredDocumentService:
                             document_id=str(run.document_id),
                         )
                         raw.warnings.append(f"semantic_graph_failed:{type(graph_exc).__name__}")
-                        projected = StructuralGraphBuilder().build(
-                            normalized, chunking_result
-                        )
-                        graph_counts = await self.graph_store.upsert_graph(
-                            tenant, projected
-                        )
+                        projected = StructuralGraphBuilder().build(normalized, chunking_result)
+                        graph_counts = await self.graph_store.upsert_graph(tenant, projected)
                 else:
                     projected = StructuralGraphBuilder().build(normalized, chunking_result)
                     graph_counts = await self.graph_store.upsert_graph(tenant, projected)
@@ -1483,7 +1497,7 @@ class ProcessRegisteredDocumentService:
                 )
                 audit.mark_downstream(graph_index=True)
 
-            parser_quality_ok = used_parser in _STRUCTURED_PARSERS
+            parser_quality_ok = is_structured_parser(used_parser)
             vision_complete = vision_failed == 0
             needs_review = not parser_quality_ok or not vision_complete
             if needs_review:

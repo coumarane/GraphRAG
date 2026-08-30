@@ -14,6 +14,7 @@ from graph_rag.application.deletion import (
     ReindexDocumentService,
     ReindexResult,
 )
+from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
 from graph_rag.application.generation.query import QueryDocumentsService
 from graph_rag.application.ingestion.register_source import RegisterSourceService
 from graph_rag.application.retrieval.retrieve import RetrieveEvidenceService
@@ -25,6 +26,10 @@ from graph_rag.domain.conversation.protocols import (
 from graph_rag.domain.deletion.stages import (
     DeletionOperationStatus,
     ReindexScope,
+)
+from graph_rag.domain.document_intelligence.protocols import (
+    DocumentExtractionRepository,
+    DocumentIntelligenceModelRepository,
 )
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ids import deterministic_id, new_id
@@ -78,6 +83,8 @@ class ServiceContainer:
     ingestion_repo: IngestionRepository | None = None
     chat_project_repo: ChatProjectRepository | None = None
     chat_conversation_repo: ChatConversationRepository | None = None
+    document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None
+    document_extraction_repo: DocumentExtractionRepository | None = None
     object_store: ObjectStore | None = None
     register_source: RegisterSourceService | None = None
     retrieve: RetrieveEvidenceService | None = None
@@ -107,6 +114,7 @@ class ServiceContainer:
     auth_service: Any | None = None
     authorization: Any | None = None
     quotas: Any | None = None
+    parser_registry: Any | None = None
 
     def require_authorization(self) -> Any:
         if self.authorization is None:
@@ -143,7 +151,7 @@ class ServiceContainer:
             return
         try:
             await session.rollback()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def require_register_source(self) -> RegisterSourceService:
@@ -170,6 +178,16 @@ class ServiceContainer:
         if self.chat_conversation_repo is None:
             raise ConfigurationError("Chat conversation repository is not configured")
         return self.chat_conversation_repo
+
+    def require_document_intelligence_model_repo(self) -> DocumentIntelligenceModelRepository:
+        if self.document_intelligence_model_repo is None:
+            raise ConfigurationError("Document Intelligence model repository is not configured")
+        return self.document_intelligence_model_repo
+
+    def require_document_extraction_repo(self) -> DocumentExtractionRepository:
+        if self.document_extraction_repo is None:
+            raise ConfigurationError("Document extraction repository is not configured")
+        return self.document_extraction_repo
 
     def require_parsing_audit_repo(self) -> Any:
         if self.parsing_audit_repo is None:
@@ -293,6 +311,9 @@ class ServiceContainer:
         document_id: UUID,
         *,
         execute_now: bool = True,
+        delete_vectors: bool = True,
+        delete_graph: bool = True,
+        delete_objects: bool = True,
     ) -> DeletionOperation:
         operation = DeletionOperation(
             operation_id=new_id(),
@@ -332,6 +353,9 @@ class ServiceContainer:
             tenant,
             document_id=document_id,
             operation_id=operation.operation_id,
+            delete_vectors=delete_vectors,
+            delete_graph=delete_graph,
+            delete_objects=delete_objects,
         )
         operation.status = result.status.value
         operation.result = result
@@ -344,6 +368,7 @@ class ServiceContainer:
         document_id: UUID,
         *,
         scope: ReindexScope = ReindexScope.FULL,
+        document_intelligence: DocumentIntelligenceIngestOptions | None = None,
     ) -> ReindexResult:
         if self.reindex_document is None:
             raise ConfigurationError("Reindex service is not configured")
@@ -351,6 +376,7 @@ class ServiceContainer:
             tenant,
             document_id=document_id,
             scope=scope,
+            document_intelligence=document_intelligence,
         )
 
     async def resume_run(self, tenant: TenantContext, run_id: UUID) -> Any:
@@ -387,4 +413,17 @@ class ServiceContainer:
                 details={"status": run.status.value},
             )
         run.status = IngestionRunStatus.CANCELLED
-        return await repo.update_run(tenant, run)
+        run.error_code = "cancelled"
+        run.error_message = "Run cancelled by user."
+        updated_run = await repo.update_run(tenant, run)
+        # A cancelled run otherwise leaves the document's own status
+        # (set to INGESTING when the run started) permanently stuck --
+        # nothing else ever revisits it, so the document list would show
+        # "ingesting" forever with no run left to finish or retry it.
+        document_repo = self.require_document_repo()
+        document = await document_repo.get_document(tenant, run.document_id)
+        if document is not None and document.status == DocumentLifecycleStatus.INGESTING:
+            document.status = DocumentLifecycleStatus.FAILED
+            document.updated_at = datetime.now(UTC)
+            await document_repo.update_document(tenant, document)
+        return updated_run

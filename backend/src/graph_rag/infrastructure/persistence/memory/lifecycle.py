@@ -13,7 +13,7 @@ from graph_rag.domain.ingestion.records import (
     ParserAttemptRecord,
     TenantRecord,
 )
-from graph_rag.domain.ingestion.stages import IngestionStageName
+from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus, IngestionStageName
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import AuthorizationError, ConflictError, NotFoundError
 
@@ -80,6 +80,7 @@ class InMemoryDocumentRepository:
             document
             for (owner, _document_id), document in self.documents.items()
             if owner == tenant.tenant_id
+            and document.status is not DocumentLifecycleStatus.DELETED
         ]
         items.sort(
             key=lambda doc: doc.updated_at or doc.created_at or doc.document_id.hex,
@@ -138,6 +139,21 @@ class InMemoryDocumentRepository:
         content_hash: str,
     ) -> None:
         return None
+
+    async def delete_document(
+        self,
+        tenant: TenantContext,
+        document_id: UUID,
+    ) -> bool:
+        key = (tenant.tenant_id, document_id)
+        existed = self.documents.pop(key, None) is not None
+        for version_key in [
+            version_key
+            for version_key, version in self.versions.items()
+            if version_key[0] == tenant.tenant_id and version.document_id == document_id
+        ]:
+            del self.versions[version_key]
+        return existed
 
     @staticmethod
     def _assert_tenant(tenant: TenantContext, owner: UUID) -> None:

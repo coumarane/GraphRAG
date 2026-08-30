@@ -49,6 +49,26 @@ class OcrMode(StrEnum):
     NEVER = "never"
 
 
+class BackendSelection(BaseModel):
+    """Named backend chosen for a plugin capability."""
+
+    backend: str = "memory"
+
+
+class PluginsSettings(BaseModel):
+    """Plugin discovery, allowlist, and backend selection."""
+
+    enabled: bool = True
+    allow_core_override: bool = False
+    allowlist: list[str] | None = None
+    object_store: BackendSelection = Field(default_factory=BackendSelection)
+    vector_store: BackendSelection = Field(default_factory=BackendSelection)
+    graph_store: BackendSelection = Field(default_factory=BackendSelection)
+    metadata_store: BackendSelection = Field(default_factory=BackendSelection)
+    ingest_queue: BackendSelection = Field(default_factory=lambda: BackendSelection(backend=""))
+    config: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
 class ParserFailureMode(StrEnum):
     """Parser failure handling policy."""
 
@@ -221,13 +241,27 @@ class MultimodalSettings(BaseModel):
     maximum_context_tokens: int = 1800
 
 
+class DocumentIntelligenceSettings(BaseModel):
+    """Structured field extraction feature toggle.
+
+    Global for now: no per-tenant settings resolution layer exists yet for
+    any capability, so this mirrors ``OcrSettings``/``MultimodalSettings``
+    rather than inventing tenant scoping ahead of that infrastructure.
+    """
+
+    enabled: bool = True
+    default_provider: str = "internal"
+    enable_llm_tier: bool = True
+    enable_vision_tier: bool = True
+
+
 class ChunkingSettings(BaseModel):
     """Hierarchical multimodal chunking defaults."""
 
     strategy: str = "multimodal_hierarchical"
-    parent_target_tokens: int = 2500
-    child_target_tokens: int = 600
-    overlap_tokens: int = 80
+    parent_target_tokens: int = Field(default=2500, ge=1, le=32_000)
+    child_target_tokens: int = Field(default=600, ge=1, le=32_000)
+    overlap_tokens: int = Field(default=80, ge=0, le=8_000)
     preserve_tables: bool = True
     preserve_equations: bool = True
     preserve_figure_context: bool = True
@@ -240,8 +274,10 @@ class RetrievalSettings(BaseModel):
     """Default retrieval behaviour."""
 
     default_mode: RetrievalMode = RetrievalMode.AUTO
-    top_k: int = 12
-    graph_depth: int = 2
+    # Bounds mirror api/schemas/common.py's RetrievalSearchRequest/QueryApiRequest
+    # fields, which fall back to these settings -- keep them in sync.
+    top_k: int = Field(default=12, ge=1, le=100)
+    graph_depth: int = Field(default=2, ge=0, le=10)
     rerank: bool = True
 
 
@@ -376,11 +412,15 @@ class Settings(BaseSettings):
     parsing: ParsingSettings = Field(default_factory=ParsingSettings)
     ocr: OcrSettings = Field(default_factory=OcrSettings)
     multimodal: MultimodalSettings = Field(default_factory=MultimodalSettings)
+    document_intelligence: DocumentIntelligenceSettings = Field(
+        default_factory=DocumentIntelligenceSettings
+    )
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     concurrency: ConcurrencySettings = Field(default_factory=ConcurrencySettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    plugins: PluginsSettings = Field(default_factory=PluginsSettings)
 
     config_dir: Path = Path("config")
 
@@ -580,6 +620,28 @@ def _apply_flat_store_env(init_data: dict[str, Any]) -> None:
         security["api_service_key"] = os.environ["API_SERVICE_KEY"]
     if security:
         init_data["security"] = security
+
+    _apply_plugin_backend_env(init_data)
+
+
+def _apply_plugin_backend_env(init_data: dict[str, Any]) -> None:
+    """Map OBJECT_STORE_BACKEND-style env vars into ``plugins.*.backend``."""
+    plugins = dict(init_data.get("plugins") or {})
+    for field, env_name in (
+        ("object_store", "OBJECT_STORE_BACKEND"),
+        ("vector_store", "VECTOR_STORE_BACKEND"),
+        ("graph_store", "GRAPH_STORE_BACKEND"),
+        ("metadata_store", "METADATA_STORE_BACKEND"),
+        ("ingest_queue", "INGEST_QUEUE_BACKEND"),
+    ):
+        raw = os.environ.get(env_name)
+        if raw is None or raw.strip() == "":
+            continue
+        nested = dict(plugins.get(field) or {})
+        nested["backend"] = raw.strip().lower()
+        plugins[field] = nested
+    if plugins:
+        init_data["plugins"] = plugins
 
 
 @lru_cache(maxsize=1)

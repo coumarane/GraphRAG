@@ -28,6 +28,7 @@ ENV/
 .DS_Store
 .cursor/
 !.cursor/rules/
+.claude/
 
 # Environment and secrets
 .env

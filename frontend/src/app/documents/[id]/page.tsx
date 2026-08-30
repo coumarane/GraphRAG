@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readTenantKey } from "@/components/AppShell";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DocumentChunkViz } from "@/components/DocumentChunkViz";
+import { DocumentExtractionResults } from "@/components/DocumentExtractionResults";
 import { DocumentOriginalPreview } from "@/components/DocumentOriginalPreview";
+import { DocumentPageViewer } from "@/components/DocumentPageViewer";
 import { DocumentParseReport } from "@/components/DocumentParseReport";
+import { DocumentIntelligencePanel } from "@/components/document-intelligence/DocumentIntelligencePanel";
+import type {
+  DocumentIntelligencePanelValue,
+  DocumentIntelligencePayload,
+} from "@/components/document-intelligence/types";
 
 type DocumentMeta = {
   document_id: string;
@@ -48,10 +56,11 @@ type Chunk = {
   token_count: number;
 };
 
-type Tab = "original" | "indexed" | "report";
+type Tab = "original" | "pages" | "indexed" | "report" | "extractions";
 
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const documentId = params.id;
   const [meta, setMeta] = useState<DocumentMeta | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
@@ -59,6 +68,18 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [reprocessing, setReprocessing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteOptions, setDeleteOptions] = useState({
+    vectors: true,
+    graph: true,
+    objects: true,
+  });
+  const [reprocessPanelOpen, setReprocessPanelOpen] = useState(false);
+  const [diValue, setDiValue] = useState<DocumentIntelligencePanelValue>({
+    enabled: false,
+    payload: null,
+  });
   const [tab, setTab] = useState<Tab>("original");
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
   const pollRef = useRef<number | null>(null);
@@ -111,7 +132,23 @@ export default function DocumentDetailPage() {
   }, [load]);
 
   useEffect(() => {
-    if (meta && IN_PROGRESS.has(meta.status)) startProgressPoll();
+    if (!meta) return;
+    if (IN_PROGRESS.has(meta.status)) {
+      startProgressPoll();
+    } else if (meta.status === "failed" && documentId) {
+      // Not a live poll transition (e.g. a plain page load/refresh landing
+      // on an already-failed document) -- still worth fetching once so the
+      // error banner below has something to show.
+      void fetch(`/api/documents/${documentId}/ingestion-runs/latest`, {
+        headers: { "X-Tenant-Key": readTenantKey() },
+        cache: "no-store",
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((run) => {
+          if (run) setRunProgress(run as RunProgress);
+        })
+        .catch(() => undefined);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta?.status]);
 
@@ -131,22 +168,26 @@ export default function DocumentDetailPage() {
           headers,
           cache: "no-store",
         });
+        let terminal = false;
         if (statusRes.ok) {
           const statusBody = (await statusRes.json()) as DocumentMeta;
           setMeta(statusBody);
-          if (TERMINAL.has(statusBody.status)) {
-            stopProgressPoll();
-            setRunProgress(null);
-            setReprocessing(false);
-            await load();
-            return;
-          }
+          terminal = TERMINAL.has(statusBody.status);
         }
+        // Fetch the run's final state (error_message/latest_warning) even on
+        // the tick that detects termination -- an early return here used to
+        // discard it before it was ever read, so a failed run showed no
+        // diagnostic info anywhere in the UI.
         const runRes = await fetch(
           `/api/documents/${documentId}/ingestion-runs/latest`,
           { headers, cache: "no-store" },
         );
         if (runRes.ok) setRunProgress((await runRes.json()) as RunProgress);
+        if (terminal) {
+          stopProgressPoll();
+          setReprocessing(false);
+          await load();
+        }
       } catch {
         /* keep polling */
       }
@@ -174,16 +215,25 @@ export default function DocumentDetailPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function reprocess() {
+  async function reprocess(
+    scope: "full" | "document_intelligence",
+    diPayload?: DocumentIntelligencePayload,
+  ) {
     if (!documentId) return;
     setReprocessing(true);
     setError(null);
     try {
       const response = await fetch(
-        `/api/documents/${documentId}/reprocess?scope=full`,
+        `/api/documents/${documentId}/reprocess?scope=${scope}`,
         {
           method: "POST",
-          headers: { "X-Tenant-Key": readTenantKey() },
+          headers: {
+            "X-Tenant-Key": readTenantKey(),
+            "Content-Type": "application/json",
+          },
+          body: diPayload
+            ? JSON.stringify({ document_intelligence: diPayload })
+            : undefined,
         },
       );
       const body = await response.json().catch(() => ({}));
@@ -194,10 +244,40 @@ export default function DocumentDetailPage() {
             : body.message || response.statusText,
         );
       }
+      setReprocessPanelOpen(false);
       startProgressPoll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setReprocessing(false);
+    }
+  }
+
+  async function deleteDocument() {
+    if (!documentId) return;
+    setError(null);
+    setDeleting(true);
+    try {
+      const qs = new URLSearchParams({
+        delete_vectors: String(deleteOptions.vectors),
+        delete_graph: String(deleteOptions.graph),
+        delete_objects: String(deleteOptions.objects),
+      });
+      const response = await fetch(`/api/documents/${documentId}?${qs}`, {
+        method: "DELETE",
+        headers: { "X-Tenant-Key": readTenantKey() },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof body.detail === "string"
+            ? body.detail
+            : body.message || response.statusText,
+        );
+      }
+      router.push("/documents");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
     }
   }
 
@@ -249,6 +329,12 @@ export default function DocumentDetailPage() {
               </p>
             </div>
           ) : null}
+          {meta?.status === "failed" &&
+          (runProgress?.error_message || runProgress?.latest_warning) ? (
+            <p className="mt-2 max-w-xl rounded border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
+              {runProgress.error_message || runProgress.latest_warning}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -270,9 +356,17 @@ export default function DocumentDetailPage() {
             type="button"
             disabled={reprocessing}
             className="rounded border border-border bg-surface px-3 py-2 text-sm font-medium hover:border-accent disabled:opacity-60"
-            onClick={() => void reprocess()}
+            onClick={() => void reprocess("full")}
           >
             {reprocessing ? "Reprocessing…" : "Reprocess"}
+          </button>
+          <button
+            type="button"
+            disabled={reprocessing}
+            className="rounded border border-border bg-surface px-3 py-2 text-sm font-medium hover:border-accent disabled:opacity-60"
+            onClick={() => setReprocessPanelOpen((open) => !open)}
+          >
+            Reprocess with Document Intelligence
           </button>
           <Link
             href={`/query?document_id=${documentId}`}
@@ -280,8 +374,75 @@ export default function DocumentDetailPage() {
           >
             Query this doc
           </Link>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => {
+              setDeleteOptions({ vectors: true, graph: true, objects: true });
+              setConfirmDeleteOpen(true);
+            }}
+            className="rounded border border-danger/40 bg-surface px-3 py-2 text-sm font-medium text-danger hover:border-danger disabled:opacity-60"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title={`Delete "${meta?.title || documentId}"?`}
+        description="This will permanently delete data for this document. This cannot be undone."
+        checklist={[
+          { id: "vectors", label: "Vector embeddings (Qdrant)", checked: deleteOptions.vectors },
+          { id: "graph", label: "Knowledge graph data (Neo4j)", checked: deleteOptions.graph },
+          {
+            id: "objects",
+            label: "Original file and stored artifacts",
+            checked: deleteOptions.objects,
+          },
+        ]}
+        onToggleChecklistItem={(id) =>
+          setDeleteOptions((prev) => ({ ...prev, [id]: !prev[id as keyof typeof prev] }))
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={() => {
+          setConfirmDeleteOpen(false);
+          void deleteDocument();
+        }}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+
+      {reprocessPanelOpen ? (
+        <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+          <DocumentIntelligencePanel
+            value={diValue}
+            onChange={setDiValue}
+            disabled={reprocessing}
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={reprocessing || !diValue.enabled || !diValue.payload}
+              onClick={() =>
+                diValue.payload &&
+                void reprocess("document_intelligence", diValue.payload)
+              }
+              className="rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-60"
+            >
+              {reprocessing ? "Reprocessing…" : "Reprocess with these fields"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReprocessPanelOpen(false)}
+              className="rounded border border-border px-3 py-2 text-sm font-medium hover:border-accent"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="rounded border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
@@ -293,8 +454,10 @@ export default function DocumentDetailPage() {
         {(
           [
             ["original", "Original preview"],
+            ["pages", "Parsed content"],
             ["indexed", `Indexed text (${chunkTotal})`],
             ["report", "Parse report"],
+            ["extractions", "Extracted fields"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -316,10 +479,18 @@ export default function DocumentDetailPage() {
         <DocumentOriginalPreview documentId={documentId} />
       ) : null}
 
+      {tab === "pages" && documentId ? (
+        <DocumentPageViewer documentId={documentId} chunks={chunks} />
+      ) : null}
+
       {tab === "indexed" ? <DocumentChunkViz chunks={chunks} /> : null}
 
       {tab === "report" && documentId ? (
         <DocumentParseReport documentId={documentId} />
+      ) : null}
+
+      {tab === "extractions" && documentId ? (
+        <DocumentExtractionResults documentId={documentId} />
       ) : null}
     </section>
   );
