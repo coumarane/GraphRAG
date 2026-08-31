@@ -9,7 +9,18 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { AtSign, Check, Copy, History, Paperclip, Send, Sparkles, X } from "lucide-react";
+import {
+  AtSign,
+  Check,
+  Copy,
+  History,
+  MessageCircle,
+  Paperclip,
+  Search,
+  Send,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { readTenantKey } from "@/components/AppShell";
 import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
 import { FormattedAnswer, wantsRenderedChart } from "@/components/FormattedAnswer";
@@ -69,6 +80,35 @@ function detectMentionTrigger(
   const match = before.match(/@(\w*)$/);
   if (!match) return null;
   return { query: match[1].toLowerCase(), start: cursor - match[0].length };
+}
+
+/** Resolve a message's mode, falling back to citation presence for older
+ * history rows that predate the interaction_mode field entirely. */
+function resolveMessageMode(message: ChatMessage): "chat" | "search" | null {
+  if (message.interaction_mode) return message.interaction_mode;
+  if (message.citations && message.citations.length) return "search";
+  return null;
+}
+
+function ModeTag({ mode }: { mode: "chat" | "search" | null }) {
+  if (!mode) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase",
+        mode === "search"
+          ? "bg-accent-soft text-accent"
+          : "bg-surface-elevated text-muted border border-border",
+      )}
+    >
+      {mode === "search" ? (
+        <Search className="h-2.5 w-2.5" aria-hidden />
+      ) : (
+        <MessageCircle className="h-2.5 w-2.5" aria-hidden />
+      )}
+      {mode}
+    </span>
+  );
 }
 
 function unwrapAnswerPayload(raw: string): {
@@ -470,16 +510,20 @@ function MessageBubble({
   const citations = message.citations || [];
   const graphPaths = message.graph_paths || [];
   const confidence = estimateConfidence(citations.length, message.warnings);
+  const mode = resolveMessageMode(message);
 
   if (isUser) {
     return (
       <div className="group flex items-end justify-end gap-2 sm:gap-2.5">
-        <div className="flex max-w-[min(100%,36rem)] items-center gap-1">
-          <CopyMessageButton
-            text={message.content}
-            label="Copy"
-            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-          />
+        <div className="flex max-w-[min(100%,36rem)] flex-col items-end gap-1">
+          <div className="flex items-center gap-1">
+            <ModeTag mode={mode} />
+            <CopyMessageButton
+              text={message.content}
+              label="Copy"
+              className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+            />
+          </div>
           <div className="rounded-2xl bg-surface-elevated px-3 py-2.5 text-foreground shadow-sm sm:px-4 sm:py-3">
             <p className="select-text whitespace-pre-wrap break-words text-[15px] leading-7">
               {message.content}
@@ -506,6 +550,7 @@ function MessageBubble({
           <CopyMessageButton text={message.content} label="Copy" />
         </div>
         <div className="space-y-4 pr-8">
+          <ModeTag mode={mode} />
           <div className="select-text">
             <FormattedAnswer
               answer={message.content}
