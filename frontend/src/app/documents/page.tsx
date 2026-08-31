@@ -356,6 +356,12 @@ function DocumentsPageContent() {
             {busy ? "Refreshing…" : "Refresh"}
           </button>
           <Link
+            href="/search"
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-accent"
+          >
+            Search
+          </Link>
+          <Link
             href="/upload"
             className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover"
           >

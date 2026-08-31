@@ -14,6 +14,7 @@ from graph_rag.api.routes import (
     auth,
     conversations,
     document_intelligence,
+    document_search,
     documents,
     health,
     ingestion,
@@ -129,6 +130,7 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
     api.include_router(auth.router)
     api.include_router(ops.router)
     api.include_router(documents.router)
+    api.include_router(document_search.router)
     api.include_router(parsing_audit.router)
     api.include_router(ingestion.router)
     api.include_router(retrieval.router)

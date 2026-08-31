@@ -48,6 +48,12 @@ from graph_rag.api.schemas.document_intelligence import (
     FieldEntityMapping,
     ModelFieldResponse,
 )
+from graph_rag.api.schemas.document_search import (
+    DocumentSearchHitItem,
+    DocumentSearchRequest,
+    DocumentSearchResponse,
+    FieldFilterRequest,
+)
 
 __all__ = [
     "AssetResponse",
@@ -71,10 +77,14 @@ __all__ = [
     "DocumentIntelligenceModelResponse",
     "DocumentListResponse",
     "DocumentResponse",
+    "DocumentSearchHitItem",
+    "DocumentSearchRequest",
+    "DocumentSearchResponse",
     "ElementItem",
     "ElementListResponse",
     "ExtractedFieldItem",
     "FieldEntityMapping",
+    "FieldFilterRequest",
     "GraphSearchRequest",
     "GraphSearchResponse",
     "GraphViewResponse",

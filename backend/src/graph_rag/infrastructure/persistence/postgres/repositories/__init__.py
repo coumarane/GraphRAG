@@ -8,6 +8,9 @@ from graph_rag.infrastructure.persistence.postgres.repositories.document_intelli
     SqlAlchemyDocumentExtractionRepository,
     SqlAlchemyDocumentIntelligenceModelRepository,
 )
+from graph_rag.infrastructure.persistence.postgres.repositories.document_search import (
+    SqlAlchemyDocumentSearchRepository,
+)
 from graph_rag.infrastructure.persistence.postgres.repositories.documents import (
     SqlAlchemyDocumentRepository,
     SqlAlchemyTenantRepository,
@@ -22,6 +25,7 @@ __all__ = [
     "SqlAlchemyDocumentExtractionRepository",
     "SqlAlchemyDocumentIntelligenceModelRepository",
     "SqlAlchemyDocumentRepository",
+    "SqlAlchemyDocumentSearchRepository",
     "SqlAlchemyIngestionRepository",
     "SqlAlchemyTenantRepository",
 ]

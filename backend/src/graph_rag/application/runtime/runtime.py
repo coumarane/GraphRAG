@@ -102,6 +102,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     chat_conversation_repo = None
     document_intelligence_model_repo = None
     document_extraction_repo = None
+    document_search_repo = None
     parsing_audit_repo = None
     usage_repo = None
     db_session: AsyncSession | None = None
@@ -120,6 +121,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             SqlAlchemyDocumentExtractionRepository,
             SqlAlchemyDocumentIntelligenceModelRepository,
             SqlAlchemyDocumentRepository,
+            SqlAlchemyDocumentSearchRepository,
             SqlAlchemyIngestionRepository,
             SqlAlchemyTenantRepository,
             create_engine,
@@ -156,6 +158,9 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         )
         document_extraction_repo = LockedAsyncProxy(
             SqlAlchemyDocumentExtractionRepository(raw_session), db_lock
+        )
+        document_search_repo = LockedAsyncProxy(
+            SqlAlchemyDocumentSearchRepository(raw_session), db_lock
         )
         parsing_audit_repo = LockedAsyncProxy(
             SqlAlchemyParsingAuditRepository(raw_session), db_lock
@@ -199,6 +204,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         chat_conversation_repo=chat_conversation_repo,
         document_intelligence_model_repo=document_intelligence_model_repo,
         document_extraction_repo=document_extraction_repo,
+        document_search_repo=document_search_repo,
         parsing_audit_repo=parsing_audit_repo,
         usage_repo=usage_repo,
         auto_process_ingest=os.environ.get("INGEST_EXECUTION", "worker").strip().lower()

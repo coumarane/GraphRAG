@@ -7,6 +7,7 @@ from graph_rag.infrastructure.persistence.postgres.repositories import (
     SqlAlchemyDocumentExtractionRepository,
     SqlAlchemyDocumentIntelligenceModelRepository,
     SqlAlchemyDocumentRepository,
+    SqlAlchemyDocumentSearchRepository,
     SqlAlchemyIngestionRepository,
     SqlAlchemyTenantRepository,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "SqlAlchemyDocumentExtractionRepository",
     "SqlAlchemyDocumentIntelligenceModelRepository",
     "SqlAlchemyDocumentRepository",
+    "SqlAlchemyDocumentSearchRepository",
     "SqlAlchemyIngestionRepository",
     "SqlAlchemyTenantRepository",
     "clear_tenant_context",

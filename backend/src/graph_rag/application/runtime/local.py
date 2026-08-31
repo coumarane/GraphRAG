@@ -11,6 +11,7 @@ from graph_rag.application.deletion import DeleteDocumentService, ReindexDocumen
 from graph_rag.application.document_intelligence.providers.internal import (
     InternalExtractionProvider,
 )
+from graph_rag.application.document_search.search_documents import SearchDocumentsService
 from graph_rag.application.generation import (
     ChatConversationService,
     GenerateAnswerService,
@@ -29,6 +30,7 @@ from graph_rag.domain.document_intelligence.protocols import (
     DocumentExtractionRepository,
     DocumentIntelligenceModelRepository,
 )
+from graph_rag.domain.document_search.protocols import DocumentSearchRepository
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ingestion.protocols import (
     DocumentRepository,
@@ -63,6 +65,7 @@ from graph_rag.infrastructure.persistence.memory import (
     InMemoryDocumentExtractionRepository,
     InMemoryDocumentIntelligenceModelRepository,
     InMemoryDocumentRepository,
+    InMemoryDocumentSearchRepository,
     InMemoryIngestionRepository,
     InMemoryObjectStore,
     InMemoryTenantRepository,
@@ -187,6 +190,7 @@ def build_local_container(
     document_intelligence_model_repo: DocumentIntelligenceModelRepository | None = None,
     document_intelligence_provider: InternalExtractionProvider | None = None,
     document_extraction_repo: DocumentExtractionRepository | None = None,
+    document_search_repo: DocumentSearchRepository | None = None,
     parsing_audit_repo: ParsingAuditRepository | None = None,
     usage_repo: UsageRepository | None = None,
     structured_extractor: StructuredExtractor | None = None,
@@ -219,6 +223,21 @@ def build_local_container(
         document_intelligence_model_repo or InMemoryDocumentIntelligenceModelRepository()
     )
     document_extraction_repo = document_extraction_repo or InMemoryDocumentExtractionRepository()
+    if document_search_repo is None:
+        # Same isinstance-narrowing tradeoff as chat_project_repo above: only
+        # wires the in-memory search index up to the in-memory document/
+        # extraction stores when both are actually that flavor. A caller
+        # supplying a non-memory document_repo without also supplying
+        # document_search_repo gets an empty, disconnected search index
+        # rather than a crash -- matches this file's existing convention.
+        document_search_repo = InMemoryDocumentSearchRepository(
+            document_repo
+            if isinstance(document_repo, InMemoryDocumentRepository)
+            else InMemoryDocumentRepository(),
+            document_extraction_repo
+            if isinstance(document_extraction_repo, InMemoryDocumentExtractionRepository)
+            else InMemoryDocumentExtractionRepository(),
+        )
     parsing_audit_repo = parsing_audit_repo or InMemoryParsingAuditRepository()
     usage_repo = usage_repo or InMemoryUsageRepository()
     object_store = object_store if object_store is not None else InMemoryObjectStore()
@@ -315,6 +334,7 @@ def build_local_container(
         document_titles=document_titles,
     )
     chat_service = ChatConversationService(chat)
+    document_search_service = SearchDocumentsService(document_search_repo, authorization)
     process = ProcessRegisteredDocumentService(
         document_repo=document_repo,
         ingestion_repo=ingestion_repo,
@@ -382,6 +402,7 @@ def build_local_container(
         retrieve=retrieve,
         query=query,
         chat=chat_service,
+        document_search=document_search_service,
         graph_store=graph,
         vector_store=vectors,
         chunk_store=chunks,
