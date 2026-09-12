@@ -13,12 +13,12 @@ from pathlib import Path
 import pytest
 
 from graph_rag.application.ingestion import stage_pipeline as stage_pipeline_module
+from graph_rag.application.ingestion.canonical_store import CanonicalStore
 from graph_rag.application.ingestion.register_source import RegisterSourceRequest
 from graph_rag.application.ingestion.stage_pipeline import (
     DocumentPipeline,
     PipelineWorkspace,
     artifact_key,
-    canonical_document_key,
     run_document_pipeline,
 )
 from graph_rag.application.runtime import build_local_container
@@ -30,7 +30,7 @@ from graph_rag.domain.ingestion.stages import (
     IngestionStageName,
     StageStatus,
 )
-from graph_rag.domain.storage.object_keys import normalized_document_object_key
+from graph_rag.domain.storage.object_keys import parse_document_key
 from graph_rag.infrastructure.models import FakeEmbeddingModel
 from graph_rag.shared.exceptions import TransientError
 
@@ -111,14 +111,23 @@ async def test_parse_normalize_persists_canonical_and_skips_parser_on_reload(
     assert parse_raw["raw"]["parser_name"]
 
     await pipeline.stage_normalize(context)
-    spec_key = canonical_document_key(tenant.tenant_id, result.document_id, result.version_id)
-    assert spec_key == normalized_document_object_key(
+    store = CanonicalStore(container.require_object_store())
+    pointer = await store.load_current_pointer(
+        tenant, document_id=result.document_id, version_id=result.version_id
+    )
+    assert pointer is not None
+    spec_key = parse_document_key(
         tenant_id=tenant.tenant_id,
         document_id=result.document_id,
         version_id=result.version_id,
+        attempt_id=pointer.attempt_id,
     )
     raw_canonical = await container.require_object_store().get_bytes(tenant, object_key=spec_key)
-    canonical = CanonicalDocument.model_validate(json.loads(raw_canonical.decode("utf-8")))
+    metadata = json.loads(raw_canonical.decode("utf-8"))
+    assert "elements" not in metadata
+    canonical = await store.load_complete_canonical_document(
+        tenant, document_id=result.document_id, version_id=result.version_id
+    )
     assert canonical.elements
     assert canonical.parser_info.parser_name
     working = await workspace.load_json("normalized")
@@ -172,9 +181,10 @@ async def test_downstream_embed_failure_retry_does_not_reparse(
     }
     assert by_name[IngestionStageName.EMBED].status is StageStatus.FAILED
 
-    spec_key = canonical_document_key(tenant.tenant_id, result.document_id, result.version_id)
-    raw_canonical = await container.require_object_store().get_bytes(tenant, object_key=spec_key)
-    canonical = CanonicalDocument.model_validate(json.loads(raw_canonical.decode("utf-8")))
+    store = CanonicalStore(container.require_object_store())
+    canonical = await store.load_complete_canonical_document(
+        tenant, document_id=result.document_id, version_id=result.version_id
+    )
     assert canonical.elements
     working_key = artifact_key(
         tenant.tenant_id, result.document_id, result.version_id, "normalized"

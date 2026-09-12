@@ -102,6 +102,178 @@ def derived_markdown_object_key(
     return f"tenants/{tenant_id}/documents/{document_id}/versions/{version_id}/derived/document.md"
 
 
+def parse_prefix(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+) -> str:
+    """All parse-attempt shards for a document version (including ``current.json``)."""
+    return f"tenants/{tenant_id}/documents/{document_id}/versions/{version_id}/parse/"
+
+
+def parse_current_pointer_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+) -> str:
+    root = parse_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
+    return f"{root}current.json"
+
+
+def parse_attempt_prefix(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+) -> str:
+    root = parse_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
+    return f"{root}{attempt_id}/"
+
+
+def _attempt_object(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+    relative: str,
+) -> str:
+    prefix = parse_attempt_prefix(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+    )
+    return f"{prefix}{relative}"
+
+
+def parse_manifest_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+) -> str:
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative="manifest.json",
+    )
+
+
+def parse_document_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+) -> str:
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative="document.json",
+    )
+
+
+def parse_markdown_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+) -> str:
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative="document.md",
+    )
+
+
+def _page_stem(page_number: int) -> str:
+    if page_number < 1:
+        raise ValidationError("page_number must be >= 1")
+    return f"{page_number:04d}"
+
+
+def parse_page_json_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+    page_number: int,
+) -> str:
+    stem = _page_stem(page_number)
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative=f"pages/{stem}.json",
+    )
+
+
+def parse_page_render_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+    page_number: int,
+) -> str:
+    stem = _page_stem(page_number)
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative=f"assets/pages/{stem}.png",
+    )
+
+
+def parse_figure_asset_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+    asset_id: UUID,
+) -> str:
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative=f"assets/figures/{asset_id}.png",
+    )
+
+
+def parse_table_asset_key(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    version_id: UUID,
+    attempt_id: UUID,
+    asset_id: UUID,
+) -> str:
+    return _attempt_object(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        relative=f"assets/tables/{asset_id}.json",
+    )
+
+
 def assert_tenant_object_prefix(object_key: str, tenant_id: UUID) -> None:
     """Fail closed when an object key escapes the tenant prefix."""
     expected = f"tenants/{tenant_id}/"
