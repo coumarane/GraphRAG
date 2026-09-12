@@ -672,7 +672,7 @@ async def test_reindex_full_scope_clears_parse_artifacts_and_resumes_at_parse() 
     ingest -- a parser fix (e.g. new bounding-box extraction) never
     reached already-ingested documents without a fresh re-upload.
     """
-    from graph_rag.application.ingestion.stage_pipeline import artifact_key
+    from graph_rag.application.ingestion.stage_pipeline import artifact_key, canonical_document_key
 
     container = build_local_container()
     tenant, document_id, version_id = await _seed_document_intelligence_reindex_fixture(container)
@@ -688,6 +688,14 @@ async def test_reindex_full_scope_clears_parse_artifacts_and_resumes_at_parse() 
             content_type="application/json",
             content_hash=_hash(name),
         )
+    canonical_key = canonical_document_key(tenant.tenant_id, document_id, version_id)
+    await container.object_store.put_bytes(
+        tenant,
+        object_key=canonical_key,
+        data=b"{}",
+        content_type="application/json",
+        content_hash=_hash("canonical"),
+    )
 
     assert container.reindex_document is not None
     result = await container.reindex_document.execute(
@@ -700,6 +708,8 @@ async def test_reindex_full_scope_clears_parse_artifacts_and_resumes_at_parse() 
         key = artifact_key(tenant.tenant_id, document_id, version_id, name)
         with pytest.raises(NotFoundError):
             await container.object_store.get_bytes(tenant, object_key=key)
+    with pytest.raises(NotFoundError):
+        await container.object_store.get_bytes(tenant, object_key=canonical_key)
 
     assert container.ingestion_repo is not None
     run = await container.ingestion_repo.get_run(tenant, result.ingestion_run_id)
@@ -741,7 +751,7 @@ async def _seed_document_intelligence_reindex_fixture(container):
 
 @pytest.mark.asyncio
 async def test_reindex_document_intelligence_scope_clears_derived_artifacts_only() -> None:
-    from graph_rag.application.ingestion.stage_pipeline import artifact_key
+    from graph_rag.application.ingestion.stage_pipeline import artifact_key, canonical_document_key
 
     container = build_local_container()
     tenant, document_id, version_id = await _seed_document_intelligence_reindex_fixture(container)
@@ -757,6 +767,14 @@ async def test_reindex_document_intelligence_scope_clears_derived_artifacts_only
             content_type="application/json",
             content_hash=_hash(name),
         )
+    canonical_key = canonical_document_key(tenant.tenant_id, document_id, version_id)
+    await container.object_store.put_bytes(
+        tenant,
+        object_key=canonical_key,
+        data=b"{}",
+        content_type="application/json",
+        content_hash=_hash("canonical"),
+    )
 
     assert container.reindex_document is not None
     from graph_rag.application.document_intelligence.models import (
@@ -778,6 +796,7 @@ async def test_reindex_document_intelligence_scope_clears_derived_artifacts_only
         key = artifact_key(tenant.tenant_id, document_id, version_id, name)
         data = await container.object_store.get_bytes(tenant, object_key=key)
         assert data == b"{}"
+    assert await container.object_store.get_bytes(tenant, object_key=canonical_key) == b"{}"
 
 
 @pytest.mark.asyncio

@@ -74,6 +74,7 @@ from graph_rag.domain.parsing.audit import (
 )
 from graph_rag.domain.parsing.normalize import normalize_parser_result
 from graph_rag.domain.parsing.types import ParseSource, RawParserResult
+from graph_rag.domain.storage.object_keys import normalized_document_object_key
 from graph_rag.domain.storage.protocols import version_prefix
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.infrastructure.parsers.registry import ParseDocumentService
@@ -92,6 +93,15 @@ def artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str
     """
     prefix = version_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
     return f"{prefix}artifacts/{name}.json"
+
+
+def canonical_document_key(tenant_id: UUID, document_id: UUID, version_id: UUID) -> str:
+    """Authoritative parser-only CanonicalDocument JSON (spec path)."""
+    return normalized_document_object_key(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+    )
 
 
 class PipelineWorkspace:
@@ -145,6 +155,37 @@ class PipelineWorkspace:
         try:
             data = await self.service.object_store.get_bytes(
                 self.tenant, object_key=self._key(name)
+            )
+        except NotFoundError:
+            return None
+        return json.loads(data.decode("utf-8"))
+
+    def _canonical_key(self) -> str:
+        assert self.tenant is not None and self.run is not None
+        return canonical_document_key(
+            self.tenant.tenant_id,
+            self.run.document_id,
+            self.run.version_id,
+        )
+
+    async def save_canonical_document(self, document: NormalizedDocument) -> None:
+        """Persist parser-only CanonicalDocument at the spec object-store path."""
+        assert self.tenant is not None
+        payload = document.model_dump(mode="json")
+        raw = json.dumps(payload, default=str).encode("utf-8")
+        await self.service.object_store.put_bytes(
+            self.tenant,
+            object_key=self._canonical_key(),
+            data=raw,
+            content_type="application/json",
+            content_hash=content_sha256_hex(raw),
+        )
+
+    async def load_canonical_document(self) -> dict[str, Any] | None:
+        assert self.tenant is not None
+        try:
+            data = await self.service.object_store.get_bytes(
+                self.tenant, object_key=self._canonical_key()
             )
         except NotFoundError:
             return None
@@ -257,6 +298,8 @@ class DocumentPipeline:
                 self._record_parse_audit(w.raw, primary=w.used_parser)
         if w.normalized is None:
             stored = await w.load_json("normalized")
+            if stored is None:
+                stored = await w.load_canonical_document()
             if stored:
                 w.normalized = NormalizedDocument.model_validate(stored)
                 self._reconcile_normalized_audit(w.normalized)
@@ -313,6 +356,11 @@ class DocumentPipeline:
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
 
     async def stage_parse(self, context: StageContext) -> StageOutcome:
+        """Run the existing parser chain only. Vision is ``ENRICH_IMAGES``.
+
+        Persists ``artifacts/parse_raw.json`` so a later-stage retry does not
+        reopen or re-parse the original document.
+        """
         await self.ensure_loaded(context)
         w = self.w
         assert w.audit is not None and w.data is not None and w.run is not None
@@ -407,12 +455,10 @@ class DocumentPipeline:
                 "used_parser": w.used_parser,
                 "attempted": w.attempted,
                 "fallbacks": w.fallbacks,
-                "routing_reason": outcome.routing_reason,
                 "vision_failed": w.vision_failed,
                 "vision_target_count": w.vision_target_count,
             },
         )
-        await self._run_vision(context)
         return StageOutcome(
             status=StageOutcomeStatus.COMPLETED,
             pages_processed=w.raw.page_count,
@@ -545,6 +591,7 @@ class DocumentPipeline:
             )
             if vision_elements:
                 w.raw.elements.extend(vision_elements)
+                await self._refresh_working_normalized(context)
             _stamp_hybrid_vision_provenance(
                 w.audit,
                 enriched_pages=enriched_pages,
@@ -576,17 +623,10 @@ class DocumentPipeline:
             },
         )
 
-    async def stage_normalize(self, context: StageContext) -> StageOutcome:
-        await self.ensure_loaded(context)
+    def _parse_source(self, context: StageContext) -> ParseSource:
         w = self.w
-        assert w.audit is not None and w.raw is not None and w.data is not None
-        if w.normalized is not None:
-            return StageOutcome(
-                status=StageOutcomeStatus.COMPLETED,
-                pages_processed=w.normalized.page_count,
-                elements_processed=len(w.normalized.elements),
-            )
-        source = ParseSource(
+        assert w.data is not None and w.version is not None
+        return ParseSource(
             tenant_id=context.tenant.tenant_id,
             document_id=context.document_id,
             version_id=context.version_id,
@@ -594,12 +634,48 @@ class DocumentPipeline:
             mime_type=w.version.mime_type or "application/octet-stream",
             content=w.data,
         )
+
+    async def _refresh_working_normalized(self, context: StageContext) -> None:
+        """Rebuild the working NormalizedDocument from current raw (post-vision).
+
+        Writes ``artifacts/normalized.json`` used by chunking and the layout API.
+        Does **not** overwrite the parser-only CanonicalDocument at the spec path.
+        """
+        w = self.w
+        assert w.audit is not None and w.raw is not None
+        w.normalized = normalize_parser_result(w.raw, self._parse_source(context))
+        self._reconcile_normalized_audit(w.normalized)
+        await w.save_json("normalized", w.normalized.model_dump(mode="json"))
+
+    async def _persist_canonical_document(self, document: NormalizedDocument) -> None:
+        """Write parser-only CanonicalDocument JSON; keep a compat working copy."""
+        w = self.w
+        if await w.load_canonical_document() is None:
+            await w.save_canonical_document(document)
+        stored_working = await w.load_json("normalized")
+        if stored_working is None:
+            await w.save_json("normalized", document.model_dump(mode="json"))
+
+    async def stage_normalize(self, context: StageContext) -> StageOutcome:
+        await self.ensure_loaded(context)
+        w = self.w
+        assert w.audit is not None and w.raw is not None and w.data is not None
+        if w.normalized is not None:
+            stored_raw = await w.load_json("parse_raw")
+            if not (stored_raw and stored_raw.get("vision_done")):
+                await self._persist_canonical_document(w.normalized)
+            return StageOutcome(
+                status=StageOutcomeStatus.COMPLETED,
+                pages_processed=w.normalized.page_count,
+                elements_processed=len(w.normalized.elements),
+            )
         w.audit.stage_started("NORMALIZE", tool="normalize_parser_result")
-        w.normalized = normalize_parser_result(w.raw, source)
+        w.normalized = normalize_parser_result(w.raw, self._parse_source(context))
         self._reconcile_normalized_audit(w.normalized)
         w.audit.stage_completed(
             "NORMALIZE", status=StageRunStatus.COMPLETED, output_count=len(w.normalized.elements)
         )
+        await w.save_canonical_document(w.normalized)
         await w.save_json("normalized", w.normalized.model_dump(mode="json"))
         return StageOutcome(
             status=StageOutcomeStatus.COMPLETED,

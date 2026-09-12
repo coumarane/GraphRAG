@@ -20,9 +20,11 @@ _ELEMENT_ADAPTER: TypeAdapter[DocumentElement] = TypeAdapter(DocumentElement)
 
 
 class NormalizedDocument(BaseModel):
-    """Application-owned normalized multimodal document.
+    """Parser-neutral canonical document (``CanonicalDocument``).
 
-    Matches ``contracts/normalized-document.schema.yaml``.
+    Authoritative structured representation of an accepted parse. Downstream
+    stages should consume a persisted copy of this model rather than reopening
+    the original file. Matches ``contracts/normalized-document.schema.yaml``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -73,3 +75,6 @@ class NormalizedDocument(BaseModel):
     def parse_element(cls, data: object) -> DocumentElement:
         """Parse a single discriminated element payload."""
         return _ELEMENT_ADAPTER.validate_python(data)
+
+
+CanonicalDocument = NormalizedDocument
