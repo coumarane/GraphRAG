@@ -75,9 +75,14 @@ class DocumentIntelligenceModel(BaseModel):
 class DocumentIntelligenceIngestOptions(BaseModel):
     """Per-upload extraction request, carried in ``IngestionRunRecord.metadata``.
 
-    Phase 3 only threads this through to storage -- the always-skip stub
-    stage does not read it yet. ``enabled=False`` (the default) is what an
-    upload that never sends this block looks like once parsed.
+    Read by ``stage_extract_document_intelligence`` to resolve which model
+    and fields to run. ``model_id`` is actually a ``model_key`` lookup (works
+    for both built-ins and persisted custom models -- see
+    ``resolve_requested_fields``). ``enabled=False`` (the default) is what an
+    upload that never sends this block looks like once parsed; the ingest
+    route fills in a cheap-tier default via
+    ``_default_document_intelligence_options`` when the caller doesn't
+    explicitly opt in or out.
     """
 
     model_config = ConfigDict(extra="forbid")

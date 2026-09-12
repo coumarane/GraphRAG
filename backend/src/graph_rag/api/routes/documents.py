@@ -35,6 +35,7 @@ from graph_rag.api.schemas import (
 )
 from graph_rag.application.authorization.filters import filter_authorized_documents
 from graph_rag.application.authorization.gate import ensure_document_read, require_action
+from graph_rag.application.document_intelligence.catalog import builtin_model_by_key
 from graph_rag.application.document_intelligence.models import (
     DocumentIntelligenceIngestOptions,
 )
@@ -42,6 +43,7 @@ from graph_rag.application.ingestion.register_source import RegisterSourceReques
 from graph_rag.application.ingestion.stage_pipeline import artifact_key
 from graph_rag.application.ingestion.visual_enrichment import render_visual_png
 from graph_rag.application.runtime.container import ServiceContainer
+from graph_rag.config import get_settings
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.deletion.stages import ReindexScope
 from graph_rag.domain.document_intelligence.records import (
@@ -79,6 +81,29 @@ def _parse_document_intelligence_options(
         ) from exc
 
 
+def _default_document_intelligence_options() -> DocumentIntelligenceIngestOptions | None:
+    """Baseline extraction for uploads that don't explicitly opt in/out.
+
+    Runs only the configured default model's cheap, default-selected fields
+    (structured-parser/regex tier -- no LLM/vision calls), so every document
+    has some searchable structured metadata without adding extraction cost
+    to uploads that don't ask for more. A caller that explicitly sends
+    ``document_intelligence`` (including ``{"enabled": false}``) always
+    overrides this.
+    """
+    default_key = get_settings().document_intelligence.default_model_key
+    if not default_key:
+        return None
+    default_model = builtin_model_by_key(default_key)
+    if default_model is None:
+        return None
+    return DocumentIntelligenceIngestOptions(
+        enabled=True,
+        model_id=default_model.model_key,
+        selected_fields=[field.name for field in default_model.fields if field.default_selected],
+    )
+
+
 async def _run_local_ingest(
     container: ServiceContainer,
     tenant: TenantContext,
@@ -113,7 +138,9 @@ async def ingest_document(
     service = container.require_register_source()
     tag_list = [part.strip() for part in (tags or "").split(",") if part.strip()]
     label_list = [part.strip() for part in (security_labels or "").split(",") if part.strip()]
-    document_intelligence_options = _parse_document_intelligence_options(document_intelligence)
+    document_intelligence_options = _parse_document_intelligence_options(
+        document_intelligence
+    ) or _default_document_intelligence_options()
 
     tmp_path: Path | None = None
     try:

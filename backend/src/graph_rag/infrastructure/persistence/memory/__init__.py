@@ -8,6 +8,9 @@ from graph_rag.infrastructure.persistence.memory.document_intelligence import (
     InMemoryDocumentExtractionRepository,
     InMemoryDocumentIntelligenceModelRepository,
 )
+from graph_rag.infrastructure.persistence.memory.document_search import (
+    InMemoryDocumentSearchRepository,
+)
 from graph_rag.infrastructure.persistence.memory.lifecycle import (
     InMemoryDocumentRepository,
     InMemoryIngestionRepository,
@@ -22,6 +25,7 @@ __all__ = [
     "InMemoryDocumentExtractionRepository",
     "InMemoryDocumentIntelligenceModelRepository",
     "InMemoryDocumentRepository",
+    "InMemoryDocumentSearchRepository",
     "InMemoryIngestionRepository",
     "InMemoryObjectStore",
     "InMemoryTenantRepository",

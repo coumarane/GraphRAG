@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   BookOpen,
@@ -231,6 +231,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isLogin = pathname === "/login";
   const isBareSource = Boolean(
     pathname && /\/documents\/[^/]+\/source\/?$/.test(pathname),
@@ -258,6 +260,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       document.removeEventListener("keydown", onKey);
     };
   }, [navOpen]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  function onSearchSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const query = searchDraft.trim();
+    router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
+  }
 
   const crumbs = useMemo(() => {
     if (!pathname || pathname === "/") return ["Dashboard"];
@@ -339,10 +359,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="hidden sm:inline">/</span>
             <span className="truncate text-foreground">{crumbs.join(" / ")}</span>
           </div>
-          <div className="mx-auto hidden w-full max-w-md md:block">
+          <form
+            onSubmit={onSearchSubmit}
+            className="mx-auto hidden w-full max-w-md md:block"
+          >
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <Input
+                ref={searchInputRef}
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
                 className="h-9 pl-9"
                 placeholder="Search documents, entities…"
                 aria-label="Search"
@@ -351,7 +377,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ⌘K
               </kbd>
             </div>
-          </div>
+          </form>
           <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Button asChild size="sm">
               <Link href="/upload">

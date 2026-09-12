@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -103,7 +104,8 @@ class QueryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     answer: str
-    retrieval_mode: RetrievalMode
+    retrieval_mode: RetrievalMode | None = None
+    interaction_mode: Literal["chat", "search"] = "search"
     citations: list[Citation] = Field(default_factory=list)
     retrieval_trace_id: UUID
     warnings: list[str] = Field(default_factory=list)

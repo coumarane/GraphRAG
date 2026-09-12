@@ -253,6 +253,7 @@ class DocumentIntelligenceSettings(BaseModel):
     default_provider: str = "internal"
     enable_llm_tier: bool = True
     enable_vision_tier: bool = True
+    default_model_key: str | None = "general_document"
 
 
 class ChunkingSettings(BaseModel):

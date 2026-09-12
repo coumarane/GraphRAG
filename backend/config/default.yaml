@@ -88,6 +88,10 @@ document_intelligence:
   default_provider: internal
   enable_llm_tier: true
   enable_vision_tier: true
+  # Cheap-tier fields of this built-in model auto-extract on every upload
+  # that doesn't explicitly opt into a different document_intelligence
+  # payload, so document search always has baseline structured data.
+  default_model_key: general_document
 
 chunking:
   strategy: multimodal_hierarchical

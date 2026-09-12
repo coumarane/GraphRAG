@@ -15,6 +15,8 @@ from graph_rag.application.deletion import (
     ReindexResult,
 )
 from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
+from graph_rag.application.document_search.search_documents import SearchDocumentsService
+from graph_rag.application.generation.chat import ChatConversationService
 from graph_rag.application.generation.query import QueryDocumentsService
 from graph_rag.application.ingestion.register_source import RegisterSourceService
 from graph_rag.application.retrieval.retrieve import RetrieveEvidenceService
@@ -89,6 +91,8 @@ class ServiceContainer:
     register_source: RegisterSourceService | None = None
     retrieve: RetrieveEvidenceService | None = None
     query: QueryDocumentsService | None = None
+    chat: ChatConversationService | None = None
+    document_search: SearchDocumentsService | None = None
     graph_store: GraphStore | None = None
     vector_store: ChunkVectorStore | None = None
     chunk_store: Any | None = None
@@ -208,6 +212,16 @@ class ServiceContainer:
         if self.query is None:
             raise ConfigurationError("Query service is not configured")
         return self.query
+
+    def require_chat(self) -> ChatConversationService:
+        if self.chat is None:
+            raise ConfigurationError("Chat service is not configured")
+        return self.chat
+
+    def require_document_search(self) -> SearchDocumentsService:
+        if self.document_search is None:
+            raise ConfigurationError("Document search service is not configured")
+        return self.document_search
 
     def require_object_store(self) -> ObjectStore:
         if self.object_store is None:

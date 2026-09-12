@@ -19,6 +19,8 @@ export type ChatGraphPath = {
   supporting_citations?: string[];
 };
 
+export type InteractionMode = "chat" | "search";
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -29,6 +31,7 @@ export type ChatMessage = {
   retrieval_mode?: string;
   retrieval_trace_id?: string;
   graph_paths?: ChatGraphPath[];
+  interaction_mode?: InteractionMode;
 };
 
 export type ConversationContext = {
@@ -50,6 +53,7 @@ export type ChatThread = {
   title: string;
   documentId: string;
   mode: string;
+  interactionMode: InteractionMode;
   createdAt: string;
   updatedAt: string;
   messages: ChatMessage[];
@@ -71,7 +75,7 @@ function newId(): string {
 
 export function createEmptyThread(
   overrides?: Partial<
-    Pick<ChatThread, "mode" | "documentId" | "projectId" | "title">
+    Pick<ChatThread, "mode" | "interactionMode" | "documentId" | "projectId" | "title">
   >,
 ): ChatThread {
   const now = new Date().toISOString();
@@ -80,6 +84,7 @@ export function createEmptyThread(
     title: overrides?.title ?? "New chat",
     documentId: overrides?.documentId ?? "",
     mode: overrides?.mode ?? "auto",
+    interactionMode: overrides?.interactionMode ?? "chat",
     createdAt: now,
     updatedAt: now,
     messages: [],
@@ -190,6 +195,7 @@ type ConversationApiResponse = {
   conversation_id: string;
   title: string;
   mode: string;
+  interaction_mode?: InteractionMode;
   document_id?: string | null;
   pending_expand_question?: string | null;
   conversation_context?: {
@@ -214,6 +220,7 @@ type ConversationDetailApiResponse = ConversationApiResponse & {
     retrieval_mode?: string | null;
     retrieval_trace_id?: string | null;
     graph_paths?: ChatGraphPath[];
+    interaction_mode?: InteractionMode;
     created_at: string;
   }[];
 };
@@ -232,6 +239,7 @@ function threadFromDetail(detail: ConversationDetailApiResponse): ChatThread {
     title: detail.title,
     documentId: detail.document_id ?? "",
     mode: detail.mode,
+    interactionMode: detail.interaction_mode ?? "chat",
     createdAt: detail.created_at,
     updatedAt: detail.updated_at,
     messages: detail.messages.map((message) => ({
@@ -244,6 +252,7 @@ function threadFromDetail(detail: ConversationDetailApiResponse): ChatThread {
       retrieval_mode: message.retrieval_mode ?? undefined,
       retrieval_trace_id: message.retrieval_trace_id ?? undefined,
       graph_paths: message.graph_paths ?? [],
+      interaction_mode: message.interaction_mode ?? "search",
     })),
     pendingExpandQuestion: detail.pending_expand_question ?? null,
     conversationContext: detail.conversation_context
@@ -319,6 +328,7 @@ export async function createConversation(thread: ChatThread): Promise<void> {
     conversation_id: thread.id,
     title: thread.title,
     mode: thread.mode,
+    interaction_mode: thread.interactionMode,
     document_id: thread.documentId || null,
     project_id: thread.projectId ?? null,
   });
@@ -329,6 +339,7 @@ export async function patchConversation(
   patch: Partial<{
     title: string;
     mode: string;
+    interaction_mode: InteractionMode;
     document_id: string | null;
     project_id: string | null;
     pinned: boolean;
