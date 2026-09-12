@@ -28,6 +28,8 @@ from graph_rag.application.document_intelligence.reuse import (
     split_reused_and_delta_fields,
 )
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
+from graph_rag.application.ingestion.canonical_store import CanonicalStore
+from graph_rag.application.ingestion.extract_assets import extract_canonical_assets
 from graph_rag.application.ingestion.handlers import CallableStageHandler
 from graph_rag.application.ingestion.local_pipeline import (
     ProcessRegisteredDocumentService,
@@ -96,7 +98,7 @@ def artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str
 
 
 def canonical_document_key(tenant_id: UUID, document_id: UUID, version_id: UUID) -> str:
-    """Authoritative parser-only CanonicalDocument JSON (spec path)."""
+    """Legacy pre-shard CanonicalDocument path (FULL reindex still deletes it)."""
     return normalized_document_object_key(
         tenant_id=tenant_id,
         document_id=document_id,
@@ -168,21 +170,31 @@ class PipelineWorkspace:
             self.run.version_id,
         )
 
+    def _canonical_store(self) -> CanonicalStore:
+        return CanonicalStore(self.service.object_store)
+
     async def save_canonical_document(self, document: NormalizedDocument) -> None:
-        """Persist parser-only CanonicalDocument at the spec object-store path."""
-        assert self.tenant is not None
-        payload = document.model_dump(mode="json")
-        raw = json.dumps(payload, default=str).encode("utf-8")
-        await self.service.object_store.put_bytes(
+        """Persist sharded CanonicalDocument for this ingestion attempt."""
+        assert self.tenant is not None and self.run is not None
+        await self._canonical_store().write_from_document(
             self.tenant,
-            object_key=self._canonical_key(),
-            data=raw,
-            content_type="application/json",
-            content_hash=content_sha256_hex(raw),
+            document,
+            attempt_id=self.run.ingestion_run_id,
         )
 
     async def load_canonical_document(self) -> dict[str, Any] | None:
-        assert self.tenant is not None
+        """Reconstruct the full CanonicalDocument from shards, then legacy paths."""
+        assert self.tenant is not None and self.run is not None
+        store = self._canonical_store()
+        try:
+            document = await store.load_complete_canonical_document(
+                self.tenant,
+                document_id=self.run.document_id,
+                version_id=self.run.version_id,
+            )
+            return document.model_dump(mode="json")
+        except NotFoundError:
+            pass
         try:
             data = await self.service.object_store.get_bytes(
                 self.tenant, object_key=self._canonical_key()
@@ -215,7 +227,7 @@ class DocumentPipeline:
             IngestionStageName.PARSE: self.stage_parse,
             IngestionStageName.NORMALIZE: self.stage_normalize,
             IngestionStageName.STORE_ELEMENTS: self.stage_store_elements,
-            IngestionStageName.EXTRACT_ASSETS: self.stage_skip_assets,
+            IngestionStageName.EXTRACT_ASSETS: self.stage_extract_assets,
             IngestionStageName.ENRICH_IMAGES: self.stage_enrich_images,
             IngestionStageName.ENRICH_TABLES: self.stage_skip_optional,
             IngestionStageName.ENRICH_EQUATIONS: self.stage_skip_optional,
@@ -638,19 +650,62 @@ class DocumentPipeline:
     async def _refresh_working_normalized(self, context: StageContext) -> None:
         """Rebuild the working NormalizedDocument from current raw (post-vision).
 
-        Writes ``artifacts/normalized.json`` used by chunking and the layout API.
-        Does **not** overwrite the parser-only CanonicalDocument at the spec path.
+        Writes ``artifacts/normalized.json`` used by chunking. Page JSON shards
+        are rewritten so layout APIs see vision-added elements; binary assets
+        already stored for this attempt are preserved.
         """
         w = self.w
         assert w.audit is not None and w.raw is not None
         w.normalized = normalize_parser_result(w.raw, self._parse_source(context))
         self._reconcile_normalized_audit(w.normalized)
+        await self._rewrite_canonical_shards(context)
         await w.save_json("normalized", w.normalized.model_dump(mode="json"))
 
-    async def _persist_canonical_document(self, document: NormalizedDocument) -> None:
-        """Write parser-only CanonicalDocument JSON; keep a compat working copy."""
+    async def _rewrite_canonical_shards(self, context: StageContext) -> None:
         w = self.w
-        if await w.load_canonical_document() is None:
+        assert w.normalized is not None and w.run is not None
+        store = w._canonical_store()
+        try:
+            existing = await store.load_complete_canonical_document(
+                context.tenant,
+                document_id=context.document_id,
+                version_id=context.version_id,
+            )
+        except NotFoundError:
+            existing = None
+        if existing is not None and existing.assets:
+            by_element = {
+                asset.element_id: asset.asset_id
+                for asset in existing.assets
+                if asset.element_id is not None
+            }
+            merged = []
+            for element in w.normalized.elements:
+                if element.source_asset_id is None and element.element_id in by_element:
+                    element = element.model_copy(
+                        update={"source_asset_id": by_element[element.element_id]}
+                    )
+                merged.append(element)
+            w.normalized = w.normalized.model_copy(
+                update={"elements": merged, "assets": existing.assets}
+            )
+        await store.write_from_document(
+            context.tenant,
+            w.normalized,
+            attempt_id=context.ingestion_run_id,
+        )
+
+    async def _persist_canonical_document(self, document: NormalizedDocument) -> None:
+        """Write sharded CanonicalDocument once; keep a compat working copy."""
+        w = self.w
+        assert w.tenant is not None and w.run is not None
+        store = w._canonical_store()
+        pointer = await store.load_current_pointer(
+            w.tenant,
+            document_id=w.run.document_id,
+            version_id=w.run.version_id,
+        )
+        if pointer is None:
             await w.save_canonical_document(document)
         stored_working = await w.load_json("normalized")
         if stored_working is None:
@@ -702,10 +757,31 @@ class DocumentPipeline:
             elements_processed=len(w.normalized.elements),
         )
 
-    async def stage_skip_assets(self, context: StageContext) -> StageOutcome:
+    async def stage_extract_assets(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)
+        w = self.w
+        if w.normalized is None:
+            raise PermanentError(
+                "NORMALIZE must complete before EXTRACT_ASSETS", code="missing_normalized"
+            )
+        w.normalized, warnings = await extract_canonical_assets(
+            object_store=w.service.object_store,
+            tenant=context.tenant,
+            document=w.normalized,
+            original_bytes=w.data,
+            mime_type=w.mime or (w.version.mime_type if w.version else "") or "",
+            filename=w.filename,
+            attempt_id=context.ingestion_run_id,
+        )
+        await w.save_json("normalized", w.normalized.model_dump(mode="json"))
+        status = (
+            StageOutcomeStatus.COMPLETED_WITH_WARNINGS if warnings else StageOutcomeStatus.COMPLETED
+        )
         return StageOutcome(
-            status=StageOutcomeStatus.SKIPPED, warning="assets stored with original object"
+            status=status,
+            warning=";".join(warnings) if warnings else None,
+            pages_processed=w.normalized.page_count,
+            elements_processed=len(w.normalized.elements),
         )
 
     async def stage_skip_optional(self, context: StageContext) -> StageOutcome:

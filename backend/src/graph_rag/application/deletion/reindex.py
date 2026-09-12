@@ -18,6 +18,7 @@ from graph_rag.domain.ingestion.protocols import DocumentRepository, IngestionRe
 from graph_rag.domain.ingestion.records import IngestionRunRecord
 from graph_rag.domain.ingestion.stages import IngestionRunStatus, IngestionStageName
 from graph_rag.domain.ingestion.state_machine import build_persisted_stage_records
+from graph_rag.domain.storage.object_keys import parse_prefix
 from graph_rag.domain.storage.protocols import ObjectStore
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import NotFoundError, ValidationError
@@ -98,7 +99,7 @@ class ReindexDocumentService:
                         document_id=document_id,
                         version_id=version_id,
                     )
-                except Exception as exc:  # noqa: BLE001 - best-effort clear
+                except Exception as exc:
                     warnings.append(f"vector_clear_failed:{type(exc).__name__}")
                     logger.warning(
                         "reindex_vector_clear_failed",
@@ -117,7 +118,7 @@ class ReindexDocumentService:
                         version_id=version_id,
                         chunk_ids=chunk_ids,
                     )
-                except Exception as exc:  # noqa: BLE001 - best-effort clear
+                except Exception as exc:
                     warnings.append(f"graph_clear_failed:{type(exc).__name__}")
                     logger.warning(
                         "reindex_graph_clear_failed",
@@ -157,6 +158,14 @@ class ReindexDocumentService:
                 await self.object_store.delete_prefix(
                     tenant,
                     prefix=canonical_document_key(tenant.tenant_id, document_id, version_id),
+                )
+                await self.object_store.delete_prefix(
+                    tenant,
+                    prefix=parse_prefix(
+                        tenant_id=tenant.tenant_id,
+                        document_id=document_id,
+                        version_id=version_id,
+                    ),
                 )
 
         resume_stage = _resume_stage_for_scope(scope)

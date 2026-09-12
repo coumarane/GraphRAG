@@ -10,6 +10,9 @@ from graph_rag.domain.ids import new_id
 from graph_rag.domain.storage import (
     assert_tenant_object_prefix,
     original_object_key,
+    parse_current_pointer_key,
+    parse_page_json_key,
+    parse_prefix,
     sanitize_filename,
 )
 from graph_rag.shared.exceptions import ValidationError
@@ -40,6 +43,27 @@ def test_original_object_key_uses_tenant_prefix() -> None:
     )
     assert "Report" in key or "report" in key.lower() or "My_Report" in key
     assert_tenant_object_prefix(key, tenant_id)
+
+
+def test_parse_shard_keys_are_version_scoped() -> None:
+    tenant_id = new_id()
+    document_id = new_id()
+    version_id = new_id()
+    attempt_id = new_id()
+    root = parse_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
+    pointer = parse_current_pointer_key(
+        tenant_id=tenant_id, document_id=document_id, version_id=version_id
+    )
+    page = parse_page_json_key(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+        attempt_id=attempt_id,
+        page_number=50,
+    )
+    assert pointer == f"{root}current.json"
+    assert page == f"{root}{attempt_id}/pages/0050.json"
+    assert_tenant_object_prefix(page, tenant_id)
 
 
 def test_assert_tenant_object_prefix_rejects_cross_tenant() -> None:
