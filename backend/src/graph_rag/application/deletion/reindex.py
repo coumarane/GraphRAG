@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
-from graph_rag.application.ingestion.stage_pipeline import artifact_key
+from graph_rag.application.ingestion.stage_pipeline import artifact_key, canonical_document_key
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.deletion.stages import ReindexScope
 from graph_rag.domain.graph.protocols import GraphStore
@@ -154,6 +154,10 @@ class ReindexDocumentService:
                 for name in ("parse_raw", "normalized", "chunks", "embeddings", "graph"):
                     key = artifact_key(tenant.tenant_id, document_id, version_id, name)
                     await self.object_store.delete_prefix(tenant, prefix=key)
+                await self.object_store.delete_prefix(
+                    tenant,
+                    prefix=canonical_document_key(tenant.tenant_id, document_id, version_id),
+                )
 
         resume_stage = _resume_stage_for_scope(scope)
         run_id = new_id()

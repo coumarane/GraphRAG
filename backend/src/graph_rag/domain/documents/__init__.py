@@ -7,10 +7,11 @@ from graph_rag.domain.documents.components import (
     NormalizedPage,
     ParserInfo,
 )
-from graph_rag.domain.documents.document import NormalizedDocument
+from graph_rag.domain.documents.document import CanonicalDocument, NormalizedDocument
 from graph_rag.domain.documents.ingestion_result import IngestionResult, IngestionStatus
 
 __all__ = [
+    "CanonicalDocument",
     "DocumentAsset",
     "DocumentSection",
     "ElementReference",
