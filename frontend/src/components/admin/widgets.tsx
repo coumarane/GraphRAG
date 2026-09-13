@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function AdminCard({
@@ -13,7 +14,7 @@ export function AdminCard({
   return (
     <section
       className={cn(
-        "rounded-2xl border border-[var(--border)] bg-white p-5 shadow-[0_10px_40px_rgba(28,34,55,0.05)]",
+        "rounded-xl border border-border bg-surface p-5 text-foreground shadow-[0_8px_30px_rgba(0,0,0,0.25)]",
         className,
       )}
     >
@@ -35,21 +36,12 @@ export function AdminButton({
   type?: "button" | "submit";
   disabled?: boolean;
 }) {
+  const mapped =
+    variant === "primary" ? "default" : variant === "ghost" ? "secondary" : variant;
   return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium disabled:opacity-50",
-        variant === "primary" && "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]",
-        variant === "ghost" && "border border-[var(--border)] bg-white text-[var(--foreground)] hover:bg-[#f7f8fc]",
-        variant === "outline" && "border border-[var(--border)] bg-white hover:bg-[#f7f8fc]",
-        variant === "danger" && "border border-rose-200 bg-rose-50 text-rose-600",
-      )}
-    >
+    <Button type={type} onClick={onClick} disabled={disabled} variant={mapped} size="sm">
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -62,14 +54,14 @@ export function AdminField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-[var(--muted)]">{label}</span>
+      <span className="mb-1 block text-muted">{label}</span>
       {children}
     </label>
   );
 }
 
 export const adminInputClass =
-  "h-10 w-full rounded-xl border border-[var(--border)] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--ring)]";
+  "h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-ring";
 
 export function AdminToggle({
   checked,
@@ -86,12 +78,12 @@ export function AdminToggle({
       onClick={() => onChange(!checked)}
       className={cn(
         "relative h-6 w-11 rounded-full transition-colors",
-        checked ? "bg-[var(--accent)]" : "bg-slate-200",
+        checked ? "bg-accent" : "bg-border",
       )}
     >
       <span
         className={cn(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+          "absolute top-0.5 h-5 w-5 rounded-full bg-foreground shadow transition-transform",
           checked ? "left-5" : "left-0.5",
         )}
       />
@@ -120,9 +112,9 @@ export function AdminModal({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+        className="w-full max-w-md rounded-xl border border-border bg-surface-elevated p-5 text-foreground shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 className="text-lg font-semibold">{title}</h2>
@@ -146,13 +138,13 @@ export function Stat({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-[var(--border)] p-4",
-        tone === "soft" ? "bg-[var(--accent-soft)]" : "bg-white",
+        "rounded-xl border border-border p-4",
+        tone === "soft" ? "bg-accent-soft" : "bg-surface",
       )}
     >
-      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{label}</p>
+      <p className="text-xs uppercase tracking-wide text-muted">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-[var(--muted)]">{hint}</p> : null}
+      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -160,7 +152,7 @@ export function Stat({
 export function ErrorBanner({ error }: { error: string | null }) {
   if (!error) return null;
   return (
-    <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+    <div className="mb-4 rounded-xl border border-danger/40 bg-danger/15 px-3 py-2 text-sm text-danger">
       {error}
     </div>
   );

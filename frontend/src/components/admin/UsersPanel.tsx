@@ -107,7 +107,7 @@ export function UsersPanel() {
                   <span className="ml-2 text-xs text-[var(--muted)]">(you)</span>
                 ) : null}
                 {user.status !== "active" ? (
-                  <span className="ml-2 rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-600">
+                  <span className="ml-2 rounded-full bg-danger/15 px-2 py-0.5 text-xs text-danger">
                     {user.status}
                   </span>
                 ) : null}

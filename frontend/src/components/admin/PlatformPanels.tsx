@@ -68,7 +68,7 @@ export function ProvidersPanel() {
             <p className="mt-1 text-xs text-[var(--muted)]">API key {item.secret_name}</p>
             <p className="mt-1 text-sm">
               Health{" "}
-              <span className={item.health === "healthy" ? "text-emerald-600" : "text-rose-600"}>
+              <span className={item.health === "healthy" ? "text-success" : "text-danger"}>
                 {item.health}
               </span>
             </p>
@@ -232,7 +232,7 @@ export function BillingPanel() {
             <span className="w-40">{row.provider}</span>
             <span className="w-20 text-[var(--muted)]">{row.requests}</span>
             <span className="w-24">{formatEur(row.eur)}</span>
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-background">
               <div
                 className="h-full bg-[var(--accent)]"
                 style={{ width: `${Math.round(row.share * 100)}%` }}
@@ -371,9 +371,9 @@ export function SettingsPanel() {
           />
         </div>
       </div>
-      <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4">
-        <h3 className="font-semibold text-rose-700">Danger zone</h3>
-        <p className="mt-1 text-sm text-rose-700">
+      <div className="mt-6 rounded-xl border border-danger/40 bg-danger/15 p-4">
+        <h3 className="font-semibold text-danger">Danger zone</h3>
+        <p className="mt-1 text-sm text-danger">
           Development-only data resets. Automatically disabled in production.
         </p>
         {!data?.danger_zone_enabled ? (
