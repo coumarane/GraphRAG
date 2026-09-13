@@ -40,22 +40,42 @@ runs:
         IMAGE_REF="${{ inputs.image-ref }}"
         DIGEST="${{ inputs.digest }}"
         DIGEST="${DIGEST#@}"
+        COMMIT_MESSAGE="${{ inputs.commit-message }}"
 
         git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-        git fetch origin "${GIT_REF}"
-        git checkout "${GIT_REF}"
-        git reset --hard "origin/${GIT_REF}"
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
 
         if ! command -v kustomize >/dev/null 2>&1; then
           curl -sSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
           sudo mv kustomize /usr/local/bin/
         fi
 
-        cd "${KUSTOMIZATION_DIR}"
-        kustomize edit set image "${IMAGE_NAME}=${IMAGE_REF%@*}@${DIGEST}"
+        # Concurrent api/web/worker GitOps commits race on the same branch.
+        # Rebase and retry on non-fast-forward and GitHub commit_refs failures.
+        for attempt in 1 2 3 4 5 6; do
+          git fetch origin "${GIT_REF}"
+          git checkout "${GIT_REF}"
+          git reset --hard "origin/${GIT_REF}"
 
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add kustomization.yaml
-        git commit -m "${{ inputs.commit-message }}" || echo "No changes to commit"
-        git push origin "${GIT_REF}"
+          (
+            cd "${KUSTOMIZATION_DIR}"
+            kustomize edit set image "${IMAGE_NAME}=${IMAGE_REF%@*}@${DIGEST}"
+          )
+          git add "${KUSTOMIZATION_DIR}/kustomization.yaml"
+          if git diff --cached --quiet; then
+            echo "Image digest already set; nothing to commit"
+            exit 0
+          fi
+          git commit -m "${COMMIT_MESSAGE}"
+
+          if git push origin "${GIT_REF}"; then
+            exit 0
+          fi
+          echo "GitOps push failed (attempt ${attempt}/6); retrying after rebase"
+          git reset --hard "HEAD^"
+          sleep $((attempt * 3))
+        done
+
+        echo "GitOps push failed after retries"
+        exit 1
