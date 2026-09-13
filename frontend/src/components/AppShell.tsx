@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Users,
   Workflow,
+  Shield,
   X,
 } from "lucide-react";
 import {
@@ -82,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
         adminOnly: true,
       },
       { href: "/users", label: "Users", icon: Users, adminOnly: true },
+      { href: "/admin/connectors", label: "Admin", icon: Shield, adminOnly: true },
       { href: "/settings", label: "Configuration", icon: Settings },
     ],
   },
@@ -234,6 +236,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchDraft, setSearchDraft] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isLogin = pathname === "/login";
+  const isAdminConsole = Boolean(pathname?.startsWith("/admin"));
   const isBareSource = Boolean(
     pathname && /\/documents\/[^/]+\/source\/?$/.test(pathname),
   );
@@ -285,7 +288,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return [leaf.charAt(0).toUpperCase() + leaf.slice(1)];
   }, [pathname]);
 
-  if (isLogin || isBareSource) {
+  if (isLogin || isBareSource || isAdminConsole) {
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 
