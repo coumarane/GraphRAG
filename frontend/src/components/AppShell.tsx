@@ -108,6 +108,10 @@ function navItemActive(
     return pathname === "/";
   }
 
+  if (base.startsWith("/admin")) {
+    return pathname === "/admin" || pathname.startsWith("/admin/");
+  }
+
   const pathMatches =
     pathname === base || pathname.startsWith(`${base}/`);
   if (!pathMatches) return false;
@@ -236,7 +240,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchDraft, setSearchDraft] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isLogin = pathname === "/login";
-  const isAdminConsole = Boolean(pathname?.startsWith("/admin"));
   const isBareSource = Boolean(
     pathname && /\/documents\/[^/]+\/source\/?$/.test(pathname),
   );
@@ -284,11 +287,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const crumbs = useMemo(() => {
     if (!pathname || pathname === "/") return ["Dashboard"];
-    const leaf = pathname.split("/").filter(Boolean)[0] || "Dashboard";
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts[0] === "admin") {
+      const section = (parts[1] || "connectors").split("-");
+      const label = section.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+      return ["Admin", label];
+    }
+    const leaf = parts[0] || "Dashboard";
     return [leaf.charAt(0).toUpperCase() + leaf.slice(1)];
   }, [pathname]);
 
-  if (isLogin || isBareSource || isAdminConsole) {
+  if (isLogin || isBareSource) {
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 

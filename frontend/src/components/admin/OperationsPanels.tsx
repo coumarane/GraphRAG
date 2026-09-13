@@ -118,7 +118,7 @@ export function ConnectorsPanel() {
             key={item.connector_id}
             className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border)] px-4 py-3"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/15 text-warning">
               <Folder className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -133,14 +133,14 @@ export function ConnectorsPanel() {
                   : "Never synced"}
               </p>
               {item.last_error ? (
-                <p className="text-xs text-rose-600">{item.last_error}</p>
+                <p className="text-xs text-danger">{item.last_error}</p>
               ) : null}
             </div>
             <span
               className={
                 item.status === "active"
-                  ? "text-sm text-emerald-600"
-                  : "text-sm text-rose-600"
+                  ? "text-sm text-success"
+                  : "text-sm text-danger"
               }
             >
               {item.status === "active" ? "● Active" : "● Error"}
@@ -168,7 +168,7 @@ export function ConnectorsPanel() {
             </AdminButton>
             <button
               type="button"
-              className="rounded-lg p-2 text-[var(--muted)] hover:bg-[#f7f8fc]"
+              className="rounded-lg p-2 text-muted hover:bg-surface-elevated"
               onClick={() => void load()}
               aria-label="Refresh"
             >
@@ -176,7 +176,7 @@ export function ConnectorsPanel() {
             </button>
             <button
               type="button"
-              className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
+              className="rounded-lg p-2 text-danger hover:bg-danger/15"
               onClick={() =>
                 void adminJson<unknown>(`/connectors/${item.connector_id}`, { method: "DELETE" }).then(load)
               }
@@ -286,7 +286,7 @@ export function CategoriesPanel() {
                     />
                     {item.name}
                     {item.is_default ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase text-[var(--muted)]">
+                      <span className="rounded-full bg-surface-elevated px-2 py-0.5 text-[10px] uppercase text-muted">
                         default
                       </span>
                     ) : null}
@@ -298,7 +298,7 @@ export function CategoriesPanel() {
                   {!item.is_default ? (
                     <button
                       type="button"
-                      className="text-rose-500"
+                      className="text-danger"
                       onClick={() =>
                         void adminJson<unknown>(`/categories/${item.category_id}`, {
                           method: "DELETE",
@@ -432,7 +432,7 @@ export function ChatContextsPanel() {
                 {!item.built_in ? (
                   <button
                     type="button"
-                    className="text-rose-500"
+                    className="text-danger"
                     onClick={() =>
                       void adminJson<unknown>(`/chat-contexts/${item.context_id}`, {
                         method: "DELETE",
@@ -525,9 +525,9 @@ export function LogsPanel() {
         Sensitive fields and document text are redacted.
       </p>
       <div className="mt-3 flex flex-wrap gap-3 text-sm">
-        <span className="text-rose-600">ERROR: {counts.ERROR}</span>
+        <span className="text-danger">ERROR: {counts.ERROR}</span>
         <span className="text-sky-700">INFO: {counts.INFO}</span>
-        <span className="text-amber-700">WARNING: {counts.WARNING}</span>
+        <span className="text-warning">WARNING: {counts.WARNING}</span>
       </div>
       <ErrorBanner error={error} />
       <div className="mt-4 grid gap-3 md:grid-cols-2">

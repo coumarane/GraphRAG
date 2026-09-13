@@ -102,9 +102,9 @@ export function DocumentHealthPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-4 text-sm">
-          <span className="text-emerald-600">● {data?.healthy ?? 0} healthy</span>
-          <span className="text-amber-600">▲ {data?.degraded ?? 0} degraded</span>
-          <span className="text-rose-600">● {data?.critical ?? 0} critical</span>
+          <span className="text-success">● {data?.healthy ?? 0} healthy</span>
+          <span className="text-warning">▲ {data?.degraded ?? 0} degraded</span>
+          <span className="text-danger">● {data?.critical ?? 0} critical</span>
         </div>
         <AdminButton variant="ghost" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" /> Refresh
@@ -118,11 +118,11 @@ export function DocumentHealthPanel() {
               key={item.document_id}
               className="flex flex-wrap items-center gap-3 rounded-xl px-1 py-2"
             >
-              <span className="text-emerald-600">●</span>
+              <span className="text-success">●</span>
               <p className="min-w-0 flex-1 truncate font-medium">{item.title}</p>
-              <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-2 w-40 overflow-hidden rounded-full bg-background">
                 <div
-                  className="h-full rounded-full bg-emerald-500"
+                  className="h-full rounded-full bg-success"
                   style={{ width: `${item.score}%` }}
                 />
               </div>
@@ -206,7 +206,7 @@ export function ProcessingPanel() {
           {(data?.stages || []).map((stage) => (
             <div key={stage.name} className="flex items-center gap-3 text-sm">
               <span className="w-24 capitalize">{stage.name}</span>
-              <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-3 flex-1 overflow-hidden rounded-full bg-background">
                 <div
                   className="h-full rounded-full bg-[var(--accent)]"
                   style={{ width: `${(stage.avg_seconds / maxStage) * 100}%` }}
@@ -258,7 +258,7 @@ export function KnowledgeGraphPanel() {
         <Stat label="Duplicate groups" value={data?.duplicate_groups ?? 0} hint="nodes to merge" />
       </div>
       {(data?.duplicate_groups || 0) > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="rounded-xl border border-warning/40 bg-warning/15 p-4 text-sm text-warning">
           {data?.duplicate_groups} duplicate entity groups detected
           {data?.example ? `. Example: “${data.example}”` : "."}
         </div>
@@ -307,7 +307,7 @@ export function FeedbackPanel() {
         <Stat label="Knowledge gaps" value={data?.knowledge_gaps ?? 0} hint="questions with no sources" />
       </div>
       <AdminCard>
-        <h3 className="font-medium text-amber-700">Knowledge gaps — documents may be missing</h3>
+        <h3 className="font-medium text-warning">Knowledge gaps — documents may be missing</h3>
         <div className="mt-3 space-y-3">
           {(data?.gaps || []).map((gap) => (
             <div key={gap.question} className="rounded-xl border border-[var(--border)] p-3">
@@ -321,7 +321,7 @@ export function FeedbackPanel() {
         </div>
       </AdminCard>
       <AdminCard>
-        <h3 className="font-medium text-amber-700">
+        <h3 className="font-medium text-warning">
           Documents flagged by feedback ({data?.flagged_documents.length || 0})
         </h3>
         <div className="mt-3 space-y-2">
