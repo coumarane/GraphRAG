@@ -35,6 +35,8 @@ jobs:
     name: Build and Push API Image
     runs-on: ubuntu-latest
     environment: dev
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -108,17 +110,28 @@ jobs:
       #     docker push "$IMAGE_REF"
       #     docker push "$LATEST_REF"
       
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}
+
+  gitops:
+    name: Update API GitOps Digest
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/dev' && needs.build-and-push.result == 'success'
+    concurrency:
+      group: gitops-kustomize-dev
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Update kustomization image to digest (GitOps)
-        if: github.ref == 'refs/heads/dev'
         uses: ./.github/actions/update-kustomize-image
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           image-name: harbor.safranys.com/chatwithdocs/api
-          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-          digest: ${{ steps.build.outputs.digest }}
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+          digest: ${{ needs.build-and-push.outputs.digest }}
           kustomization-dir: infra/k8s/api
-          commit-message: "chore(dev): deploy api @${{ steps.build.outputs.digest }}"
-
-      - name: Logout from Harbor
-        if: always()
-        run: docker logout ${{ env.REGISTRY_HOST }}
+          commit-message: "chore(dev): deploy api @${{ needs.build-and-push.outputs.digest }}"
