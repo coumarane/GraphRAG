@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from graph_rag.api.errors import register_exception_handlers
 from graph_rag.api.routes import (
+    admin_console,
     assets,
     auth,
     conversations,
@@ -140,6 +141,7 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
     api.include_router(assets.router)
     api.include_router(users.router)
     api.include_router(users.admin_router)
+    api.include_router(admin_console.router)
     app.include_router(api)
 
     if mcp_enabled:

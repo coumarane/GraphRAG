@@ -127,6 +127,7 @@ async def admin_list_users(tenant: TenantDep, container: ContainerDep) -> dict[s
                 "role": user.role,
                 "status": user.status.value if hasattr(user.status, "value") else user.status,
                 "is_active": bool(user.is_active),
+                "created_at": user.created_at.isoformat() if user.created_at else None,
                 "attributes": dict(user.attributes),
             }
             for user in users

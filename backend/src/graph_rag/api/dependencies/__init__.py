@@ -197,6 +197,15 @@ async def get_tenant_context(
         tenant_key=x_tenant_key,
         principal=x_principal,
     )
+    # Auth-disabled deployments are a trusted operator console: seed admin so
+    # local/dev can use Admin Settings APIs without a login session.
+    if "admin" not in resolved.roles:
+        resolved = resolved.model_copy(
+            update={
+                "roles": (*resolved.roles, "admin"),
+                "attributes": {**dict(resolved.attributes), "admin": True},
+            }
+        )
     return _bind_usage_context(resolved)
 
 
