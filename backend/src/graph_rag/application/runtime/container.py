@@ -119,6 +119,7 @@ class ServiceContainer:
     authorization: Any | None = None
     quotas: Any | None = None
     parser_registry: Any | None = None
+    admin_console: Any | None = None
 
     def require_authorization(self) -> Any:
         if self.authorization is None:
@@ -136,6 +137,13 @@ class ServiceContainer:
             self.quotas = InMemoryQuotaService()
             self.quotas.ensure_default_plan()
         return self.quotas
+
+    def require_admin_console(self) -> Any:
+        if self.admin_console is None:
+            from graph_rag.application.admin.console import AdminConsoleService
+
+            self.admin_console = AdminConsoleService()
+        return self.admin_console
 
     async def commit_db(self) -> None:
         """Commit the metadata DB session when Postgres is wired."""

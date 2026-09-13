@@ -28,6 +28,8 @@ from graph_rag.application.document_intelligence.reuse import (
     split_reused_and_delta_fields,
 )
 from graph_rag.application.graph.build_graph import BuildKnowledgeGraphService
+from graph_rag.application.ingestion.canonical_store import CanonicalStore
+from graph_rag.application.ingestion.extract_assets import extract_canonical_assets
 from graph_rag.application.ingestion.handlers import CallableStageHandler
 from graph_rag.application.ingestion.local_pipeline import (
     ProcessRegisteredDocumentService,
@@ -74,6 +76,7 @@ from graph_rag.domain.parsing.audit import (
 )
 from graph_rag.domain.parsing.normalize import normalize_parser_result
 from graph_rag.domain.parsing.types import ParseSource, RawParserResult
+from graph_rag.domain.storage.object_keys import normalized_document_object_key
 from graph_rag.domain.storage.protocols import version_prefix
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.infrastructure.parsers.registry import ParseDocumentService
@@ -92,6 +95,15 @@ def artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str
     """
     prefix = version_prefix(tenant_id=tenant_id, document_id=document_id, version_id=version_id)
     return f"{prefix}artifacts/{name}.json"
+
+
+def canonical_document_key(tenant_id: UUID, document_id: UUID, version_id: UUID) -> str:
+    """Legacy pre-shard CanonicalDocument path (FULL reindex still deletes it)."""
+    return normalized_document_object_key(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        version_id=version_id,
+    )
 
 
 class PipelineWorkspace:
@@ -150,6 +162,47 @@ class PipelineWorkspace:
             return None
         return json.loads(data.decode("utf-8"))
 
+    def _canonical_key(self) -> str:
+        assert self.tenant is not None and self.run is not None
+        return canonical_document_key(
+            self.tenant.tenant_id,
+            self.run.document_id,
+            self.run.version_id,
+        )
+
+    def _canonical_store(self) -> CanonicalStore:
+        return CanonicalStore(self.service.object_store)
+
+    async def save_canonical_document(self, document: NormalizedDocument) -> None:
+        """Persist sharded CanonicalDocument for this ingestion attempt."""
+        assert self.tenant is not None and self.run is not None
+        await self._canonical_store().write_from_document(
+            self.tenant,
+            document,
+            attempt_id=self.run.ingestion_run_id,
+        )
+
+    async def load_canonical_document(self) -> dict[str, Any] | None:
+        """Reconstruct the full CanonicalDocument from shards, then legacy paths."""
+        assert self.tenant is not None and self.run is not None
+        store = self._canonical_store()
+        try:
+            document = await store.load_complete_canonical_document(
+                self.tenant,
+                document_id=self.run.document_id,
+                version_id=self.run.version_id,
+            )
+            return document.model_dump(mode="json")
+        except NotFoundError:
+            pass
+        try:
+            data = await self.service.object_store.get_bytes(
+                self.tenant, object_key=self._canonical_key()
+            )
+        except NotFoundError:
+            return None
+        return json.loads(data.decode("utf-8"))
+
 
 class DocumentPipeline:
     """Stage handlers that resume from the first incomplete stage."""
@@ -174,7 +227,7 @@ class DocumentPipeline:
             IngestionStageName.PARSE: self.stage_parse,
             IngestionStageName.NORMALIZE: self.stage_normalize,
             IngestionStageName.STORE_ELEMENTS: self.stage_store_elements,
-            IngestionStageName.EXTRACT_ASSETS: self.stage_skip_assets,
+            IngestionStageName.EXTRACT_ASSETS: self.stage_extract_assets,
             IngestionStageName.ENRICH_IMAGES: self.stage_enrich_images,
             IngestionStageName.ENRICH_TABLES: self.stage_skip_optional,
             IngestionStageName.ENRICH_EQUATIONS: self.stage_skip_optional,
@@ -257,6 +310,8 @@ class DocumentPipeline:
                 self._record_parse_audit(w.raw, primary=w.used_parser)
         if w.normalized is None:
             stored = await w.load_json("normalized")
+            if stored is None:
+                stored = await w.load_canonical_document()
             if stored:
                 w.normalized = NormalizedDocument.model_validate(stored)
                 self._reconcile_normalized_audit(w.normalized)
@@ -313,6 +368,11 @@ class DocumentPipeline:
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
 
     async def stage_parse(self, context: StageContext) -> StageOutcome:
+        """Run the existing parser chain only. Vision is ``ENRICH_IMAGES``.
+
+        Persists ``artifacts/parse_raw.json`` so a later-stage retry does not
+        reopen or re-parse the original document.
+        """
         await self.ensure_loaded(context)
         w = self.w
         assert w.audit is not None and w.data is not None and w.run is not None
@@ -407,12 +467,10 @@ class DocumentPipeline:
                 "used_parser": w.used_parser,
                 "attempted": w.attempted,
                 "fallbacks": w.fallbacks,
-                "routing_reason": outcome.routing_reason,
                 "vision_failed": w.vision_failed,
                 "vision_target_count": w.vision_target_count,
             },
         )
-        await self._run_vision(context)
         return StageOutcome(
             status=StageOutcomeStatus.COMPLETED,
             pages_processed=w.raw.page_count,
@@ -545,6 +603,7 @@ class DocumentPipeline:
             )
             if vision_elements:
                 w.raw.elements.extend(vision_elements)
+                await self._refresh_working_normalized(context)
             _stamp_hybrid_vision_provenance(
                 w.audit,
                 enriched_pages=enriched_pages,
@@ -576,17 +635,10 @@ class DocumentPipeline:
             },
         )
 
-    async def stage_normalize(self, context: StageContext) -> StageOutcome:
-        await self.ensure_loaded(context)
+    def _parse_source(self, context: StageContext) -> ParseSource:
         w = self.w
-        assert w.audit is not None and w.raw is not None and w.data is not None
-        if w.normalized is not None:
-            return StageOutcome(
-                status=StageOutcomeStatus.COMPLETED,
-                pages_processed=w.normalized.page_count,
-                elements_processed=len(w.normalized.elements),
-            )
-        source = ParseSource(
+        assert w.data is not None and w.version is not None
+        return ParseSource(
             tenant_id=context.tenant.tenant_id,
             document_id=context.document_id,
             version_id=context.version_id,
@@ -594,12 +646,91 @@ class DocumentPipeline:
             mime_type=w.version.mime_type or "application/octet-stream",
             content=w.data,
         )
+
+    async def _refresh_working_normalized(self, context: StageContext) -> None:
+        """Rebuild the working NormalizedDocument from current raw (post-vision).
+
+        Writes ``artifacts/normalized.json`` used by chunking. Page JSON shards
+        are rewritten so layout APIs see vision-added elements; binary assets
+        already stored for this attempt are preserved.
+        """
+        w = self.w
+        assert w.audit is not None and w.raw is not None
+        w.normalized = normalize_parser_result(w.raw, self._parse_source(context))
+        self._reconcile_normalized_audit(w.normalized)
+        await self._rewrite_canonical_shards(context)
+        await w.save_json("normalized", w.normalized.model_dump(mode="json"))
+
+    async def _rewrite_canonical_shards(self, context: StageContext) -> None:
+        w = self.w
+        assert w.normalized is not None and w.run is not None
+        store = w._canonical_store()
+        try:
+            existing = await store.load_complete_canonical_document(
+                context.tenant,
+                document_id=context.document_id,
+                version_id=context.version_id,
+            )
+        except NotFoundError:
+            existing = None
+        if existing is not None and existing.assets:
+            by_element = {
+                asset.element_id: asset.asset_id
+                for asset in existing.assets
+                if asset.element_id is not None
+            }
+            merged = []
+            for element in w.normalized.elements:
+                if element.source_asset_id is None and element.element_id in by_element:
+                    element = element.model_copy(
+                        update={"source_asset_id": by_element[element.element_id]}
+                    )
+                merged.append(element)
+            w.normalized = w.normalized.model_copy(
+                update={"elements": merged, "assets": existing.assets}
+            )
+        await store.write_from_document(
+            context.tenant,
+            w.normalized,
+            attempt_id=context.ingestion_run_id,
+        )
+
+    async def _persist_canonical_document(self, document: NormalizedDocument) -> None:
+        """Write sharded CanonicalDocument once; keep a compat working copy."""
+        w = self.w
+        assert w.tenant is not None and w.run is not None
+        store = w._canonical_store()
+        pointer = await store.load_current_pointer(
+            w.tenant,
+            document_id=w.run.document_id,
+            version_id=w.run.version_id,
+        )
+        if pointer is None:
+            await w.save_canonical_document(document)
+        stored_working = await w.load_json("normalized")
+        if stored_working is None:
+            await w.save_json("normalized", document.model_dump(mode="json"))
+
+    async def stage_normalize(self, context: StageContext) -> StageOutcome:
+        await self.ensure_loaded(context)
+        w = self.w
+        assert w.audit is not None and w.raw is not None and w.data is not None
+        if w.normalized is not None:
+            stored_raw = await w.load_json("parse_raw")
+            if not (stored_raw and stored_raw.get("vision_done")):
+                await self._persist_canonical_document(w.normalized)
+            return StageOutcome(
+                status=StageOutcomeStatus.COMPLETED,
+                pages_processed=w.normalized.page_count,
+                elements_processed=len(w.normalized.elements),
+            )
         w.audit.stage_started("NORMALIZE", tool="normalize_parser_result")
-        w.normalized = normalize_parser_result(w.raw, source)
+        w.normalized = normalize_parser_result(w.raw, self._parse_source(context))
         self._reconcile_normalized_audit(w.normalized)
         w.audit.stage_completed(
             "NORMALIZE", status=StageRunStatus.COMPLETED, output_count=len(w.normalized.elements)
         )
+        await w.save_canonical_document(w.normalized)
         await w.save_json("normalized", w.normalized.model_dump(mode="json"))
         return StageOutcome(
             status=StageOutcomeStatus.COMPLETED,
@@ -626,10 +757,31 @@ class DocumentPipeline:
             elements_processed=len(w.normalized.elements),
         )
 
-    async def stage_skip_assets(self, context: StageContext) -> StageOutcome:
+    async def stage_extract_assets(self, context: StageContext) -> StageOutcome:
         await self.ensure_loaded(context)
+        w = self.w
+        if w.normalized is None:
+            raise PermanentError(
+                "NORMALIZE must complete before EXTRACT_ASSETS", code="missing_normalized"
+            )
+        w.normalized, warnings = await extract_canonical_assets(
+            object_store=w.service.object_store,
+            tenant=context.tenant,
+            document=w.normalized,
+            original_bytes=w.data,
+            mime_type=w.mime or (w.version.mime_type if w.version else "") or "",
+            filename=w.filename,
+            attempt_id=context.ingestion_run_id,
+        )
+        await w.save_json("normalized", w.normalized.model_dump(mode="json"))
+        status = (
+            StageOutcomeStatus.COMPLETED_WITH_WARNINGS if warnings else StageOutcomeStatus.COMPLETED
+        )
         return StageOutcome(
-            status=StageOutcomeStatus.SKIPPED, warning="assets stored with original object"
+            status=status,
+            warning=";".join(warnings) if warnings else None,
+            pages_processed=w.normalized.page_count,
+            elements_processed=len(w.normalized.elements),
         )
 
     async def stage_skip_optional(self, context: StageContext) -> StageOutcome:

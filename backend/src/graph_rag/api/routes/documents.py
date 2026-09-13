@@ -39,6 +39,7 @@ from graph_rag.application.document_intelligence.catalog import builtin_model_by
 from graph_rag.application.document_intelligence.models import (
     DocumentIntelligenceIngestOptions,
 )
+from graph_rag.application.ingestion.canonical_store import CanonicalStore
 from graph_rag.application.ingestion.register_source import RegisterSourceRequest
 from graph_rag.application.ingestion.stage_pipeline import artifact_key
 from graph_rag.application.ingestion.visual_enrichment import render_visual_png
@@ -138,9 +139,10 @@ async def ingest_document(
     service = container.require_register_source()
     tag_list = [part.strip() for part in (tags or "").split(",") if part.strip()]
     label_list = [part.strip() for part in (security_labels or "").split(",") if part.strip()]
-    document_intelligence_options = _parse_document_intelligence_options(
-        document_intelligence
-    ) or _default_document_intelligence_options()
+    document_intelligence_options = (
+        _parse_document_intelligence_options(document_intelligence)
+        or _default_document_intelligence_options()
+    )
 
     tmp_path: Path | None = None
     try:
@@ -572,6 +574,37 @@ async def render_document_page(
                 "page_count": version.page_count,
             },
         )
+    store = CanonicalStore(container.require_object_store())
+    try:
+        metadata = await store.load_document_metadata(
+            tenant,
+            document_id=document_id,
+            version_id=resolved_version,
+        )
+    except NotFoundError:
+        metadata = None
+    if metadata is not None and page > metadata.page_count:
+        raise NotFoundError(
+            "Page out of range",
+            details={
+                "document_id": str(document_id),
+                "page": page,
+                "page_count": metadata.page_count,
+            },
+        )
+    png_bytes = await store.load_page_render(
+        tenant,
+        document_id=document_id,
+        version_id=resolved_version,
+        page_number=page,
+        attempt_id=metadata.attempt_id if metadata is not None else None,
+    )
+    if png_bytes is not None:
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={"Cache-Control": "private, max-age=31536000, immutable"},
+        )
     data = await container.require_object_store().get_bytes(
         tenant, object_key=version.original_object_key
     )
@@ -599,9 +632,9 @@ async def get_page_layout(
 ) -> PageLayoutResponse:
     """Element bounding boxes + text for one page, for the click-to-highlight overlay.
 
-    Sourced from the cached "normalized" object-store artifact rather than
-    the (dead, never-populated) /elements route -- see that route's own
-    ElementView projection, which nothing in the codebase ever constructs.
+    Prefers the sharded page JSON so a single page can be loaded without the
+    rest of the document. Falls back to the cached working dump for documents
+    ingested before sharding.
     """
     if page < 1:
         raise ValidationError("page must be >= 1")
@@ -614,24 +647,57 @@ async def get_page_layout(
             "Document has no version",
             details={"document_id": str(document_id)},
         )
-    key = artifact_key(tenant.tenant_id, document_id, resolved_version, "normalized")
+    store = CanonicalStore(container.require_object_store())
     try:
-        raw = await container.require_object_store().get_bytes(tenant, object_key=key)
-    except NotFoundError as exc:
-        raise NotFoundError(
-            "Page layout not available yet",
-            details={"document_id": str(document_id), "version_id": str(resolved_version)},
-        ) from exc
-    normalized = NormalizedDocument.model_validate(json.loads(raw.decode("utf-8")))
-    if page > normalized.page_count:
-        raise NotFoundError(
-            "Page out of range",
-            details={
-                "document_id": str(document_id),
-                "page": page,
-                "page_count": normalized.page_count,
-            },
+        metadata = await store.load_document_metadata(
+            tenant,
+            document_id=document_id,
+            version_id=resolved_version,
         )
+    except NotFoundError:
+        metadata = None
+    if metadata is not None:
+        if page > metadata.page_count:
+            raise NotFoundError(
+                "Page out of range",
+                details={
+                    "document_id": str(document_id),
+                    "page": page,
+                    "page_count": metadata.page_count,
+                },
+            )
+        artifact = await store.load_page(
+            tenant,
+            document_id=document_id,
+            version_id=resolved_version,
+            page_number=page,
+            attempt_id=metadata.attempt_id,
+        )
+        page_elements = list(artifact.elements)
+    else:
+        key = artifact_key(tenant.tenant_id, document_id, resolved_version, "normalized")
+        try:
+            raw = await container.require_object_store().get_bytes(tenant, object_key=key)
+        except NotFoundError as exc:
+            raise NotFoundError(
+                "Page layout not available yet",
+                details={"document_id": str(document_id), "version_id": str(resolved_version)},
+            ) from exc
+        normalized = NormalizedDocument.model_validate(json.loads(raw.decode("utf-8")))
+        if page > normalized.page_count:
+            raise NotFoundError(
+                "Page out of range",
+                details={
+                    "document_id": str(document_id),
+                    "page": page,
+                    "page_count": normalized.page_count,
+                },
+            )
+        page_elements = [
+            element
+            for element in normalized.elements
+            if element.page_start <= page <= element.page_end
+        ]
     items = [
         PageElementItem(
             element_id=element.element_id,
@@ -641,8 +707,7 @@ async def get_page_layout(
             bounding_box=_first_bbox_for_page(element, page),
             text=element.normalized_content or element.raw_content or "",
         )
-        for element in normalized.elements
-        if element.page_start <= page <= element.page_end
+        for element in page_elements
     ]
     return PageLayoutResponse(
         document_id=document_id,

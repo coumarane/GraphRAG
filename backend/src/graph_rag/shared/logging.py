@@ -11,6 +11,22 @@ import structlog
 
 from graph_rag.shared.redaction import structlog_redaction_processor
 
+
+def _buffer_log_event(
+    logger: logging.Logger,
+    method_name: str,
+    event_dict: MutableMapping[str, Any],
+) -> MutableMapping[str, Any]:
+    try:
+        from graph_rag.infrastructure.observability.log_buffer import (
+            structlog_buffer_processor,
+        )
+
+        return structlog_buffer_processor(logger, method_name, dict(event_dict))
+    except Exception:
+        return event_dict
+
+
 _CONFIGURED = False
 
 
@@ -51,6 +67,7 @@ def configure_logging(
         structlog.processors.UnicodeDecoder(),
         _add_service_context,
         structlog_redaction_processor,
+        _buffer_log_event,
         structlog.processors.CallsiteParameterAdder(
             {
                 structlog.processors.CallsiteParameter.PATHNAME,

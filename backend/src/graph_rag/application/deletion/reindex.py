@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from graph_rag.application.document_intelligence.models import DocumentIntelligenceIngestOptions
-from graph_rag.application.ingestion.stage_pipeline import artifact_key
+from graph_rag.application.ingestion.stage_pipeline import artifact_key, canonical_document_key
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.deletion.stages import ReindexScope
 from graph_rag.domain.graph.protocols import GraphStore
@@ -18,6 +18,7 @@ from graph_rag.domain.ingestion.protocols import DocumentRepository, IngestionRe
 from graph_rag.domain.ingestion.records import IngestionRunRecord
 from graph_rag.domain.ingestion.stages import IngestionRunStatus, IngestionStageName
 from graph_rag.domain.ingestion.state_machine import build_persisted_stage_records
+from graph_rag.domain.storage.object_keys import parse_prefix
 from graph_rag.domain.storage.protocols import ObjectStore
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import NotFoundError, ValidationError
@@ -98,7 +99,7 @@ class ReindexDocumentService:
                         document_id=document_id,
                         version_id=version_id,
                     )
-                except Exception as exc:  # noqa: BLE001 - best-effort clear
+                except Exception as exc:
                     warnings.append(f"vector_clear_failed:{type(exc).__name__}")
                     logger.warning(
                         "reindex_vector_clear_failed",
@@ -117,7 +118,7 @@ class ReindexDocumentService:
                         version_id=version_id,
                         chunk_ids=chunk_ids,
                     )
-                except Exception as exc:  # noqa: BLE001 - best-effort clear
+                except Exception as exc:
                     warnings.append(f"graph_clear_failed:{type(exc).__name__}")
                     logger.warning(
                         "reindex_graph_clear_failed",
@@ -154,6 +155,18 @@ class ReindexDocumentService:
                 for name in ("parse_raw", "normalized", "chunks", "embeddings", "graph"):
                     key = artifact_key(tenant.tenant_id, document_id, version_id, name)
                     await self.object_store.delete_prefix(tenant, prefix=key)
+                await self.object_store.delete_prefix(
+                    tenant,
+                    prefix=canonical_document_key(tenant.tenant_id, document_id, version_id),
+                )
+                await self.object_store.delete_prefix(
+                    tenant,
+                    prefix=parse_prefix(
+                        tenant_id=tenant.tenant_id,
+                        document_id=document_id,
+                        version_id=version_id,
+                    ),
+                )
 
         resume_stage = _resume_stage_for_scope(scope)
         run_id = new_id()
