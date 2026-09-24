@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.ingestion.stages import IngestionStageName
@@ -41,6 +42,8 @@ def is_retryable_exception(exc: BaseException) -> bool:
     """Classify exceptions for retry vs dead-letter."""
     if isinstance(exc, TransientError):
         return True
+    if isinstance(exc, PydanticValidationError):
+        return False
     return not isinstance(exc, (PermanentError, ParserError))
 
 

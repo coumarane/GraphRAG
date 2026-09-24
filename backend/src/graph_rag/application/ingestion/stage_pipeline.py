@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from pydantic import ValidationError as PydanticValidationError
+
 from graph_rag.application.chunking import EmbedChunksService, HierarchicalMultimodalChunker
 from graph_rag.application.document_intelligence.catalog import builtin_model_by_key
 from graph_rag.application.document_intelligence.models import (
@@ -86,6 +88,16 @@ from graph_rag.shared.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _model_from_cache[T](model_cls: type[T], payload: Any) -> T | None:
+    if payload is None:
+        return None
+    try:
+        return model_cls.model_validate(payload)  # type: ignore[attr-defined]
+    except PydanticValidationError:
+        logger.warning("ingest_cache_unreadable", model=model_cls.__name__)
+        return None
+
+
 def artifact_key(tenant_id: UUID, document_id: UUID, version_id: UUID, name: str) -> str:
     """Object-store key for a stage artifact, keyed by (tenant, document, version) -- not run_id.
 
@@ -160,7 +172,14 @@ class PipelineWorkspace:
             )
         except NotFoundError:
             return None
-        return json.loads(data.decode("utf-8"))
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            logger.warning("ingest_artifact_unreadable", artifact=name)
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
 
     def _canonical_key(self) -> str:
         assert self.tenant is not None and self.run is not None
@@ -193,7 +212,7 @@ class PipelineWorkspace:
                 version_id=self.run.version_id,
             )
             return document.model_dump(mode="json")
-        except NotFoundError:
+        except (NotFoundError, PydanticValidationError):
             pass
         try:
             data = await self.service.object_store.get_bytes(
@@ -201,7 +220,14 @@ class PipelineWorkspace:
             )
         except NotFoundError:
             return None
-        return json.loads(data.decode("utf-8"))
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            logger.warning("ingest_legacy_canonical_unreadable")
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
 
 
 class DocumentPipeline:
@@ -246,7 +272,7 @@ class DocumentPipeline:
         }
         return table[stage]
 
-    async def ensure_loaded(self, context: StageContext) -> None:
+    async def ensure_loaded(self, context: StageContext, *, original: bool = False) -> None:
         w = self.w
         if w.tenant is None:
             w.tenant = context.tenant
@@ -261,12 +287,13 @@ class DocumentPipeline:
                     "Document version or object key missing",
                     code="missing_original",
                 )
-        if w.data is None:
+        if not w.filename:
+            w.filename = w.version.source_filename or Path(w.version.original_object_key).name
+            w.mime = (w.version.mime_type or "").lower()
+        if original and w.data is None:
             w.data = await w.service.object_store.get_bytes(
                 context.tenant, object_key=w.version.original_object_key
             )
-            w.filename = w.version.source_filename or Path(w.version.original_object_key).name
-            w.mime = (w.version.mime_type or "").lower()
         if w.document is None:
             w.document = await w.service.document_repo.get_document(
                 context.tenant, context.document_id
@@ -292,8 +319,9 @@ class DocumentPipeline:
             )
         if w.raw is None:
             stored = await w.load_json("parse_raw")
-            if stored:
-                w.raw = RawParserResult.model_validate(stored["raw"])
+            raw = _model_from_cache(RawParserResult, stored.get("raw") if stored else None)
+            if raw is not None:
+                w.raw = raw
                 w.selected_parser = stored.get("selected_parser")
                 w.used_parser = stored.get("used_parser")
                 w.attempted = list(stored.get("attempted") or [])
@@ -312,24 +340,39 @@ class DocumentPipeline:
             stored = await w.load_json("normalized")
             if stored is None:
                 stored = await w.load_canonical_document()
-            if stored:
-                w.normalized = NormalizedDocument.model_validate(stored)
+            normalized = _model_from_cache(NormalizedDocument, stored)
+            if normalized is not None:
+                w.normalized = normalized
                 self._reconcile_normalized_audit(w.normalized)
         if not w.chunks:
             stored = await w.load_json("chunks")
             if stored:
-                w.chunks = [ChunkBase.model_validate(item) for item in stored.get("chunks") or []]
-                w.audit.mark_downstream(chunking=True)
+                try:
+                    w.chunks = [
+                        ChunkBase.model_validate(item) for item in stored.get("chunks") or []
+                    ]
+                    w.audit.mark_downstream(chunking=True)
+                except PydanticValidationError:
+                    logger.warning("ingest_chunks_cache_unreadable")
+                    w.chunks = []
         if not w.embedded:
             stored = await w.load_json("embeddings")
             if stored:
-                w.embedded = [
-                    ChunkVectorRecord.model_validate(item) for item in stored.get("records") or []
-                ]
-                w.audit.mark_downstream(vector_index=True)
+                try:
+                    w.embedded = [
+                        ChunkVectorRecord.model_validate(item)
+                        for item in stored.get("records") or []
+                    ]
+                    w.audit.mark_downstream(vector_index=True)
+                except PydanticValidationError:
+                    logger.warning("ingest_embeddings_cache_unreadable")
+                    w.embedded = []
 
     async def stage_preregistered(self, context: StageContext) -> StageOutcome:
-        await self.ensure_loaded(context)
+        # VALIDATE/HASH/REGISTER/STORE_ORIGINAL already ran in register_source.
+        # Loading original bytes or canonical shards here made new uploads sit
+        # on Validate at 0% and retry poison cache errors until the 10-attempt cap.
+        _ = context
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
 
     async def stage_inspect(self, context: StageContext) -> StageOutcome:
@@ -373,7 +416,7 @@ class DocumentPipeline:
         Persists ``artifacts/parse_raw.json`` so a later-stage retry does not
         reopen or re-parse the original document.
         """
-        await self.ensure_loaded(context)
+        await self.ensure_loaded(context, original=True)
         w = self.w
         assert w.audit is not None and w.data is not None and w.run is not None
         if w.raw is not None:
@@ -712,7 +755,7 @@ class DocumentPipeline:
             await w.save_json("normalized", document.model_dump(mode="json"))
 
     async def stage_normalize(self, context: StageContext) -> StageOutcome:
-        await self.ensure_loaded(context)
+        await self.ensure_loaded(context, original=True)
         w = self.w
         assert w.audit is not None and w.raw is not None and w.data is not None
         if w.normalized is not None:
@@ -758,7 +801,7 @@ class DocumentPipeline:
         )
 
     async def stage_extract_assets(self, context: StageContext) -> StageOutcome:
-        await self.ensure_loaded(context)
+        await self.ensure_loaded(context, original=True)
         w = self.w
         if w.normalized is None:
             raise PermanentError(
@@ -811,7 +854,7 @@ class DocumentPipeline:
                 status=StageOutcomeStatus.SKIPPED,
                 warning="document_intelligence disabled globally",
             )
-        await self.ensure_loaded(context)
+        await self.ensure_loaded(context, original=True)
         w = self.w
         raw_options = (w.run.metadata or {}).get("document_intelligence") if w.run else None
         if not raw_options:
@@ -1023,7 +1066,7 @@ class DocumentPipeline:
         return outcome
 
     async def stage_enrich_images(self, context: StageContext) -> StageOutcome:
-        await self.ensure_loaded(context)
+        await self.ensure_loaded(context, original=True)
         w = self.w
         await self._run_vision(context)
         warning = f"vision_failed={w.vision_failed}" if w.vision_failed else None

@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from pydantic import ValidationError as PydanticValidationError
+
 from graph_rag.application.ingestion.canonical_markdown import canonical_document_markdown
 from graph_rag.domain.documents.canonical_shards import (
     AssetArtifactRef,
@@ -92,6 +94,10 @@ class CanonicalStore:
         document_key = parse_document_key(**ids, attempt_id=attempt_id)
         markdown_key = parse_markdown_key(**ids, attempt_id=attempt_id)
         manifest_key = parse_manifest_key(**ids, attempt_id=attempt_id)
+        persisted_pages = [item.page for item in written_pages] or list(document.pages)
+        page_count = document.page_count
+        if not page_count or (persisted_pages and len(persisted_pages) != page_count):
+            page_count = len(persisted_pages)
         metadata = CanonicalDocumentMetadata(
             attempt_id=attempt_id,
             tenant_id=document.tenant_id,
@@ -101,9 +107,9 @@ class CanonicalStore:
             source_filename=document.source_filename,
             mime_type=document.mime_type,
             language=document.language,
-            page_count=document.page_count,
+            page_count=page_count,
             metadata=document.metadata,
-            pages=[item.page for item in written_pages] or list(document.pages),
+            pages=persisted_pages,
             sections=document.sections,
             assets=document.assets,
             references=document.references,
@@ -125,7 +131,7 @@ class CanonicalStore:
             version_id=document.version_id,
             created_at=datetime.now(UTC),
             parser_name=document.parser_info.parser_name,
-            page_count=document.page_count,
+            page_count=page_count,
             document_key=document_key,
             markdown_key=markdown_key,
             pages=page_refs,
@@ -159,7 +165,10 @@ class CanonicalStore:
         payload = await self._get_json(tenant, key)
         if payload is None:
             return None
-        return CanonicalCurrentPointer.model_validate(payload)
+        try:
+            return CanonicalCurrentPointer.model_validate(payload)
+        except PydanticValidationError:
+            return None
 
     async def load_manifest(
         self,
@@ -179,7 +188,7 @@ class CanonicalStore:
             attempt_id=resolved,
         )
         payload = await self._require_json(tenant, key)
-        return CanonicalManifest.model_validate(payload)
+        return _validate_shard(CanonicalManifest, payload, object_key=key)
 
     async def load_document_metadata(
         self,
@@ -200,7 +209,7 @@ class CanonicalStore:
             attempt_id=resolved,
         )
         payload = await self._require_json(tenant, key)
-        return CanonicalDocumentMetadata.model_validate(payload)
+        return _validate_shard(CanonicalDocumentMetadata, payload, object_key=key)
 
     async def load_page(
         self,
@@ -228,7 +237,7 @@ class CanonicalStore:
             page_number=page_number,
         )
         payload = await self._require_json(tenant, key)
-        return CanonicalPageArtifact.model_validate(payload)
+        return _validate_shard(CanonicalPageArtifact, payload, object_key=key)
 
     async def load_pages(
         self,
@@ -327,23 +336,39 @@ class CanonicalStore:
                     continue
                 seen.add(element.element_id)
                 elements.append(element)
-        return CanonicalDocument(
-            tenant_id=metadata.tenant_id,
-            document_id=metadata.document_id,
-            version_id=metadata.version_id,
-            title=metadata.title,
-            source_filename=metadata.source_filename,
-            mime_type=metadata.mime_type,
-            language=metadata.language,
-            page_count=metadata.page_count,
-            metadata=metadata.metadata,
-            pages=metadata.pages or [page.page for page in pages],
-            elements=elements,
-            sections=metadata.sections,
-            assets=metadata.assets,
-            references=metadata.references,
-            parser_info=metadata.parser_info,
-        )
+        rebuilt_pages = list(metadata.pages) if metadata.pages else [page.page for page in pages]
+        page_count = metadata.page_count
+        if rebuilt_pages and page_count and len(rebuilt_pages) != page_count:
+            rebuilt_pages = [page.page for page in pages]
+            if rebuilt_pages and len(rebuilt_pages) != page_count:
+                page_count = len(rebuilt_pages)
+        try:
+            return CanonicalDocument(
+                tenant_id=metadata.tenant_id,
+                document_id=metadata.document_id,
+                version_id=metadata.version_id,
+                title=metadata.title,
+                source_filename=metadata.source_filename,
+                mime_type=metadata.mime_type,
+                language=metadata.language,
+                page_count=page_count,
+                metadata=metadata.metadata,
+                pages=rebuilt_pages,
+                elements=elements,
+                sections=metadata.sections,
+                assets=metadata.assets,
+                references=metadata.references,
+                parser_info=metadata.parser_info,
+            )
+        except PydanticValidationError as exc:
+            raise NotFoundError(
+                "Canonical parse shards are unreadable",
+                details={
+                    "document_id": str(document_id),
+                    "version_id": str(version_id),
+                },
+                cause=exc,
+            ) from exc
 
     async def _require_attempt(
         self,
@@ -401,7 +426,10 @@ class CanonicalStore:
             data = await self.object_store.get_bytes(tenant, object_key=object_key)
         except NotFoundError:
             return None
-        parsed = json.loads(data.decode("utf-8"))
+        try:
+            parsed = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
         if not isinstance(parsed, dict):
             return None
         return parsed
@@ -411,6 +439,17 @@ class CanonicalStore:
         if payload is None:
             raise NotFoundError("Object not found", details={"object_key": object_key})
         return payload
+
+
+def _validate_shard[T](model_cls: type[T], payload: dict[str, Any], *, object_key: str) -> T:
+    try:
+        return model_cls.model_validate(payload)  # type: ignore[attr-defined]
+    except PydanticValidationError as exc:
+        raise NotFoundError(
+            "Canonical shard is unreadable",
+            details={"object_key": object_key},
+            cause=exc,
+        ) from exc
 
 
 def _ids(tenant: TenantContext, document: NormalizedDocument) -> dict[str, UUID]:
