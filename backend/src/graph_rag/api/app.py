@@ -91,6 +91,12 @@ def create_app(container: ServiceContainer | None = None) -> FastAPI:
                     while not stop.is_set():
                         try:
                             await svc.outbox_publisher.publish_once()
+                            sessions_ready = (
+                                svc.upload_sessions is not None
+                                or svc.upload_session_repo is not None
+                            )
+                            if sessions_ready:
+                                await svc.require_upload_sessions().expire_due()
                         except Exception:
                             logger.exception("outbox_publisher_tick_failed")
                         try:

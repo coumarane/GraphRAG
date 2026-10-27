@@ -61,6 +61,10 @@ def register_exception_handlers(app: FastAPI) -> None:
             correlation_id=correlation,
             metadata=exc.details or None,
         )
+        if exc.code == "quota_exceeded":
+            for key in ("quota", "limit", "used", "remaining", "reset_at"):
+                if key in exc.details:
+                    body[key] = exc.details[key]
         return JSONResponse(status_code=exc.http_status, content=body)
 
     @app.exception_handler(RequestValidationError)

@@ -1,0 +1,14 @@
+{
+  "purpose": "Staging storage account only. Do not apply this rule to the production account used by chatwithdocs.org.",
+  "allowed_origins": ["https://staging.chatwithdocs.org"],
+  "allowed_methods": ["PUT", "OPTIONS", "HEAD", "GET"],
+  "allowed_headers": [
+    "content-type",
+    "x-ms-blob-type",
+    "x-ms-blob-content-type",
+    "x-ms-date",
+    "x-ms-version"
+  ],
+  "exposed_headers": ["etag", "x-ms-request-id"],
+  "max_age_in_seconds": 600
+}

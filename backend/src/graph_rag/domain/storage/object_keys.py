@@ -39,6 +39,12 @@ def sanitize_filename(filename: str) -> str:
     return cleaned
 
 
+def staging_object_key(*, tenant_id: UUID, upload_id: UUID, filename: str) -> str:
+    """Build the only key a member write URL may name."""
+    safe = sanitize_filename(filename)
+    return f"tenants/{tenant_id}/uploads/{upload_id}/staging/{safe}"
+
+
 def original_object_key(
     *,
     tenant_id: UUID,

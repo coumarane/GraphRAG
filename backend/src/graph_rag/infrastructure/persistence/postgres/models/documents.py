@@ -95,6 +95,8 @@ class DocumentVersionModel(Base, TimestampMixin, TenantOwnedMixin):
     byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     original_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    object_version_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     status: Mapped[str] = mapped_column(
         String(64),
         nullable=False,

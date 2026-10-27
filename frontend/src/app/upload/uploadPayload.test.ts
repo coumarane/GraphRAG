@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIngestFormData } from "./uploadPayload";
+import { buildIngestFormData, buildUploadSessionBody } from "./uploadPayload";
 
 function keys(form: FormData): string[] {
   return Array.from(form.keys()).sort();
@@ -35,5 +35,15 @@ describe("buildIngestFormData", () => {
   it("never appends document_intelligence when enabled is true but payload is null", () => {
     const form = buildIngestFormData(file, "", { enabled: true, payload: null });
     expect(keys(form)).toEqual(["file", "parser_requested"]);
+  });
+});
+
+describe("buildUploadSessionBody", () => {
+  it("sends JSON metadata and does not append the file bytes", () => {
+    const sessionFile = new File(["payload-bytes"], "hello.pdf", { type: "application/pdf" });
+    const body = buildUploadSessionBody(sessionFile, "Notes", { enabled: false, payload: null });
+    expect(body).toEqual({ filename: "hello.pdf", byte_size: 13, title: "Notes" });
+    expect(JSON.stringify(body)).not.toContain("payload-bytes");
+    expect(body).not.toHaveProperty("file");
   });
 });

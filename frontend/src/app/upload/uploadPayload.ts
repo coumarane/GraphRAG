@@ -1,5 +1,24 @@
 import type { DocumentIntelligencePanelValue } from "@/components/document-intelligence/types";
 
+export function buildUploadSessionBody(
+  file: File,
+  title: string,
+  di: DocumentIntelligencePanelValue,
+): { filename: string; byte_size: number; title?: string; document_intelligence?: DocumentIntelligencePanelValue["payload"] } {
+  const body: {
+    filename: string;
+    byte_size: number;
+    title?: string;
+    document_intelligence?: DocumentIntelligencePanelValue["payload"];
+  } = {
+    filename: file.name,
+    byte_size: file.size,
+  };
+  if (title.trim()) body.title = title.trim();
+  if (di.enabled && di.payload) body.document_intelligence = di.payload;
+  return body;
+}
+
 export function buildIngestFormData(
   file: File,
   title: string,

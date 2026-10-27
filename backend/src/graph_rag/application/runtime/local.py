@@ -422,4 +422,12 @@ def build_local_container(
     container.authorization = authorization
     container.quotas = quotas
     container.on_commit = on_commit
+    from graph_rag.application.runtime.queue_startup import (
+        open_redis_or_raise,
+        redis_queue_required,
+    )
+    from graph_rag.config.settings import get_settings
+
+    if redis_queue_required(metadata_is_postgres=False):
+        open_redis_or_raise(get_settings())
     return container

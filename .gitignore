@@ -1,3 +1,11 @@
+# Node
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
 # Python
 __pycache__/
 *.py[cod]

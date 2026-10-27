@@ -118,6 +118,8 @@ class ServiceContainer:
     auth_service: Any | None = None
     authorization: Any | None = None
     quotas: Any | None = None
+    upload_session_repo: Any | None = None
+    upload_sessions: Any | None = None
     parser_registry: Any | None = None
     admin_console: Any | None = None
 
@@ -129,6 +131,36 @@ class ServiceContainer:
 
             self.authorization = PolicyAuthorizationService()
         return self.authorization
+
+    def require_upload_sessions(self) -> Any:
+        if self.upload_sessions is not None:
+            return self.upload_sessions
+        from graph_rag.application.ingestion.upload_session import UploadSessionService
+        from graph_rag.infrastructure.persistence.memory.upload_sessions import (
+            InMemoryUploadSessionRepository,
+        )
+
+        if self.upload_session_repo is None:
+            self.upload_session_repo = InMemoryUploadSessionRepository()
+        tenant_repo = self.tenant_repo
+        if tenant_repo is None:
+            from graph_rag.shared.exceptions import ConfigurationError
+
+            raise ConfigurationError("Tenant repository is required for upload sessions")
+        self.upload_sessions = UploadSessionService(
+            sessions=self.upload_session_repo,
+            tenant_repo=tenant_repo,
+            document_repo=self.require_document_repo(),
+            ingestion_repo=self.require_ingestion_repo(),
+            object_store=self.require_object_store(),
+            quotas=self.quotas,
+            outbox=self.outbox_store,
+            authorization=self.authorization,
+            source_loader=getattr(self.register_source, "source_loader", None)
+            if self.register_source is not None
+            else None,
+        )
+        return self.upload_sessions
 
     def require_quotas(self) -> Any:
         if self.quotas is None:

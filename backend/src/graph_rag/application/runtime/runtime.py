@@ -183,6 +183,15 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
 
         on_commit = _commit
         ready_checks.append(_postgres_ready)
+        from graph_rag.application.quotas.postgres import PostgresQuotaService
+        from graph_rag.infrastructure.persistence.postgres.repositories.upload_sessions import (
+            SqlAlchemyUploadSessionRepository,
+        )
+
+        container_quotas = PostgresQuotaService(session_factory)
+        container_upload_repo = LockedAsyncProxy(
+            SqlAlchemyUploadSessionRepository(raw_session), db_lock
+        )
     elif meta_backend not in {"memory", "inmemory", "local"}:
         raise ValueError(
             f"Unsupported METADATA_STORE_BACKEND={meta_backend!r}; use 'memory' or 'postgres'"
@@ -191,6 +200,8 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
         from graph_rag.infrastructure.persistence.users import InMemoryUserRepository
 
         user_repo = InMemoryUserRepository()
+        container_quotas = None
+        container_upload_repo = None
 
     container = build_local_container(
         max_upload_bytes=resolved.security.max_upload_bytes,
@@ -244,6 +255,12 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
             jwt_secret=resolved.security.auth_jwt_secret,
             jwt_ttl_seconds=resolved.security.auth_jwt_ttl_seconds,
         )
+    if container_quotas is not None:
+        container.quotas = container_quotas
+        if container.register_source is not None:
+            container.register_source.quotas = container_quotas
+    if container_upload_repo is not None:
+        container.upload_session_repo = container_upload_repo
     _wire_ingest_queue(
         container,
         resolved,
@@ -283,24 +300,21 @@ def _wire_ingest_queue(
         container.outbox_store = InMemoryOutboxStore()
         container.dead_letter_store = InMemoryDeadLetterStore()
 
-    queue_backend = os.environ.get("INGEST_QUEUE_BACKEND", "").strip().lower()
-    use_redis = queue_backend in {"redis", "streams"} or (
-        not queue_backend and raw_session is not None
+    from graph_rag.application.runtime.queue_startup import (
+        open_redis_or_raise,
+        redis_queue_required,
     )
-    redis_client = None
-    if use_redis:
-        try:
-            import redis.asyncio as redis_async
 
-            redis_client = redis_async.from_url(
-                settings.redis.url.get_secret_value(),
-                decode_responses=False,
-            )
-        except Exception:
-            redis_client = None
-    if redis_client is not None:
+    if redis_queue_required(metadata_is_postgres=raw_session is not None):
+        open_redis_or_raise(settings)
+        import redis.asyncio as redis_async
+
         from graph_rag.infrastructure.persistence.redis import RedisStreamIngestionQueue
 
+        redis_client = redis_async.from_url(
+            settings.redis.url.get_secret_value(),
+            decode_responses=False,
+        )
         container.ingest_queue = RedisStreamIngestionQueue(
             redis_client,
             stream_key=settings.worker.stream_key,

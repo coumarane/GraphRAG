@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,14 +48,15 @@ def _title_from_source(
     Multipart uploads pass ``source_filename``. Prefer that stem so a stale
     form title cannot mislabel a different file.
     """
+    explicit = (request_title or "").strip()
+    if explicit:
+        return explicit
     file_stem = PurePosixPath(loaded_filename).stem if loaded_filename else None
     if source_filename:
         stem = PurePosixPath(sanitize_filename(source_filename)).stem
         return stem.replace("_", " ")
-    explicit = (request_title or "").strip()
     return (
-        explicit
-        or (file_stem.replace("_", " ") if file_stem else None)
+        (file_stem.replace("_", " ") if file_stem else None)
         or loaded_filename
         or "Untitled"
     )
@@ -127,12 +130,9 @@ class RegisterSourceService:
         doc_reservation = None
         storage_reservation = None
         if self.quotas is not None:
-            from graph_rag.application.authorization.gate import reserve_quota
-            from graph_rag.application.quotas.service import InMemoryQuotaService
             from graph_rag.domain.quotas.models import QuotaMetric
 
-            assert isinstance(self.quotas, InMemoryQuotaService)
-            doc_reservation = reserve_quota(
+            doc_reservation = await _reserve_quota(
                 self.quotas, tenant, metric=QuotaMetric.DOCUMENTS, quantity=1
             )
 
@@ -144,10 +144,12 @@ class RegisterSourceService:
                 doc_reservation=doc_reservation,
             )
         except Exception:
-            if self.quotas is not None:
-                if doc_reservation is not None:
-                    self.quotas.release(reservation_id=doc_reservation.reservation_id)
-                # storage reservation released inside when raised after reserve
+            if self.quotas is not None and doc_reservation is not None:
+                await _quota_call(
+                    self.quotas,
+                    "release",
+                    reservation_id=doc_reservation.reservation_id,
+                )
             raise
 
     async def _execute_inner(
@@ -168,12 +170,9 @@ class RegisterSourceService:
         storage_reservation = None
         try:
             if self.quotas is not None:
-                from graph_rag.application.authorization.gate import reserve_quota
-                from graph_rag.application.quotas.service import InMemoryQuotaService
                 from graph_rag.domain.quotas.models import QuotaMetric
 
-                assert isinstance(self.quotas, InMemoryQuotaService)
-                storage_reservation = reserve_quota(
+                storage_reservation = await _reserve_quota(
                     self.quotas,
                     tenant,
                     metric=QuotaMetric.STORAGE_BYTES,
@@ -307,12 +306,16 @@ class RegisterSourceService:
             )
 
             if self.quotas is not None and doc_reservation is not None:
-                self.quotas.commit(
+                await _quota_call(
+                    self.quotas,
+                    "commit",
                     reservation_id=doc_reservation.reservation_id,  # type: ignore[attr-defined]
                     actual_quantity=1,
                 )
             if self.quotas is not None and storage_reservation is not None:
-                self.quotas.commit(
+                await _quota_call(
+                    self.quotas,
+                    "commit",
                     reservation_id=storage_reservation.reservation_id,
                     actual_quantity=stored.byte_size,
                 )
@@ -331,7 +334,11 @@ class RegisterSourceService:
             )
         except Exception:
             if self.quotas is not None and storage_reservation is not None:
-                self.quotas.release(reservation_id=storage_reservation.reservation_id)
+                await _quota_call(
+                    self.quotas,
+                    "release",
+                    reservation_id=storage_reservation.reservation_id,
+                )
             raise
 
     async def _load_source(self, request: RegisterSourceRequest) -> SourceBytes:
@@ -406,3 +413,24 @@ class RegisterSourceService:
             ),
             stages,
         )
+
+
+async def _reserve_quota(quotas: object, tenant: object, *, metric: object, quantity: int) -> Any:
+    from graph_rag.domain.tenant import TenantContext
+
+    assert isinstance(tenant, TenantContext)
+    return await _quota_call(
+        quotas,
+        "reserve",
+        tenant_id=tenant.tenant_id,
+        user_id=tenant.user_id,
+        metric=metric,
+        quantity=quantity,
+    )
+
+
+async def _quota_call(quotas: object, method: str, **kwargs: object) -> Any:
+    result = getattr(quotas, method)(**kwargs)
+    if inspect.isawaitable(result):
+        return await result
+    return result

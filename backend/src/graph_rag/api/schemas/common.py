@@ -43,6 +43,9 @@ class DocumentResponse(BaseModel):
     security_labels: list[str] = Field(default_factory=list)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     page_count: int | None = None
+    failed_stage: str | None = None
+    failure_reason: str | None = None
+    failed_at: datetime | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -206,6 +209,8 @@ class IngestionRunResponse(BaseModel):
     worker_id: str | None = None
     heartbeat_at: datetime | None = None
     current_stage: str | None = None
+    progress_state: str | None = None
+    last_completed_stage: str | None = None
     estimated_completion_percent: float = 0.0
     stages: list[StageProgressItem] = Field(default_factory=list)
     created_at: datetime | None = None

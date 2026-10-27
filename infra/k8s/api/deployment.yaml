@@ -36,6 +36,8 @@ spec:
                 value="$(cat "$file")"
                 printf '%s=%s\n' "$name" "$value" >> /work/.env
               done
+              printf 'INGEST_EXECUTION=worker\n' >> /work/.env
+              printf 'INGEST_QUEUE_BACKEND=redis\n' >> /work/.env
               test -s /work/.env
               chmod 0444 /work/.env
           volumeMounts:

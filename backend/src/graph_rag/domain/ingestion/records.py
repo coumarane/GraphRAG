@@ -70,6 +70,8 @@ class DocumentVersionRecord(BaseModel):
     byte_size: int | None = Field(default=None, ge=0)
     page_count: int | None = Field(default=None, ge=0)
     original_object_key: str | None = None
+    etag: str | None = None
+    object_version_id: str | None = None
     status: DocumentLifecycleStatus = DocumentLifecycleStatus.REGISTERED
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime | None = None

@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
 from graph_rag.api.dependencies import ContainerDep, TenantDep
@@ -57,12 +59,94 @@ from graph_rag.domain.ingestion.records import DocumentRecord
 from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
 from graph_rag.domain.modality import Modality
 from graph_rag.domain.tenant import TenantContext
-from graph_rag.shared.exceptions import NotFoundError, ValidationError
+from graph_rag.shared.exceptions import ConflictError, NotFoundError, ValidationError
 from graph_rag.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+class UploadCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str = Field(min_length=1, max_length=512)
+    byte_size: int | None = None
+    title: str | None = Field(default=None, max_length=512)
+    source_url: str | None = None
+
+
+class UploadCreateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    upload_id: UUID
+    expires_at: datetime
+    upload: dict[str, str] | None = None
+
+
+class UploadCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, max_length=512)
+
+
+@router.post("/uploads", status_code=201, response_model=UploadCreateResponse)
+async def create_upload_session(
+    body: UploadCreateRequest,
+    tenant: TenantDep,
+    container: ContainerDep,
+) -> UploadCreateResponse:
+    if body.source_url is None and body.byte_size is None:
+        raise ValidationError("A file session requires byte_size")
+    accepted = await container.require_upload_sessions().create(
+        tenant,
+        filename=body.filename,
+        byte_size=body.byte_size,
+        title=body.title,
+        source_url=body.source_url,
+    )
+    upload = None
+    if accepted.upload_url is not None:
+        upload = {
+            "method": "PUT",
+            "url": accepted.upload_url,
+            "expires_at": accepted.expires_at.isoformat(),
+        }
+    return UploadCreateResponse(
+        upload_id=accepted.upload_id,
+        expires_at=accepted.expires_at,
+        upload=upload,
+    )
+
+
+@router.post(
+    "/uploads/{upload_id}/complete",
+    status_code=202,
+    response_model=IngestAcceptedResponse,
+)
+async def complete_upload_session(
+    upload_id: UUID,
+    tenant: TenantDep,
+    container: ContainerDep,
+    body: UploadCompleteRequest | None = None,
+) -> IngestAcceptedResponse:
+    try:
+        completed = await container.require_upload_sessions().complete(
+            tenant,
+            upload_id,
+            title=None if body is None else body.title,
+        )
+    except (ValidationError, ConflictError):
+        await container.commit_db()
+        raise
+    await container.commit_db()
+    return IngestAcceptedResponse(
+        ingestion_run_id=completed.ingestion_run_id,
+        document_id=completed.document_id,
+        version_id=completed.version_id,
+        status=completed.status,
+        duplicate_version=completed.duplicate_version,
+    )
 
 
 def _parse_document_intelligence_options(
@@ -158,7 +242,7 @@ async def ingest_document(
             RegisterSourceRequest(
                 local_path=local_path,
                 source_url=source_url,
-                title=title or (file.filename if file else None),
+                title=title.strip() if title and title.strip() else None,
                 source_filename=file.filename if file and file.filename else None,
                 document_type=document_type,
                 tags=tag_list,
@@ -189,8 +273,8 @@ async def ingest_document(
             ingestion_run_id=result.ingestion_run_id,
             document_id=result.document_id,
             version_id=result.version_id,
-            content_hash=(run.content_hash if run is not None else ""),
-            config_fingerprint=(run.config_fingerprint if run is not None else ""),
+            content_hash=(run.content_hash or "") if run is not None else "",
+            config_fingerprint=(run.config_fingerprint or "") if run is not None else "",
             correlation_id=run.correlation_id if run is not None else None,
         )
 
@@ -260,8 +344,25 @@ async def list_documents(
     allowed = filter_authorized_documents(authz, tenant, items)
     total = len(allowed)
     page = allowed[offset : offset + limit]
+    responses = []
+    for item in page:
+        response = _document_response(item)
+        repo = container.ingestion_repo
+        if item.status is DocumentLifecycleStatus.FAILED and repo is not None:
+            run = await repo.get_latest_run_for_document(tenant, item.document_id)
+            if run is not None:
+                stages = await repo.list_stages(tenant, run.ingestion_run_id)
+                failed = next((stage for stage in stages if stage.status.value == "failed"), None)
+                response = response.model_copy(
+                    update={
+                        "failed_stage": None if failed is None else failed.stage.value,
+                        "failure_reason": run.error_message or run.error_code,
+                        "failed_at": run.completed_at or run.updated_at,
+                    }
+                )
+        responses.append(response)
     return DocumentListResponse(
-        items=[_document_response(item) for item in page],
+        items=responses,
         total=total,
         offset=offset,
         limit=limit,
@@ -353,8 +454,8 @@ async def reprocess_document(
             ingestion_run_id=result.ingestion_run_id,
             document_id=result.document_id,
             version_id=result.version_id,
-            content_hash=(run.content_hash if run is not None else ""),
-            config_fingerprint=(run.config_fingerprint if run is not None else ""),
+            content_hash=(run.content_hash or "") if run is not None else "",
+            config_fingerprint=(run.config_fingerprint or "") if run is not None else "",
             correlation_id=run.correlation_id if run is not None else None,
         )
 

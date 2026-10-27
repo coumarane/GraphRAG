@@ -96,6 +96,8 @@ def version_to_record(model: DocumentVersionModel) -> DocumentVersionRecord:
         byte_size=model.byte_size,
         page_count=model.page_count,
         original_object_key=model.original_object_key,
+        etag=model.etag,
+        object_version_id=model.object_version_id,
         status=DocumentLifecycleStatus(model.status),
         metadata=_metadata(model.metadata_json),
         created_at=model.created_at,

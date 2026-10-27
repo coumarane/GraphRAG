@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from graph_rag.api.dependencies import ContainerDep, TenantDep
 from graph_rag.api.schemas import IngestionRunResponse, StageProgressItem
+from graph_rag.application.ingestion.progress import derive_progress_state, last_completed_stage
 from graph_rag.domain.ingestion.state_machine import IngestionStateMachine, StageRecord
 from graph_rag.shared.exceptions import NotFoundError
 
@@ -52,6 +53,8 @@ def _run_response(run, stages) -> IngestionRunResponse:
         worker_id=run.worker_id,
         heartbeat_at=run.heartbeat_at,
         current_stage=progress.current_stage.value if progress.current_stage else None,
+        progress_state=derive_progress_state(run.status.value, run.heartbeat_at),
+        last_completed_stage=last_completed_stage(stages) or "",
         estimated_completion_percent=progress.estimated_completion_percent,
         stages=[
             StageProgressItem(
