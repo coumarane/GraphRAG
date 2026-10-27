@@ -1,28 +1,3 @@
-<!--
-Sync Impact Report
-- Version change: 1.0.0 → 1.1.0
-- Bump: MINOR. The five v1.0.0 obligations remain. They are reorganized
-  and expanded into the nine principles requested for the existing platform.
-  No principle obligation was removed.
-- Modified principles:
-  - I. Grounded Evidence and Contract Precedence → IV. Grounded GraphRAG and Measured Quality
-  - II. Tenant Isolation and Deny-by-Default Authorization → II. Security by Design
-  - III. Ports, Adapters, and Owned Protocols → I. Clean Architecture and Compatible Interfaces
-  - IV. Verification Before Completion → VII. Automated Delivery and Recoverable Infrastructure
-  - V. Observable, Idempotent, and Bounded Execution → split into
-    III. Reliable Ingestion and Consistent Data and VI. Observability and LLM Cost Tracking
-- Added principles:
-  - V. AI Provider Abstraction and Key Ownership
-  - VIII. Performance, Scale, and FinOps
-  - IX. Spec-Driven Delivery
-- Added sections:
-  - Existing Platform Constraints (replaces Technology and Security Constraints)
-  - Quality Gates (replaces Development Workflow and Quality Gates)
-- Removed sections: none
-- Follow-up TODOs: none
-- Note: remove this Sync Impact Report comment before committing.
--->
-
 # Enterprise RAG-Anything Constitution
 
 ## Core Principles
@@ -81,10 +56,24 @@ credential-bearing URLs.
 
 Secrets MUST come from the environment in local development and from Azure
 Key Vault through the existing secrets-store CSI driver in the cluster. Logs,
-traces, API responses, and errors MUST NOT contain credentials, API keys, raw
-tokens, presigned URLs, or unrestricted document content. Secrets MUST NOT be
-committed. Production databases and production secret stores MUST NOT be read
-to debug or develop a change.
+traces, and errors MUST NOT contain credentials, API keys, raw tokens,
+presigned URLs, or unrestricted document content. API responses MUST NOT
+contain credentials, API keys, raw tokens, or unrestricted document content.
+Secrets MUST NOT be committed. Production databases and production secret
+stores MUST NOT be read to debug or develop a change.
+
+An API response MAY include a presigned URL only in these two cases:
+
+- A write URL, returned only to the authenticated member who started that
+  upload, for a single staging object key in that member's organization,
+  expiring within 15 minutes. It MUST NOT grant read or write on the final
+  accepted object. After acceptance, that staging URL MUST NOT be able to
+  change the accepted bytes.
+- A read URL, returned only after the caller is authorized to read that
+  object, expiring within 60 minutes.
+
+Both URLs MUST stay out of logs, traces, and error bodies. The container
+MUST remain private. Ownership MUST be checked before either URL is signed.
 
 Rationale: Tenant filters and ABAC already exist. Role checks cover admin
 operations. Replacing ABAC with roles alone would drop document-level controls
@@ -307,4 +296,25 @@ Compliance review:
   tenant isolation, deny-by-default authorization, or the ban on citing
   evidence that was not retrieved.
 
-**Version**: 1.1.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-10-27
+### Recorded platform exceptions
+
+These exceptions are not implementations. The controls below are absent today.
+They expire on 2027-01-31. After that date the principle applies with no
+exception unless this section is amended. Owner for both is the Enterprise RAG
+team. They MUST NOT be cited as a reason to weaken tenant isolation, citation
+grounding, or secret handling.
+
+- **Principle VI, exportable production traces.** The API and worker configure
+  an in-process tracer and do not attach an exporter, so production traces are
+  not exportable. Remediation, due 2027-01-31: attach an OTLP exporter to the
+  existing tracer in the API and the worker, and show one trace that crosses
+  both processes in a non-production run. Until then, logs, `/metrics`, and
+  stored run status remain the operator signals.
+- **Principle VII, practiced restore.** Azure Blob soft-delete retention exists.
+  Postgres, Qdrant, Neo4j, and object storage do not yet have a restore drill
+  with a recorded recovery time. Remediation, due 2027-01-31: write the restore
+  steps and execute them in a non-production environment, recording what was
+  recovered and how long it took. Soft-delete retention does not satisfy this
+  exception's remediation.
+
+**Version**: 2.0.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-10-27

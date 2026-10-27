@@ -1,0 +1,93 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: UploadSession
+$description: >
+  Additive intake contract. Bytes are not in these JSON bodies.
+  The existing POST /api/v1/documents/ingest request and
+  IngestAcceptedResponse fields stay valid for CLI and older clients.
+
+type: object
+
+paths:
+  create:
+    method: POST
+    path: /api/v1/documents/uploads
+    auth: signed-in member of the tenant
+    request:
+      type: object
+      additionalProperties: false
+      required: [filename]
+      properties:
+        filename: {type: string, minLength: 1, maxLength: 512}
+        byte_size: {type: integer, minimum: 1, maximum: 104857600}
+        source_url: {type: string, format: uri}
+        title: {type: string, maxLength: 512}
+        document_type: {type: string}
+        parser_requested: {type: string, default: auto}
+        tags: {type: array, items: {type: string}}
+        security_labels: {type: array, items: {type: string}}
+        document_intelligence: {type: object}
+    responses:
+      "201":
+        description: >
+          Session reserved. No document, version, or ingestion run yet.
+          A file session includes upload. A source_url session does not.
+        body:
+          required: [upload_id, expires_at]
+          properties:
+            upload_id: {type: string, format: uuid}
+            expires_at: {type: string, format: date-time}
+            upload:
+              required: [method, url, expires_at]
+              properties:
+                method: {const: PUT}
+                url:
+                  type: string
+                  description: >
+                    Write URL for the staging key only. Expires within 15 minutes.
+                    Allowed in this response by constitution 2.0.0 for the member
+                    who created the session. Must not be logged. Must not name
+                    the final object key.
+                headers: {type: object, additionalProperties: {type: string}}
+                expires_at: {type: string, format: date-time}
+      "403": {description: Tenant or ABAC refusal}
+      "413": {description: Declared size over the published maximum}
+      "429": {description: Organization allowance exceeded, with quota, limit, used, remaining, reset_at}
+
+  complete:
+    method: POST
+    path: /api/v1/documents/uploads/{upload_id}/complete
+    auth: same tenant that created the session
+    request:
+      type: object
+      additionalProperties: false
+      properties:
+        title: {type: string, maxLength: 512}
+    responses:
+      "202":
+        description: >
+          Same fields as the existing IngestAcceptedResponse.
+          A repeated complete of the same session returns this same body.
+        body:
+          required: [ingestion_run_id, document_id, version_id, status]
+          properties:
+            ingestion_run_id: {type: string, format: uuid}
+            document_id: {type: string, format: uuid}
+            version_id: {type: string, format: uuid}
+            status: {const: accepted}
+            duplicate_version: {type: boolean}
+      "409":
+        description: Identical active bytes already exist, or the session expired or was rejected
+      "422": {description: Bytes missing, empty, wrong size, or disallowed type}
+
+rules:
+  - The write URL expires within 15 minutes and can write only the staging key.
+  - The URL is scoped to the tenant prefix. A key for another tenant is rejected before it is signed.
+  - Completion streams the staging object, copies it to the final key, stores size and etag, and deletes the staging object.
+  - The 202 body does not include the write URL.
+  - A document row is created only in the 202 transaction. Empty, oversized, and disallowed-type results leave no document row.
+  - Repeating PUT on the write URL after 202 does not change the final object.
+  - A file session requires byte_size and returns a staging write URL. A source_url session omits the write URL. Provide exactly one of a file session or source_url.
+  - Private and credentialed URLs are rejected with no document. A successful fetch uses the same 202 transaction.
+  - No outbox row exists until the 202 transaction commits. A rolled-back completion leaves no outbox row and no document.
+  - Logs, traces, and error bodies omit the write URL, secrets, and document bytes.
+  - The 429 body names quota, limit, used, remaining, and reset_at.
