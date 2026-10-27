@@ -1,6 +1,6 @@
 {
-  "purpose": "Staging storage account only. Do not apply this rule to the production account used by chatwithdocs.org.",
-  "allowed_origins": ["https://staging.chatwithdocs.org"],
+  "purpose": "Existing DEV storage account only. The browser origin is the OVH web route https://chatwithdocs.org. Do not create a staging account and do not add another origin.",
+  "allowed_origins": ["https://chatwithdocs.org"],
   "allowed_methods": ["PUT", "OPTIONS", "HEAD", "GET"],
   "allowed_headers": [
     "content-type",
