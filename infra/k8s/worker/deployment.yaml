@@ -60,23 +60,6 @@ spec:
           image: harbor.safranys.com/chatwithdocs/worker:latest
           imagePullPolicy: IfNotPresent
           command: ["enterprise-rag", "worker", "--poll-interval", "1.0"]
-          ports:
-            - name: health
-              containerPort: 8081
-          livenessProbe:
-            httpGet:
-              path: /health/live
-              port: health
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            timeoutSeconds: 5
-          readinessProbe:
-            httpGet:
-              path: /health/ready
-              port: health
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
           volumeMounts:
             - name: runtime-env
               mountPath: /app/.env
