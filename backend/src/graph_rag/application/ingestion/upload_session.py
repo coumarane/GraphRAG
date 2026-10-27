@@ -58,12 +58,28 @@ MAX_UPLOAD_BYTES = 104_857_600
 WRITE_URL_SECONDS = 900
 
 
+def direct_put_headers(object_store: object) -> dict[str, str]:
+    """Headers the browser must send with the staging PUT.
+
+    Azure Blob rejects a block upload that omits ``x-ms-blob-type``.
+    MinIO and the memory store do not use that header.
+    """
+    method = getattr(object_store, "direct_put_headers", None)
+    if not callable(method):
+        return {}
+    headers = method()
+    if not isinstance(headers, dict):
+        return {}
+    return {str(key): str(value) for key, value in headers.items() if value is not None}
+
+
 @dataclass
 class UploadAccepted:
     upload_id: UUID
     expires_at: datetime
     upload_url: str | None
     method: str | None
+    headers: dict[str, str] | None = None
 
 
 @dataclass
@@ -185,6 +201,7 @@ class UploadSessionService:
             expires_at=expires_at,
             upload_url=upload_url,
             method=None if upload_url is None else "PUT",
+            headers=None if upload_url is None else direct_put_headers(self._objects),
         )
 
     async def complete(

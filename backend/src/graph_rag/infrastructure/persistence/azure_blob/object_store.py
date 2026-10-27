@@ -232,6 +232,10 @@ class AzureBlobObjectStore:
                 details={"expires_seconds": expires_seconds},
             )
 
+    def direct_put_headers(self) -> dict[str, str]:
+        """Required by a browser PUT of a block blob through a write SAS."""
+        return {"x-ms-blob-type": "BlockBlob"}
+
     async def presign_put(
         self,
         tenant: TenantContext,

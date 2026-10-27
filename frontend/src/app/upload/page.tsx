@@ -14,7 +14,7 @@ import type {
   DocumentIntelligencePanelValue,
 } from "@/components/document-intelligence/types";
 import { cn } from "@/lib/utils";
-import { buildUploadSessionBody } from "./uploadPayload";
+import { buildUploadSessionBody, directPutHeaders } from "./uploadPayload";
 import { shouldStopWaiting } from "./uploadProgress";
 
 const CONFIDENCE_BADGE_VARIANT: Record<string, "success" | "warning" | "danger"> = {
@@ -231,6 +231,7 @@ export default function UploadPage() {
       if (createdBody.upload?.url) {
         const put = await fetch(createdBody.upload.url, {
           method: createdBody.upload.method || "PUT",
+          headers: directPutHeaders(createdBody.upload),
           body: file,
         });
         if (!put.ok) {

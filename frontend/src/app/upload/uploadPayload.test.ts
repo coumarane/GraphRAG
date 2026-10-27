@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { buildIngestFormData, buildUploadSessionBody } from "./uploadPayload";
+import { buildIngestFormData, buildUploadSessionBody, directPutHeaders } from "./uploadPayload";
 
 function keys(form: FormData): string[] {
   return Array.from(form.keys()).sort();
 }
 
 const file = new File(["hello"], "hello.pdf", { type: "application/pdf" });
+
+describe("directPutHeaders", () => {
+  it("sends the Azure block-blob header only when the API returns it", () => {
+    expect(directPutHeaders({ headers: { "x-ms-blob-type": "BlockBlob" } })).toEqual({
+      "x-ms-blob-type": "BlockBlob",
+    });
+    expect(directPutHeaders({ headers: {} })).toEqual({});
+    expect(directPutHeaders(undefined)).toEqual({});
+  });
+});
 
 describe("buildIngestFormData", () => {
   it("produces the byte-identical unchecked-path FormData with no title", () => {

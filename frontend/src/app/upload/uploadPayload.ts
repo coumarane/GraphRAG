@@ -19,6 +19,18 @@ export function buildUploadSessionBody(
   return body;
 }
 
+export function directPutHeaders(
+  upload: { headers?: Record<string, unknown> } | null | undefined,
+): Record<string, string> {
+  const headers = upload?.headers;
+  if (!headers) return {};
+  const resolved: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === "string" && value.length > 0) resolved[key] = value;
+  }
+  return resolved;
+}
+
 export function buildIngestFormData(
   file: File,
   title: string,

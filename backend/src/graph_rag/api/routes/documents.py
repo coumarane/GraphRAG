@@ -76,12 +76,21 @@ class UploadCreateRequest(BaseModel):
     source_url: str | None = None
 
 
+class UploadTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    method: str
+    url: str
+    expires_at: str
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
 class UploadCreateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     upload_id: UUID
     expires_at: datetime
-    upload: dict[str, str] | None = None
+    upload: UploadTarget | None = None
 
 
 class UploadCompleteRequest(BaseModel):
@@ -107,11 +116,12 @@ async def create_upload_session(
     )
     upload = None
     if accepted.upload_url is not None:
-        upload = {
-            "method": "PUT",
-            "url": accepted.upload_url,
-            "expires_at": accepted.expires_at.isoformat(),
-        }
+        upload = UploadTarget(
+            method="PUT",
+            url=accepted.upload_url,
+            expires_at=accepted.expires_at.isoformat(),
+            headers=accepted.headers or {},
+        )
     return UploadCreateResponse(
         upload_id=accepted.upload_id,
         expires_at=accepted.expires_at,
