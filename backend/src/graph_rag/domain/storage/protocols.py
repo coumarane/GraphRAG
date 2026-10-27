@@ -11,6 +11,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from graph_rag.domain.tenant import TenantContext
 
 
+class ObjectHead(BaseModel):
+    """Size and identity of a stored object. Bytes are not included."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    object_key: str
+    byte_size: int = Field(ge=0)
+    etag: str | None = None
+    version_id: str | None = None
+
+
 class StoredObject(BaseModel):
     """Metadata for an object written to blob storage."""
 
@@ -59,6 +70,50 @@ class ObjectStore(Protocol):
         expires_seconds: int = 300,
     ) -> str:
         """Create a short-lived GET URL for an owned object."""
+        ...
+
+    async def presign_put(
+        self,
+        tenant: TenantContext,
+        *,
+        object_key: str,
+        expires_seconds: int = 900,
+    ) -> str:
+        """Create a short-lived PUT URL for one staging key. Expiry is 1-900 seconds."""
+        ...
+
+    def iter_bytes(
+        self,
+        tenant: TenantContext,
+        *,
+        object_key: str,
+        chunk_size: int = 1024 * 1024,
+    ) -> AsyncIterator[bytes]:
+        """Stream an owned object without returning it as one buffer."""
+        ...
+
+    async def copy_object(
+        self,
+        tenant: TenantContext,
+        *,
+        source_key: str,
+        dest_key: str,
+        content_type: str,
+        content_hash: str,
+    ) -> StoredObject:
+        """Copy bytes to a final key the write URL cannot name."""
+        ...
+
+    async def delete_object(self, tenant: TenantContext, *, object_key: str) -> None:
+        """Delete one owned object."""
+        ...
+
+    async def head_object(self, tenant: TenantContext, *, object_key: str) -> ObjectHead:
+        """Return size and etag for an owned object."""
+        ...
+
+    async def lock_object(self, tenant: TenantContext, *, object_key: str) -> None:
+        """Apply retention when the backend supports it. The protected key remains mandatory."""
         ...
 
 

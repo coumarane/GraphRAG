@@ -7,6 +7,7 @@ import contextlib
 import os
 import signal
 import socket
+from typing import Any
 from uuid import UUID
 
 from graph_rag.application.runtime import build_runtime_container
@@ -18,6 +19,42 @@ from graph_rag.shared.exceptions import NotFoundError
 from graph_rag.shared.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
+
+
+async def _health_connection(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    container: Any,
+) -> None:
+    try:
+        raw = await reader.read(1024)
+        line = raw.decode("latin1", errors="ignore").split("\r\n", 1)[0]
+        path = line.split(" ")[1] if " " in line else "/"
+        if path.startswith("/health/live"):
+            status, body = 200, b"ok"
+        elif path.startswith("/health/ready"):
+            ready = True
+            for check in container.ready_checks:
+                result = check()
+                if hasattr(result, "__await__"):
+                    result = await result
+                if not result:
+                    ready = False
+                    break
+            status, body = (200, b"ok") if ready else (503, b"unavailable")
+        else:
+            status, body = 404, b"not found"
+        writer.write(
+            f"HTTP/1.1 {status} {'OK' if status == 200 else 'ERR'}\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            "Connection: close\r\n\r\n".encode()
+            + body
+        )
+        await writer.drain()
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
 
 
 def _worker_id(settings_name: str) -> str:
@@ -68,6 +105,18 @@ async def run_worker(*, poll_interval_seconds: float | None = None) -> None:
         await container.commit_db()
 
     stop = asyncio.Event()
+    async def verify_original(tenant: TenantContext, run: IngestionRunRecord) -> str | None:
+        version = await container.require_document_repo().get_version(tenant, run.version_id)
+        if version is None or not version.original_object_key or not version.etag:
+            return None
+        store = container.object_store
+        if store is None:
+            return "object_store_unavailable"
+        head = await store.head_object(tenant, object_key=version.original_object_key)
+        if head.byte_size != (version.byte_size or 0) or head.etag != version.etag:
+            return "object_changed"
+        return None
+
     worker = IngestionWorker(
         queue=queue,
         dead_letter_store=dead_letters,
@@ -79,6 +128,7 @@ async def run_worker(*, poll_interval_seconds: float | None = None) -> None:
         reclaim_idle_seconds=settings.worker.reclaim_idle_seconds,
         heartbeat_seconds=settings.worker.heartbeat_seconds,
         stopping=stop,
+        verify_original=verify_original,
     )
     interval = (
         poll_interval_seconds
@@ -117,6 +167,11 @@ async def run_worker(*, poll_interval_seconds: float | None = None) -> None:
             except TimeoutError:
                 continue
 
+    health_server = await asyncio.start_server(
+        lambda reader, writer: _health_connection(reader, writer, container),
+        host="0.0.0.0",  # noqa: S104  # readiness probes reach the pod IP
+        port=8081,
+    )
     logger.info(
         "worker_started",
         poll_interval_seconds=interval,
@@ -135,6 +190,8 @@ async def run_worker(*, poll_interval_seconds: float | None = None) -> None:
             except TimeoutError:
                 continue
     finally:
+        health_server.close()
+        await health_server.wait_closed()
         publisher_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await publisher_task

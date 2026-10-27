@@ -216,6 +216,8 @@ class SqlAlchemyDocumentRepository:
             byte_size=version.byte_size,
             page_count=version.page_count,
             original_object_key=version.original_object_key,
+            etag=version.etag,
+            object_version_id=version.object_version_id,
             status=version.status.value,
             metadata_json=dict(version.metadata),
         )

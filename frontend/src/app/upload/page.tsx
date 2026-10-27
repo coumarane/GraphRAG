@@ -14,7 +14,8 @@ import type {
   DocumentIntelligencePanelValue,
 } from "@/components/document-intelligence/types";
 import { cn } from "@/lib/utils";
-import { buildIngestFormData } from "./uploadPayload";
+import { buildUploadSessionBody, directPutHeaders } from "./uploadPayload";
+import { shouldStopWaiting } from "./uploadProgress";
 
 const CONFIDENCE_BADGE_VARIANT: Record<string, "success" | "warning" | "danger"> = {
   HIGH: "success",
@@ -40,6 +41,7 @@ type StageProgress = {
 
 type RunStatus = {
   status: string;
+  progress_state?: string | null;
   error_message?: string | null;
   latest_warning?: string | null;
   pages_processed?: number;
@@ -104,10 +106,20 @@ export default function UploadPage() {
           credentials: "include",
           headers: { "X-Tenant-Key": readTenantKey() },
         });
-        if (!runRes.ok) return;
-        const body = (await runRes.json()) as RunStatus;
-        setRun(body);
-        if (TERMINAL.has(body.status)) {
+        const body = runRes.ok ? ((await runRes.json()) as RunStatus & { progress_state?: string }) : null;
+        const decision = shouldStopWaiting(
+          runRes.ok,
+          body?.progress_state,
+          body?.status,
+        );
+        if (decision.error) {
+          setError("Status could not be loaded.");
+          setBusy(false);
+          stopPolling();
+          return;
+        }
+        if (body) setRun(body);
+        if (decision.stop || (body && TERMINAL.has(body.status))) {
           stopPolling();
           setBusy(false);
           if (submittedWithExtraction.current) {
@@ -115,7 +127,9 @@ export default function UploadPage() {
           }
         }
       } catch {
-        /* keep polling */
+        setError("Status could not be loaded.");
+        setBusy(false);
+        stopPolling();
       }
     };
     void tick();
@@ -198,14 +212,37 @@ export default function UploadPage() {
     setExtractions(null);
     stopPolling();
     try {
-      const form = buildIngestFormData(file, title, diValue);
+      const sessionBody = buildUploadSessionBody(file, title, diValue);
       submittedWithExtraction.current = diValue.enabled;
-
-      const response = await fetch("/api/ingest", {
+      const headers = {
+        "X-Tenant-Key": readTenantKey(),
+        "Content-Type": "application/json",
+      };
+      const created = await fetch("/api/documents/uploads", {
         credentials: "include",
         method: "POST",
-        headers: { "X-Tenant-Key": readTenantKey() },
-        body: form,
+        headers,
+        body: JSON.stringify(sessionBody),
+      });
+      const createdBody = await created.json().catch(() => ({}));
+      if (!created.ok) {
+        throw new Error(createdBody.detail || createdBody.message || created.statusText);
+      }
+      if (createdBody.upload?.url) {
+        const put = await fetch(createdBody.upload.url, {
+          method: createdBody.upload.method || "PUT",
+          headers: directPutHeaders(createdBody.upload),
+          body: file,
+        });
+        if (!put.ok) {
+          throw new Error("The file could not be stored.");
+        }
+      }
+      const response = await fetch(`/api/documents/uploads/${createdBody.upload_id}/complete`, {
+        credentials: "include",
+        method: "POST",
+        headers,
+        body: JSON.stringify({ title: sessionBody.title ?? "" }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -373,6 +410,7 @@ export default function UploadPage() {
               <div className="space-y-2 border-t border-border pt-2">
                 <p>
                   <span className="text-muted">run</span> {run.status}
+                  {run.progress_state ? ` · ${run.progress_state}` : ""}
                   {typeof run.estimated_completion_percent === "number"
                     ? ` · ${Math.round(run.estimated_completion_percent)}%`
                     : ""}

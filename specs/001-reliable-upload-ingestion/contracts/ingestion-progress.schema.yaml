@@ -1,0 +1,42 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: IngestionProgress
+$description: >
+  Additive fields on the existing GET /api/v1/ingestion-runs/{run_id} response.
+  Existing fields and status values remain. progress_state is derived.
+
+type: object
+required: [ingestion_run_id, document_id, version_id, status, progress_state]
+properties:
+  ingestion_run_id: {type: string, format: uuid}
+  document_id: {type: string, format: uuid}
+  version_id: {type: string, format: uuid}
+  status:
+    enum: [pending, running, completed, completed_with_warnings, partial, failed, cancelled]
+  progress_state:
+    enum: [running, stalled, ready, partial, failed, cancelled]
+  current_stage: {type: string}
+  last_completed_stage: {type: string}
+  estimated_completion_percent: {type: number, minimum: 0, maximum: 100}
+  latest_warning: {type: string}
+  error_code: {type: string}
+  error_message: {type: string}
+  heartbeat_at: {type: string, format: date-time}
+  stages:
+    type: array
+    items:
+      type: object
+      required: [stage, status]
+      properties:
+        stage: {type: string}
+        status:
+          enum: [pending, running, completed, completed_with_warnings, failed, skipped, cancelled]
+        attempt_count: {type: integer, minimum: 0}
+        error_code: {type: string}
+        error_message: {type: string}
+
+rules:
+  - A non-terminal run whose heartbeat_at is null or older than 120 seconds has progress_state stalled and includes last_completed_stage (empty when no stage has completed).
+  - Terminal status values map to ready, partial, failed, or cancelled as in data-model.md.
+  - A caller outside the tenant receives the existing not-found or forbidden response and no stage detail.
+  - The upload screen treats any non-success poll as a visible error and stops the spinner.
+  - The upload screen treats progress_state stalled or failed as a finished wait, not as ongoing work.

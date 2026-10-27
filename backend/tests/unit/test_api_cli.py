@@ -202,7 +202,7 @@ def test_cli_ingest_and_query(tmp_path: Path) -> None:
         ["ingest", str(path), "--tenant-id", "demo", "--wait", "--output", "json"],
     )
     assert ingest.exit_code == 0, ingest.output
-    payload = json.loads(_extract_json(ingest.output))
+    payload = json.loads(_extract_json(ingest.stdout))
     assert payload["ingestion_run_id"]
     assert payload["status"] in {"completed", "completed_with_warnings", "accepted"}
 
@@ -220,7 +220,7 @@ def test_cli_ingest_and_query(tmp_path: Path) -> None:
         ],
     )
     assert query.exit_code == 0, query.output
-    answer = json.loads(_extract_json(query.output))
+    answer = json.loads(_extract_json(query.stdout))
     assert "answer" in answer
     assert "retrieval_mode" in answer
 
@@ -236,14 +236,14 @@ def test_cli_reindex_and_delete(tmp_path: Path) -> None:
         ["ingest", str(path), "--tenant-id", "demo", "--output", "json"],
     )
     assert ingest.exit_code == 0, ingest.output
-    document_id = json.loads(_extract_json(ingest.output))["document_id"]
+    document_id = json.loads(_extract_json(ingest.stdout))["document_id"]
 
     rebuild = runner.invoke(
         cli_app,
         ["rebuild-vectors", document_id, "--tenant-id", "demo", "--output", "json"],
     )
     assert rebuild.exit_code == 0, rebuild.output
-    rebuild_body = json.loads(_extract_json(rebuild.output))
+    rebuild_body = json.loads(_extract_json(rebuild.stdout))
     assert rebuild_body["scope"] == "vectors"
     assert rebuild_body["ingestion_run_id"]
 
@@ -252,11 +252,12 @@ def test_cli_reindex_and_delete(tmp_path: Path) -> None:
         ["delete-document", document_id, "--tenant-id", "demo", "--output", "json"],
     )
     assert deleted.exit_code == 0, deleted.output
-    delete_body = json.loads(_extract_json(deleted.output))
+    delete_body = json.loads(_extract_json(deleted.stdout))
     assert delete_body["status"] in {"completed", "partial"}
 
 
 def _extract_json(text: str) -> str:
     start = text.find("{")
     assert start >= 0, text
-    return text[start:]
+    _, end = json.JSONDecoder().raw_decode(text[start:])
+    return text[start : start + end]

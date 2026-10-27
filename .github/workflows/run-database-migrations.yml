@@ -1,14 +1,13 @@
 name: Run Database Migrations
 
 on:
-  push:
-    branches:
-      - dev
-    paths:
-      - "backend/alembic/**"
-      - ".github/workflows/run-database-migrations.yml"
   workflow_dispatch:
     inputs:
+      backup_confirmed:
+        description: "A readable logical backup of the DEV database exists"
+        required: true
+        type: boolean
+        default: false
       target_host:
         description: "Database host (default from secrets)"
         required: false
@@ -39,9 +38,21 @@ env:
   PYTHON_VERSION: "3.13"
 
 jobs:
+  guard:
+    name: Require a database backup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse an unconfirmed backup
+        run: |
+          if [ "${{ inputs.backup_confirmed }}" != "true" ]; then
+            echo "Refusing to migrate the DEV database. Take a logical backup and dispatch again with backup_confirmed=true."
+            exit 1
+          fi
+
   migrate:
     name: Run Database Migrations
     runs-on: ubuntu-latest
+    needs: guard
     environment: dev
     defaults:
       run:

@@ -15,8 +15,10 @@ logger = get_logger(__name__)
 _DEDUPE_PREFIX = "ingest:outbox:"
 
 
-def _message_from_fields(message_id: str, fields: dict[str, Any]) -> IngestionTaskMessage:
-    payload = fields.get("payload") or fields.get(b"payload")
+def _message_from_fields(message_id: str, fields: dict[Any, Any]) -> IngestionTaskMessage:
+    payload = fields.get("payload")
+    if payload is None:
+        payload = fields.get(b"payload")
     if isinstance(payload, bytes):
         payload = payload.decode("utf-8")
     if isinstance(payload, str):
@@ -133,12 +135,15 @@ class RedisStreamIngestionQueue:
                 consumer = consumer.decode("utf-8")
             if idle < idle_ms:
                 continue
+            message = await self._message_at(str(message_id))
             entries.append(
                 PendingStreamEntry(
                     stream_message_id=str(message_id),
                     consumer_name=str(consumer),
                     idle_ms=idle,
                     delivery_count=delivery,
+                    ingestion_run_id=None if message is None else message.ingestion_run_id,
+                    tenant_id=None if message is None else message.tenant_id,
                 )
             )
         return entries
@@ -160,6 +165,22 @@ class RedisStreamIngestionQueue:
         if not claimed:
             return None
         message_id, fields = claimed[0]
+        stream_id = message_id.decode("utf-8") if isinstance(message_id, bytes) else str(message_id)
+        return _message_from_fields(stream_id, fields)
+
+    async def _message_at(self, stream_message_id: str) -> IngestionTaskMessage | None:
+        try:
+            found = await self._redis.xrange(
+                self.stream_key,
+                min=stream_message_id,
+                max=stream_message_id,
+                count=1,
+            )
+        except Exception:
+            return None
+        if not found:
+            return None
+        message_id, fields = found[0]
         stream_id = message_id.decode("utf-8") if isinstance(message_id, bytes) else str(message_id)
         return _message_from_fields(stream_id, fields)
 

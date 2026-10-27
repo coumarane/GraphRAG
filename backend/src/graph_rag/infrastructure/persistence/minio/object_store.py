@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import timedelta
-from typing import BinaryIO
+from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
 from minio import Minio
@@ -12,7 +13,7 @@ from minio.error import S3Error
 
 from graph_rag.config.settings import MinioSettings
 from graph_rag.domain.storage.object_keys import assert_tenant_object_prefix
-from graph_rag.domain.storage.protocols import StoredObject
+from graph_rag.domain.storage.protocols import ObjectHead, StoredObject
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.shared.exceptions import NotFoundError, StorageError, ValidationError
 
@@ -181,3 +182,176 @@ class MinioObjectStore:
                 details={"object_key": object_key},
                 cause=exc,
             ) from exc
+
+    def _assert_put_expiry(self, expires_seconds: int) -> None:
+        if expires_seconds < 1 or expires_seconds > 900:
+            raise ValidationError(
+                "Write URL expiry must be between 1 and 900 seconds",
+                details={"expires_seconds": expires_seconds},
+            )
+
+    async def presign_put(
+        self,
+        tenant: TenantContext,
+        *,
+        object_key: str,
+        expires_seconds: int = 900,
+    ) -> str:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+        self._assert_put_expiry(expires_seconds)
+        if "/uploads/" not in object_key or "/staging/" not in object_key:
+            raise ValidationError(
+                "Write URL can name only a staging key",
+                details={"object_key": object_key},
+            )
+
+        def _presign() -> str:
+            return self._client.presigned_put_object(
+                self._bucket,
+                object_key,
+                expires=timedelta(seconds=expires_seconds),
+            )
+
+        try:
+            return await asyncio.to_thread(_presign)
+        except S3Error as exc:
+            raise StorageError(
+                "Failed to create write URL",
+                details={"object_key": object_key},
+                cause=exc,
+            ) from exc
+
+    async def iter_bytes(
+        self,
+        tenant: TenantContext,
+        *,
+        object_key: str,
+        chunk_size: int = 1024 * 1024,
+    ) -> AsyncIterator[bytes]:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _open() -> Any:
+            return self._client.get_object(self._bucket, object_key)
+
+        try:
+            response = await asyncio.to_thread(_open)
+        except S3Error as exc:
+            raise StorageError(
+                "Failed to stream object from MinIO",
+                details={"object_key": object_key},
+                cause=exc,
+            ) from exc
+        try:
+            while True:
+                chunk = await asyncio.to_thread(response.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            response.close()
+            response.release_conn()
+
+    async def copy_object(
+        self,
+        tenant: TenantContext,
+        *,
+        source_key: str,
+        dest_key: str,
+        content_type: str,
+        content_hash: str,
+    ) -> StoredObject:
+        from minio.commonconfig import CopySource
+
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(source_key, tenant.tenant_id)
+        assert_tenant_object_prefix(dest_key, tenant.tenant_id)
+
+        def _copy() -> str | None:
+            result = self._client.copy_object(
+                self._bucket,
+                dest_key,
+                CopySource(self._bucket, source_key),
+            )
+            return getattr(result, "etag", None)
+
+        try:
+            etag = await asyncio.to_thread(_copy)
+        except S3Error as exc:
+            raise StorageError(
+                "Failed to copy object in MinIO",
+                details={"source_key": source_key, "dest_key": dest_key},
+                cause=exc,
+            ) from exc
+        head = await self.head_object(tenant, object_key=dest_key)
+        return StoredObject(
+            bucket=self._bucket,
+            object_key=dest_key,
+            content_type=content_type,
+            content_hash=content_hash,
+            byte_size=head.byte_size,
+            etag=etag or head.etag,
+        )
+
+    async def delete_object(self, tenant: TenantContext, *, object_key: str) -> None:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _delete() -> None:
+            self._client.remove_object(self._bucket, object_key)
+
+        try:
+            await asyncio.to_thread(_delete)
+        except S3Error as exc:
+            if exc.code in {"NoSuchKey", "NoSuchObject", "NotFound"}:
+                return
+            raise StorageError(
+                "Failed to delete MinIO object",
+                details={"object_key": object_key},
+                cause=exc,
+            ) from exc
+
+    async def head_object(self, tenant: TenantContext, *, object_key: str) -> ObjectHead:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _stat() -> Any:
+            return self._client.stat_object(self._bucket, object_key)
+
+        try:
+            stat = await asyncio.to_thread(_stat)
+        except S3Error as exc:
+            raise NotFoundError(
+                "Object not found",
+                details={"object_key": object_key},
+                cause=exc,
+            ) from exc
+        return ObjectHead(
+            object_key=object_key,
+            byte_size=int(stat.size or 0),
+            etag=getattr(stat, "etag", None),
+            version_id=getattr(stat, "version_id", None),
+        )
+
+    async def lock_object(self, tenant: TenantContext, *, object_key: str) -> None:
+        """Best-effort retention. The staging URL cannot write this final key."""
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _lock() -> None:
+            try:
+                from datetime import UTC, datetime, timedelta
+
+                from minio.commonconfig import GOVERNANCE
+                from minio.retention import Retention
+
+                self._client.set_object_retention(
+                    self._bucket,
+                    object_key,
+                    Retention(GOVERNANCE, datetime.now(UTC) + timedelta(days=3650)),
+                )
+            except Exception:
+                return
+
+        await asyncio.to_thread(_lock)

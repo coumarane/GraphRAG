@@ -1,0 +1,6 @@
+# Isolated host ports for local tests. Container DNS names stay the same.
+# Host 6379 is often taken by another project; tests use 6380 and never stop that service.
+services:
+  redis:
+    ports: !override
+      - "6380:6379"

@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from graph_rag.config.settings import AzureBlobSettings
 from graph_rag.domain.storage.object_keys import assert_tenant_object_prefix
-from graph_rag.domain.storage.protocols import StoredObject
+from graph_rag.domain.storage.protocols import ObjectHead, StoredObject
 from graph_rag.domain.tenant import TenantContext
-from graph_rag.shared.exceptions import ConfigurationError, NotFoundError, StorageError, ValidationError
+from graph_rag.shared.exceptions import (
+    ConfigurationError,
+    NotFoundError,
+    StorageError,
+    ValidationError,
+)
 
 
 class AzureBlobObjectStore:
@@ -217,3 +224,188 @@ class AzureBlobObjectStore:
                 ) from exc
 
         return f"{self._settings.account_url.rstrip('/')}/{self._container}/{object_key}?{sas}"
+
+    def _assert_put_expiry(self, expires_seconds: int) -> None:
+        if expires_seconds < 1 or expires_seconds > 900:
+            raise ValidationError(
+                "Write URL expiry must be between 1 and 900 seconds",
+                details={"expires_seconds": expires_seconds},
+            )
+
+    def direct_put_headers(self) -> dict[str, str]:
+        """Required by a browser PUT of a block blob through a write SAS."""
+        return {"x-ms-blob-type": "BlockBlob"}
+
+    async def presign_put(
+        self,
+        tenant: TenantContext,
+        *,
+        object_key: str,
+        expires_seconds: int = 900,
+    ) -> str:
+        from azure.storage.blob import BlobSasPermissions, generate_blob_sas
+
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+        self._assert_put_expiry(expires_seconds)
+        if "/uploads/" not in object_key or "/staging/" not in object_key:
+            raise ValidationError(
+                "Write URL can name only a staging key",
+                details={"object_key": object_key},
+            )
+        if self._sas_mode != "account_key":
+            raise StorageError("Azure write URL requires an account key in this adapter")
+        assert self._settings.access_key is not None
+        sas = generate_blob_sas(
+            account_name=self._settings.account_name,
+            container_name=self._container,
+            blob_name=object_key,
+            account_key=self._settings.access_key.get_secret_value(),
+            permission=BlobSasPermissions(write=True, create=True),
+            expiry=datetime.now(UTC) + timedelta(seconds=expires_seconds),
+        )
+        return f"{self._settings.account_url.rstrip('/')}/{self._container}/{object_key}?{sas}"
+
+    async def iter_bytes(
+        self,
+        tenant: TenantContext,
+        *,
+        object_key: str,
+        chunk_size: int = 1024 * 1024,
+    ) -> AsyncIterator[bytes]:
+        """Yield one ranged read at a time. The full blob is never buffered."""
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+        if chunk_size < 1:
+            raise ValidationError(
+                "chunk_size must be at least 1",
+                details={"chunk_size": chunk_size},
+            )
+        head = await self.head_object(tenant, object_key=object_key)
+        offset = 0
+        while offset < head.byte_size:
+            length = min(chunk_size, head.byte_size - offset)
+
+            def _read_range(start: int, size: int) -> bytes:
+                blob = self._blob_service.get_blob_client(
+                    container=self._container,
+                    blob=object_key,
+                )
+                downloader = blob.download_blob(offset=start, length=size)
+                return downloader.readall()
+
+            try:
+                chunk = await asyncio.to_thread(_read_range, offset, length)
+            except Exception as exc:
+                raise StorageError(
+                    "Failed to stream Azure Blob",
+                    details={"object_key": object_key, "offset": offset},
+                    cause=exc,
+                ) from exc
+            if not chunk:
+                break
+            yield chunk
+            offset += len(chunk)
+
+    async def copy_object(
+        self,
+        tenant: TenantContext,
+        *,
+        source_key: str,
+        dest_key: str,
+        content_type: str,
+        content_hash: str,
+    ) -> StoredObject:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(source_key, tenant.tenant_id)
+        assert_tenant_object_prefix(dest_key, tenant.tenant_id)
+
+        def _copy() -> tuple[str | None, str | None, int]:
+            dest = self._blob_service.get_blob_client(self._container, dest_key)
+            source = self._blob_service.get_blob_client(self._container, source_key)
+            dest.start_copy_from_url(source.url)
+            props = dest.get_blob_properties()
+            size = int(props.size or 0)
+            if size < 1:
+                dest.delete_blob()
+            return props.etag, getattr(props, "version_id", None), size
+
+        try:
+            etag, _version_id, size = await asyncio.to_thread(_copy)
+        except Exception as exc:
+            raise StorageError(
+                "Failed to copy Azure Blob",
+                details={"source_key": source_key, "dest_key": dest_key},
+                cause=exc,
+            ) from exc
+        if size < 1:
+            raise ValidationError(
+                "Cannot store empty object",
+                details={"object_key": dest_key, "byte_size": size},
+            )
+        return StoredObject(
+            bucket=self._container,
+            object_key=dest_key,
+            content_type=content_type,
+            content_hash=content_hash,
+            byte_size=size,
+            etag=etag,
+        )
+
+    async def delete_object(self, tenant: TenantContext, *, object_key: str) -> None:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _delete() -> None:
+            blob = self._blob_service.get_blob_client(self._container, object_key)
+            blob.delete_blob()
+
+        try:
+            await asyncio.to_thread(_delete)
+        except Exception as exc:
+            message = str(exc).lower()
+            if "not found" in message or "blobnotfound" in message:
+                return
+            raise StorageError(
+                "Failed to delete Azure Blob",
+                details={"object_key": object_key},
+                cause=exc,
+            ) from exc
+
+    async def head_object(self, tenant: TenantContext, *, object_key: str) -> ObjectHead:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _head() -> Any:
+            blob = self._blob_service.get_blob_client(self._container, object_key)
+            return blob.get_blob_properties()
+
+        try:
+            props = await asyncio.to_thread(_head)
+        except Exception as exc:
+            raise NotFoundError(
+                "Object not found",
+                details={"object_key": object_key},
+                cause=exc,
+            ) from exc
+        return ObjectHead(
+            object_key=object_key,
+            byte_size=int(props.size or 0),
+            etag=props.etag,
+            version_id=getattr(props, "version_id", None),
+        )
+
+    async def lock_object(self, tenant: TenantContext, *, object_key: str) -> None:
+        tenant.ensure_authorized()
+        assert_tenant_object_prefix(object_key, tenant.tenant_id)
+
+        def _lock() -> None:
+            try:
+                from azure.storage.blob import ImmutabilityPolicy
+
+                blob = self._blob_service.get_blob_client(self._container, object_key)
+                blob.set_immutability_policy(ImmutabilityPolicy(expiry_time=None, policy_mode=None))
+            except Exception:
+                return
+
+        await asyncio.to_thread(_lock)

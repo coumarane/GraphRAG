@@ -1,0 +1,14 @@
+{
+  "purpose": "Existing DEV storage account only. The browser origin is the OVH web route https://chatwithdocs.org. Do not create a staging account and do not add another origin.",
+  "allowed_origins": ["https://chatwithdocs.org"],
+  "allowed_methods": ["PUT", "OPTIONS", "HEAD", "GET"],
+  "allowed_headers": [
+    "content-type",
+    "x-ms-blob-type",
+    "x-ms-blob-content-type",
+    "x-ms-date",
+    "x-ms-version"
+  ],
+  "exposed_headers": ["etag", "x-ms-request-id"],
+  "max_age_in_seconds": 600
+}

@@ -1,0 +1,15 @@
+{
+  "feature": "001-reliable-upload-ingestion",
+  "target_branch": "dev",
+  "note": "Closed flags keep a merge from moving Argo CD. Promotion is the dispatch workflow Promote DEV image digest, after backup, migration 0013, and CORS.",
+  "promote": {
+    "api": false,
+    "worker": false,
+    "web": false
+  },
+  "rollback_digests": {
+    "api": "sha256:b87a4646ea022aec2639e4f25e3969bd6c42e69735d96847d98e982383e44385",
+    "worker": "sha256:fdf5406658e3b12845efccb00a77a0ac41cbeab7572d7e54d7ad388702dcf5af",
+    "web": "sha256:690e22dff639dd779e8bca39bb3deb16d93a7d79036e4936170ec38a06746571"
+  }
+}

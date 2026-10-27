@@ -11,13 +11,18 @@ from uuid import UUID
 
 from graph_rag.application.ingestion.orchestrator import OrchestrationResult
 from graph_rag.application.ingestion.stage_pipeline import run_document_pipeline
-from graph_rag.domain.ingestion.queue import PendingStreamEntry
+from graph_rag.domain.ingestion.queue import (
+    DeadLetterStore,
+    PendingStreamEntry,
+    StreamIngestionQueue,
+)
 from graph_rag.domain.ingestion.records import IngestionRunRecord, IngestionStageRecord
-from graph_rag.domain.ingestion.retry import IngestionTaskMessage
+from graph_rag.domain.ingestion.retry import DeadLetterRecord, IngestionTaskMessage
 from graph_rag.domain.ingestion.stages import (
     SUCCESSFUL_RUN_STATUSES,
     TERMINAL_RUN_STATUSES,
     IngestionRunStatus,
+    IngestionStageName,
 )
 from graph_rag.domain.tenant import TenantContext
 from graph_rag.infrastructure.observability.metrics import get_metrics
@@ -83,8 +88,8 @@ class IngestionWorker:
     def __init__(
         self,
         *,
-        queue: object,
-        dead_letter_store: object,
+        queue: StreamIngestionQueue,
+        dead_letter_store: DeadLetterStore,
         load_run: RunLoader,
         persist_run: RunPersister,
         process_service: object | None = None,
@@ -95,6 +100,8 @@ class IngestionWorker:
         heartbeat_seconds: float = 15.0,
         run_pipeline: PipelineRunner | None = None,
         stopping: asyncio.Event | None = None,
+        verify_original: Callable[[TenantContext, IngestionRunRecord], Awaitable[str | None]]
+        | None = None,
     ) -> None:
         self._queue = queue
         self._dead_letters = dead_letter_store
@@ -108,6 +115,7 @@ class IngestionWorker:
         self._heartbeat_seconds = heartbeat_seconds
         self._run_pipeline = run_pipeline
         self._stopping = stopping or asyncio.Event()
+        self._verify_original = verify_original
 
     def request_stop(self) -> None:
         self._stopping.set()
@@ -135,6 +143,28 @@ class IngestionWorker:
         run.content_hash = run.content_hash or message.content_hash
         run.config_fingerprint = run.config_fingerprint or message.config_fingerprint
         run.correlation_id = run.correlation_id or message.correlation_id
+
+        if self._verify_original is not None and run.status not in TERMINAL_RUN_STATUSES:
+            mismatch = await self._verify_original(tenant, run)
+            if mismatch:
+                letter = DeadLetterRecord(
+                    tenant_id=tenant.tenant_id,
+                    ingestion_run_id=run.ingestion_run_id,
+                    stage=IngestionStageName.STORE_ORIGINAL,
+                    attempt_count=run.retry_count,
+                    error_code=mismatch,
+                    error_message="Accepted original no longer matches the pinned size and etag",
+                    original_stream_id=message.stream_message_id,
+                    correlation_id=message.correlation_id,
+                )
+                await self._dead_letters.append(tenant, letter)
+                run.status = IngestionRunStatus.FAILED
+                run.error_code = mismatch
+                await _maybe_await(self._persist_run(tenant, run, stages))
+                await self._queue.acknowledge(_ack_token(message))
+                return WorkerTickResult(
+                    processed=True, task=message, acknowledged=True, reclaimed=reclaimed
+                )
 
         if run.status in TERMINAL_RUN_STATUSES:
             # Already done (success or failure) — a duplicate/orphan-republished

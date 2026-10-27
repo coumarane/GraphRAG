@@ -1,0 +1,12 @@
+{
+  "purpose": "Existing DEV MinIO bucket only. Apply to the bucket named by MINIO_BUCKET. The browser origin is https://chatwithdocs.org. This rule does not grant anonymous download.",
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://chatwithdocs.org"],
+      "AllowedMethods": ["PUT", "OPTIONS", "HEAD", "GET"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag", "x-amz-request-id"],
+      "MaxAgeSeconds": 600
+    }
+  ]
+}

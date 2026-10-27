@@ -48,6 +48,7 @@ from graph_rag.infrastructure.persistence.postgres.models.plugins import (
     PluginConfigurationModel,
     PluginModel,
 )
+from graph_rag.infrastructure.persistence.postgres.models.uploads import UploadSessionModel
 from graph_rag.infrastructure.persistence.postgres.models.usage import ModelUsageEventModel
 from graph_rag.infrastructure.persistence.postgres.models.users import UserModel
 
@@ -84,6 +85,7 @@ __all__ = [
     "RoutingDecisionModel",
     "TenantMembershipModel",
     "TenantModel",
+    "UploadSessionModel",
     "UsageCounterModel",
     "UserModel",
 ]
