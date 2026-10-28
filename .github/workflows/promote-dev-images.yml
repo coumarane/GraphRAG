@@ -1,0 +1,168 @@
+name: Promote DEV image digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Image to promote. Promote api and worker before web."
+        required: true
+        type: choice
+        options:
+          - api
+          - worker
+          - web
+      commit_sha:
+        description: "Commit whose matching image workflow succeeded"
+        required: true
+      backup_confirmed:
+        description: "Operator acknowledgement. A successful Backup DEV database run is also required."
+        required: true
+        type: boolean
+        default: false
+      migration_revision:
+        description: "Revision reported by alembic current on the DEV database"
+        required: true
+        default: ""
+      cors_ready:
+        description: "PUT preflight from https://chatwithdocs.org succeeded. Required for web."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: gitops-kustomize-dev
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: harbor.safranys.com
+  HARBOR_PROJECT: chatwithdocs
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.component }}
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Require the phased checks
+        env:
+          COMPONENT: ${{ inputs.component }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
+          MIGRATION_REVISION: ${{ inputs.migration_revision }}
+          CORS_READY: ${{ inputs.cors_ready }}
+        run: |
+          set -euo pipefail
+          case "${COMMIT_SHA}" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+              ;;
+            *)
+              echo "commit_sha must be the 40-character commit that built the image."
+              exit 1
+              ;;
+          esac
+          if [ "${BACKUP_CONFIRMED}" != "true" ]; then
+            echo "Refusing to promote before Backup DEV database has succeeded."
+            exit 1
+          fi
+          if [ "${MIGRATION_REVISION}" != "0013_upload_sessions" ]; then
+            echo "Refusing to promote before alembic current is 0013_upload_sessions."
+            exit 1
+          fi
+          if [ "${COMPONENT}" = "web" ] && [ "${CORS_READY}" != "true" ]; then
+            echo "Refusing to promote the web image before CORS for https://chatwithdocs.org is confirmed."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require a successful backup run and matching blob
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HOST: database.safranys.com
+          EXPECTED_DATABASE: ${{ secrets.POSTGRES_APP_DB }}
+          STORAGE_ACCOUNT: graphragdocsdevbmo9
+          CONTAINER: artifacts
+          MAX_AGE_HOURS: "24"
+        run: sh infra/dev/require-backup-evidence.sh
+
+      - name: Require a successful image workflow for this commit
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          COMPONENT: ${{ inputs.component }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${COMPONENT}" in
+            api) workflow="build-and-push-api-image.yml" ;;
+            worker) workflow="build-and-push-worker-image.yml" ;;
+            web) workflow="build-and-push-web-image.yml" ;;
+            *) echo "Unknown component ${COMPONENT}"; exit 1 ;;
+          esac
+          success="$(gh run list --commit "${COMMIT_SHA}" --workflow "${workflow}" --limit 20 \
+            --json conclusion --jq '[.[] | select(.conclusion=="success")] | length')"
+          if [ "${success}" = "0" ]; then
+            echo "No successful ${workflow} run for ${COMMIT_SHA}. Tests or the image scan did not pass."
+            exit 1
+          fi
+
+      - name: Login to Harbor
+        uses: ./.github/actions/login-harbor
+        with:
+          registry-host: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HARBOR_REGISTRY_USERNAME }}
+          password: ${{ secrets.HARBOR_REGISTRY_PASSWORD }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Require API and worker from the same commit
+        if: inputs.component == 'web'
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: infra/dev/assert-backend-promoted.sh "${COMMIT_SHA}"
+
+      - name: Resolve the image digest
+        id: image
+        env:
+          COMPONENT: ${{ inputs.component }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          digest="$(docker buildx imagetools inspect \
+            "${REGISTRY_HOST}/${HARBOR_PROJECT}/${COMPONENT}:${COMMIT_SHA}" \
+            | awk '/^Digest:/ {print $2; exit}')"
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "No digest for ${COMPONENT}:${COMMIT_SHA}"; exit 1 ;;
+          esac
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "${COMPONENT} ${COMMIT_SHA} ${digest}"
+
+      - name: Update kustomization image to digest
+        uses: ./.github/actions/update-kustomize-image
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          image-name: harbor.safranys.com/chatwithdocs/${{ inputs.component }}
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ inputs.component }}@${{ steps.image.outputs.digest }}
+          digest: ${{ steps.image.outputs.digest }}
+          kustomization-dir: infra/k8s/${{ inputs.component }}
+          commit-message: "chore(dev): deploy ${{ inputs.component }} @${{ steps.image.outputs.digest }}"
+
+      - name: Logout from Harbor
+        if: always()
+        run: docker logout ${{ env.REGISTRY_HOST }}
