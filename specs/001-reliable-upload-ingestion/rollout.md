@@ -15,9 +15,10 @@ Do not create a namespace, hostname, database, or bucket for staging. Do not dis
 | Worker image | Push to `dev` touching the same backend paths, the worker Dockerfiles, or the worker workflow. Also `workflow_dispatch`. | Same test and scan gate. Tag `worker:<commit SHA>` only. A base rebuild still moves the mutable tag `worker-base:dev`. |
 | Web image | Push to `dev` touching `frontend/**` or the web workflow. Also `workflow_dispatch`. | Frontend `tsc` and Vitest run first. Tag `web:<commit SHA>` only, then the same Trivy gate. |
 | GitOps | Tests and the image scan succeeded, `github.ref` is `refs/heads/dev`, and `infra/dev/release-gate.json` allows that component. | Would write the digest into `infra/k8s/{api,worker,web}/kustomization.yaml`. `promote.api`, `promote.worker`, and `promote.web` are false, so this step does not commit. |
-| Controlled promotion | `workflow_dispatch` of `Promote DEV image digest`. GitHub environment `dev`. | Promotes one component after a confirmed backup, Alembic `0013_upload_sessions`, and a successful image workflow for that SHA. Web also requires `cors_ready` and matching API and worker digests. |
+| Controlled promotion | `workflow_dispatch` of `Promote DEV image digest`. GitHub environment `dev`. | Promotes one component after a successful `Backup DEV database` run, Alembic `0013_upload_sessions`, and a successful image workflow for that SHA. Web also requires `cors_ready` and matching API and worker digests. |
 | Argo CD | Automated sync, prune, and self-heal. | `chatwithdocs-api` and `chatwithdocs-worker` track `dev` at `infra/k8s/api` and `infra/k8s/worker` in namespace `chatwithdocs-api`. `chatwithdocs-web` tracks `dev` at `infra/k8s/web` in namespace `chatwithdocs-web`. |
-| Migration | `workflow_dispatch` of `Run Database Migrations` only. | `backup_confirmed` must be true. A push of Alembic files does not migrate. Target host `database.safranys.com`. |
+| Backup | `workflow_dispatch` of `Backup DEV database`. GitHub environment `dev`. | Dumps `database.safranys.com` as the `postgres` role, restores the archive into a disposable database, and stores the custom-format dump in the private `artifacts` container. |
+| Migration | `workflow_dispatch` of `Run Database Migrations` only. | `backup_confirmed=true` is only an acknowledgement. The job also requires a successful `Backup DEV database` run from the last 24 hours whose blob checksum matches. A push of Alembic files does not migrate. |
 | Emergency kubectl | `workflow_dispatch` with `acknowledge_argocd_bypass=true`. | Not the Feature 001 path. |
 
 The feature branch cannot start a deployment. Its workflow is `Validate feature SHA`.
@@ -49,13 +50,42 @@ The browser PUT sends `x-ms-blob-type: BlockBlob` only when the API process is u
 
 An OPTIONS preflight from `https://chatwithdocs.org` for `PUT` must succeed before `cors_ready` is set. The bucket or container stays private.
 
+## Database backup and restore
+
+`chatwithdocs_dev_user` is not a superuser and does not have `BYPASSRLS`. Sixteen public tables use `FORCE ROW LEVEL SECURITY`, so a dump as that role stops on `chat_conversations`. The administrative role is `postgres`. On the DEV server it has both `SUPERUSER` and `BYPASSRLS`, and it can log in. The backup workflow connects as `postgres` with `POSTGRES_ADMIN_PASSWORD` and stops unless the connected role still has one of those privileges. It refuses to connect as `chatwithdocs_dev_user`.
+
+The workflow does not grant `BYPASSRLS`, disable row level security, or run `ALTER TABLE`. `pg_dump` uses `--format=custom --no-owner --no-acl` with `row_security=off`, and it does not pass `--enable-row-security`. That is the explicit bypass: only a superuser or `BYPASSRLS` role can keep `row_security` off, and the preflight check fails closed otherwise.
+
+Dispatch `Backup DEV database` on `dev`. The job:
+
+1. Reads the Alembic revision and PostgreSQL version.
+2. Writes a custom-format dump.
+3. Checks `pg_restore --list` for `documents` and `alembic_version`.
+4. Restores the archive into a throwaway `postgres:18.6` database on the runner and compares public table counts with the source. That database is removed when the job ends. Nothing is created on `database.safranys.com`.
+5. Uploads the dump to storage account `graphragdocsdevbmo9`, container `artifacts`, prefix `postgres-backups/dev/`. The container is private. The documents container is not used. GitHub keeps only `backup-metadata.json`, which has the checksum, revision, version, blob name, and verification result.
+6. Deletes `postgres-backups/dev/` blobs older than 30 days. The storage lifecycle still moves `artifacts/` blobs to cool after 30 days and deletes them after 365 days. Blob soft delete keeps a deleted blob for 14 days.
+
+The GitHub OIDC app `github-actions-graphrag-dev` has `Storage Blob Data Contributor` on the `artifacts` container only. Reapply that one assignment with:
+
+```bash
+python3 infra/github/oidc/assign_azure_roles.py \
+  --client-id <azure-client-id> \
+  --profile postgres-backup
+```
+
+Do not assign that role on the storage account. The account also contains the private `documents` container.
+
+A successful run is fresh for 24 hours. `Run Database Migrations` and `Promote DEV image digest` both refuse to continue when that run is missing, older, for another database, or when the blob content MD5 differs. Setting `backup_confirmed=true` without the run does not pass.
+
+To restore, download that blob with `az storage blob download --auth-mode login`, check the sha256 in the metadata, and run `pg_restore --no-owner --no-acl` into a new empty database. Restore over `chatwithdocs_db` only when revision `0013_upload_sessions` itself must be undone. Do not grant `BYPASSRLS` to the application role and do not disable row level security to read or restore the data.
+
 ## Migration and deploy order
 
 Revision `0013_upload_sessions` revises `0012_document_search`. It adds nullable `etag` and `object_version_id` on `document_versions` and creates `upload_sessions`. Existing rows are not rewritten. Downgrade drops only that table and those two columns.
 
 1. Merge the tested commit to `dev`. The image workflows may build and scan. They do not migrate, and the closed gate does not change the rollback digests.
-2. Record `alembic current` on `database.safranys.com`, dump the database, and confirm the dump can be read.
-3. Dispatch `Run Database Migrations` with `backup_confirmed=true` and revision `0013_upload_sessions`. Confirm `alembic current`.
+2. Dispatch `Backup DEV database` on `dev`. Confirm the run succeeded, the log shows `admin_privilege=superuser` or `bypassrls`, and both `pg_restore_list` and `restore_database` passed. The metadata records the Alembic revision, PostgreSQL version, sha256, and blob name.
+3. Dispatch `Run Database Migrations` with `backup_confirmed=true` and revision `0013_upload_sessions`. The workflow checks the backup run itself. Confirm `alembic current`.
 4. Dispatch `Promote DEV image digest` for `api`, then `worker`, using the `dev` commit SHA whose image workflows succeeded. Wait until `chatwithdocs-api` and `chatwithdocs-worker` are Healthy and Synced. Startup pings Redis and refuses to serve when that ping fails. Later readiness checks Postgres.
 5. Apply the CORS file for the secret's backend and pass the preflight.
 6. Dispatch the web promotion for the same SHA with `cors_ready=true`. The workflow stops when the API or worker digest belongs to another commit.

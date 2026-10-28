@@ -1,0 +1,76 @@
+name: Backup DEV database
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: "PostgreSQL host"
+        required: false
+        default: database.safranys.com
+      postgres_port:
+        description: "PostgreSQL port"
+        required: false
+        default: "5432"
+      retention_days:
+        description: "Days to keep logical backups before deleting the blob"
+        required: false
+        default: "30"
+
+permissions:
+  contents: read
+  id-token: write
+  actions: write
+
+concurrency:
+  group: backup-dev-database
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Dump, verify, and store
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 30
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Require the dev branch
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then
+            echo "Refusing to back up the DEV database from ${GITHUB_REF}."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Dump and verify
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          PGUSER: postgres
+          PGHOST: ${{ inputs.target_host }}
+          PGPORT: ${{ inputs.postgres_port }}
+          PGDATABASE: ${{ secrets.POSTGRES_APP_DB }}
+          PGSSLMODE: prefer
+          RETENTION_DAYS: ${{ inputs.retention_days }}
+          STORAGE_ACCOUNT: graphragdocsdevbmo9
+          CONTAINER: artifacts
+          BLOB_PREFIX: postgres-backups/dev/
+          POSTGRES_IMAGE: postgres:18.6
+        run: bash infra/dev/backup-dev-database.sh
+
+      - name: Upload backup metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-postgres-backup-metadata
+          path: backup-metadata.json
+          retention-days: 30
+          if-no-files-found: error

@@ -60,14 +60,25 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Azure Key Vault used for SSH key persistence. Default: {DEFAULT_KEY_VAULT_NAME}",
     )
     parser.add_argument(
+        "--app-storage-account-name",
+        default="graphragdocsdevbmo9",
+        help="Storage account that holds the private artifacts container. Default: graphragdocsdevbmo9",
+    )
+    parser.add_argument(
+        "--backup-container",
+        default="artifacts",
+        help="Private container that stores logical database backups. Default: artifacts",
+    )
+    parser.add_argument(
         "--profile",
-        choices=("ovh", "azure-terraform", "all"),
+        choices=("ovh", "azure-terraform", "postgres-backup", "all"),
         default="all",
         help=(
             "Role set to manage. "
             "'ovh' grants the existing OVH Terraform roles, "
             "'azure-terraform' grants the Azure app Terraform role, "
-            "'all' grants both."
+            "'postgres-backup' grants blob access on the artifacts container only, "
+            "'all' grants every set."
         ),
     )
     parser.add_argument(
@@ -127,6 +138,8 @@ def build_desired_assignments(
     resource_group_name: str,
     storage_account_name: str,
     key_vault_name: str,
+    app_storage_account_name: str,
+    backup_container: str,
     profile: str,
 ) -> list[RoleAssignment]:
     resource_group_scope = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}"
@@ -149,6 +162,15 @@ def build_desired_assignments(
 
     if profile in ("azure-terraform", "all"):
         assignments.append(RoleAssignment(role_name="Contributor", scope=resource_group_scope))
+
+    if profile in ("postgres-backup", "all"):
+        backup_scope = (
+            f"{resource_group_scope}/providers/Microsoft.Storage/storageAccounts/"
+            f"{app_storage_account_name}/blobServices/default/containers/{backup_container}"
+        )
+        assignments.append(
+            RoleAssignment(role_name="Storage Blob Data Contributor", scope=backup_scope)
+        )
 
     return assignments
 
@@ -289,6 +311,8 @@ def main() -> int:
         resource_group_name=args.resource_group_name,
         storage_account_name=args.storage_account_name,
         key_vault_name=args.key_vault_name,
+        app_storage_account_name=args.app_storage_account_name,
+        backup_container=args.backup_container,
         profile=args.profile,
     )
 

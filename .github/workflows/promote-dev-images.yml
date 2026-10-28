@@ -15,7 +15,7 @@ on:
         description: "Commit whose matching image workflow succeeded"
         required: true
       backup_confirmed:
-        description: "A readable logical backup of the DEV database exists"
+        description: "Operator acknowledgement. A successful Backup DEV database run is also required."
         required: true
         type: boolean
         default: false
@@ -32,6 +32,7 @@ on:
 permissions:
   contents: write
   actions: read
+  id-token: write
 
 concurrency:
   group: gitops-kustomize-dev
@@ -70,7 +71,7 @@ jobs:
               ;;
           esac
           if [ "${BACKUP_CONFIRMED}" != "true" ]; then
-            echo "Refusing to promote before a DEV database backup is confirmed."
+            echo "Refusing to promote before Backup DEV database has succeeded."
             exit 1
           fi
           if [ "${MIGRATION_REVISION}" != "0013_upload_sessions" ]; then
@@ -81,6 +82,23 @@ jobs:
             echo "Refusing to promote the web image before CORS for https://chatwithdocs.org is confirmed."
             exit 1
           fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require a successful backup run and matching blob
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HOST: database.safranys.com
+          EXPECTED_DATABASE: ${{ secrets.POSTGRES_APP_DB }}
+          STORAGE_ACCOUNT: graphragdocsdevbmo9
+          CONTAINER: artifacts
+          MAX_AGE_HOURS: "24"
+        run: sh infra/dev/require-backup-evidence.sh
 
       - name: Require a successful image workflow for this commit
         env:
