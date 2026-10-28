@@ -16,13 +16,12 @@ trap 'rm -rf "$work"' EXIT
 
 runs=$(gh run list \
   --workflow backup-dev-database.yml \
-  --branch dev \
   --status success \
   --limit 1 \
   --json databaseId,headBranch,conclusion,url)
 run_id=$(printf '%s' "$runs" | python3 -c 'import json,sys; rows=json.load(sys.stdin); print(rows[0]["databaseId"] if rows else "")')
 if [ -z "$run_id" ]; then
-  echo "No successful Backup DEV database run on dev. backup_confirmed does not replace that run." >&2
+  echo "No successful Backup DEV database run. backup_confirmed does not replace that run." >&2
   exit 1
 fi
 
