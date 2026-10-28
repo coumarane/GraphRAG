@@ -1,14 +1,13 @@
 name: Run Database Migrations
 
 on:
-  push:
-    branches:
-      - dev
-    paths:
-      - "backend/alembic/**"
-      - ".github/workflows/run-database-migrations.yml"
   workflow_dispatch:
     inputs:
+      backup_confirmed:
+        description: "Operator acknowledgement. A successful Backup DEV database run is also required."
+        required: true
+        type: boolean
+        default: false
       target_host:
         description: "Database host (default from secrets)"
         required: false
@@ -34,31 +33,77 @@ on:
         required: false
         type: boolean
         default: false
+  repository_dispatch:
+    types: [migrate-dev-database]
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
 
 env:
   PYTHON_VERSION: "3.13"
 
 jobs:
+  guard:
+    name: Require a verified database backup
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Refuse an unconfirmed backup
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "repository_dispatch" ]; then
+            echo "Repository dispatch acknowledges the backup. The verified backup run is still required."
+          elif [ "${{ inputs.backup_confirmed }}" != "true" ]; then
+            echo "Refusing to migrate the DEV database. Dispatch Backup DEV database, then run this workflow with backup_confirmed=true."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require a successful backup run and matching blob
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HOST: ${{ github.event.client_payload.target_host || inputs.target_host || 'database.safranys.com' }}
+          EXPECTED_DATABASE: ${{ secrets.POSTGRES_APP_DB }}
+          STORAGE_ACCOUNT: graphragdocsdevbmo9
+          CONTAINER: artifacts
+          MAX_AGE_HOURS: "24"
+        run: sh infra/dev/require-backup-evidence.sh
+
   migrate:
     name: Run Database Migrations
     runs-on: ubuntu-latest
+    needs: guard
     environment: dev
     defaults:
       run:
         working-directory: backend
     env:
-      DB_HOST: ${{ inputs.target_host || 'database.safranys.com' }}
-      DB_PORT: ${{ inputs.postgres_port || '5432' }}
+      DB_HOST: ${{ github.event.client_payload.target_host || inputs.target_host || 'database.safranys.com' }}
+      DB_PORT: ${{ github.event.client_payload.postgres_port || inputs.postgres_port || '5432' }}
       DB_NAME: ${{ secrets.POSTGRES_APP_DB }}
       DB_USER: ${{ secrets.POSTGRES_APP_USER }}
       DB_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
-      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ inputs.target_host || 'database.safranys.com' }}:${{ inputs.postgres_port || '5432' }}/${{ secrets.POSTGRES_APP_DB }}
-      MIGRATION_DIRECTION: ${{ inputs.migration_direction || 'upgrade' }}
-      MIGRATION_REVISION: ${{ inputs.revision || 'head' }}
+      DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ github.event.client_payload.target_host || inputs.target_host || 'database.safranys.com' }}:${{ github.event.client_payload.postgres_port || inputs.postgres_port || '5432' }}/${{ secrets.POSTGRES_APP_DB }}
+      MIGRATION_DIRECTION: ${{ github.event.client_payload.direction || inputs.migration_direction || 'upgrade' }}
+      MIGRATION_REVISION: ${{ github.event.client_payload.revision || inputs.revision || 'head' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: dev
 
       - name: Set up Python
         uses: actions/setup-python@v5
