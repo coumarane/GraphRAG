@@ -54,7 +54,7 @@ test("isolated member uploads through object storage and sees the document", asy
   expect(created.ok(), await created.text()).toBeTruthy();
 
   await page.getByRole("button", { name: "Sign out" }).click();
-  await page.goto("/login");
+  await page.waitForURL(/\/login/);
   await page.getByLabel("Email").fill(memberEmail);
   await page.getByLabel("Password").fill(memberPassword);
   await page.getByRole("button", { name: "Sign in" }).click();

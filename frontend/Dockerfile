@@ -21,6 +21,12 @@ ENV RAG_API_URL=http://api:8000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# The server process is node. The base image's npm CLI vendors pacote,
+# sigstore, ip-address, brace-expansion, and undici 6.29.0. Current npm
+# releases still vendor that undici, so the runtime image does not keep npm.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx
+
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./

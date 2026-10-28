@@ -11,9 +11,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --create-home --home-dir /app app
+
+# The runtime uses the venv. The base image's pip still vendors setuptools
+# 70.3.0, urllib3 2.7.0, msgpack 1.1.2, and an older certifi, including inside
+# the ensurepip wheel. No current pip release vendors the patched copies.
+RUN python -m pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip \
+              /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+              /usr/local/lib/python3.13/ensurepip/_bundled \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /usr/local/bin/uv
 
