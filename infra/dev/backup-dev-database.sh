@@ -98,7 +98,7 @@ count_sql="SELECT n.nspname || '.' || c.relname, (xpath('//row/count/text()', qu
 
 run_psql -At -F "$(printf '\t')" -c "$count_sql" > "$work/counts.before"
 
-docker run --rm --network host --user root \
+docker run --rm --network host --user "$(id -u):$(id -g)" \
   -e PGPASSWORD -e PGUSER -e PGHOST -e PGPORT -e PGDATABASE -e PGSSLMODE \
   -e PGOPTIONS="-c row_security=off" \
   -v "$work:/backup" \
@@ -107,7 +107,7 @@ docker run --rm --network host --user root \
 
 chmod 600 "$work/dev.dump"
 
-docker run --rm --user root -v "$work:/backup" "$POSTGRES_IMAGE" \
+docker run --rm --user "$(id -u):$(id -g)" -v "$work:/backup" "$POSTGRES_IMAGE" \
   pg_restore --list /backup/dev.dump > "$work/restore.list"
 if ! grep -q "TABLE DATA public documents" "$work/restore.list"; then
   echo "pg_restore --list did not find the documents table." >&2
