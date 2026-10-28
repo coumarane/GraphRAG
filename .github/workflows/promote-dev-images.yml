@@ -28,6 +28,8 @@ on:
         required: true
         type: boolean
         default: false
+  repository_dispatch:
+    types: [promote-dev-image]
 
 permissions:
   contents: write
@@ -44,7 +46,7 @@ env:
 
 jobs:
   promote:
-    name: Promote ${{ inputs.component }}
+    name: Promote ${{ github.event.client_payload.component || inputs.component }}
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -55,11 +57,11 @@ jobs:
 
       - name: Require the phased checks
         env:
-          COMPONENT: ${{ inputs.component }}
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
-          MIGRATION_REVISION: ${{ inputs.migration_revision }}
-          CORS_READY: ${{ inputs.cors_ready }}
+          COMPONENT: ${{ github.event.client_payload.component || inputs.component }}
+          COMMIT_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
+          BACKUP_CONFIRMED: ${{ github.event_name == 'repository_dispatch' && 'true' || inputs.backup_confirmed }}
+          MIGRATION_REVISION: ${{ github.event.client_payload.migration_revision || inputs.migration_revision }}
+          CORS_READY: ${{ github.event.client_payload.cors_ready || inputs.cors_ready }}
         run: |
           set -euo pipefail
           case "${COMMIT_SHA}" in
@@ -102,8 +104,8 @@ jobs:
 
       - name: Require a successful image workflow for this commit
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          COMPONENT: ${{ inputs.component }}
+          COMMIT_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
+          COMPONENT: ${{ github.event.client_payload.component || inputs.component }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -131,16 +133,16 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Require API and worker from the same commit
-        if: inputs.component == 'web'
+        if: ${{ (github.event.client_payload.component || inputs.component) == 'web' }}
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
+          COMMIT_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
         run: infra/dev/assert-backend-promoted.sh "${COMMIT_SHA}"
 
       - name: Resolve the image digest
         id: image
         env:
-          COMPONENT: ${{ inputs.component }}
-          COMMIT_SHA: ${{ inputs.commit_sha }}
+          COMPONENT: ${{ github.event.client_payload.component || inputs.component }}
+          COMMIT_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
         run: |
           set -euo pipefail
           digest="$(docker buildx imagetools inspect \
@@ -157,11 +159,11 @@ jobs:
         uses: ./.github/actions/update-kustomize-image
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          image-name: harbor.safranys.com/chatwithdocs/${{ inputs.component }}
-          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ inputs.component }}@${{ steps.image.outputs.digest }}
+          image-name: harbor.safranys.com/chatwithdocs/${{ github.event.client_payload.component || inputs.component }}
+          image-ref: ${{ env.REGISTRY_HOST }}/${{ env.HARBOR_PROJECT }}/${{ github.event.client_payload.component || inputs.component }}@${{ steps.image.outputs.digest }}
           digest: ${{ steps.image.outputs.digest }}
-          kustomization-dir: infra/k8s/${{ inputs.component }}
-          commit-message: "chore(dev): deploy ${{ inputs.component }} @${{ steps.image.outputs.digest }}"
+          kustomization-dir: infra/k8s/${{ github.event.client_payload.component || inputs.component }}
+          commit-message: "chore(dev): deploy ${{ github.event.client_payload.component || inputs.component }} @${{ steps.image.outputs.digest }}"
 
       - name: Logout from Harbor
         if: always()

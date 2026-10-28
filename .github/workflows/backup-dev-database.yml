@@ -15,6 +15,8 @@ on:
         description: "Days to keep logical backups before deleting the blob"
         required: false
         default: "30"
+  repository_dispatch:
+    types: [backup-dev-database]
 
 permissions:
   contents: read
@@ -37,10 +39,10 @@ jobs:
         with:
           ref: dev
 
-      - name: Require the dev branch
+      - name: Require the dev database checkout
         run: |
           set -euo pipefail
-          if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then
+          if [ "${GITHUB_EVENT_NAME}" != "repository_dispatch" ] && [ "${GITHUB_REF}" != "refs/heads/dev" ]; then
             echo "Refusing to back up the DEV database from ${GITHUB_REF}."
             exit 1
           fi
@@ -56,11 +58,11 @@ jobs:
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
           PGUSER: postgres
-          PGHOST: ${{ inputs.target_host }}
-          PGPORT: ${{ inputs.postgres_port }}
+          PGHOST: ${{ github.event.client_payload.target_host || inputs.target_host || 'database.safranys.com' }}
+          PGPORT: ${{ github.event.client_payload.postgres_port || inputs.postgres_port || '5432' }}
           PGDATABASE: ${{ secrets.POSTGRES_APP_DB }}
           PGSSLMODE: prefer
-          RETENTION_DAYS: ${{ inputs.retention_days }}
+          RETENTION_DAYS: ${{ github.event.client_payload.retention_days || inputs.retention_days || '30' }}
           STORAGE_ACCOUNT: graphragdocsdevbmo9
           CONTAINER: artifacts
           BLOB_PREFIX: postgres-backups/dev/

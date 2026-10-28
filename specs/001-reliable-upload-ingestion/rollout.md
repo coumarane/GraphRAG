@@ -56,7 +56,7 @@ An OPTIONS preflight from `https://chatwithdocs.org` for `PUT` must succeed befo
 
 The workflow does not grant `BYPASSRLS`, disable row level security, or run `ALTER TABLE`. `pg_dump` uses `--format=custom --no-owner --no-acl` with `row_security=off`, and it does not pass `--enable-row-security`. That is the explicit bypass: only a superuser or `BYPASSRLS` role can keep `row_security` off, and the preflight check fails closed otherwise.
 
-Dispatch `Backup DEV database` on `dev`. The job:
+Dispatch `Backup DEV database` on `dev`, or send repository dispatch `backup-dev-database`. The job checks out `dev` either way. The job:
 
 1. Reads the Alembic revision and PostgreSQL version.
 2. Writes a custom-format dump.
