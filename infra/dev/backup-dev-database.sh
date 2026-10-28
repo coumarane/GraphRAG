@@ -67,11 +67,12 @@ run_psql() {
     psql -v ON_ERROR_STOP=1 "$@"
 }
 
-privilege=$(run_psql -At -c "SELECT current_user || '|' || rolsuper::text || '|' || rolbypassrls::text FROM pg_roles WHERE rolname = current_user")
-admin_role=${privilege%%|*}
+privilege=$(run_psql -At -F '|' -c "SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user" | tr -d '\r' | tail -n 1)
+admin_role=$(printf '%s' "${privilege%%|*}" | tr -d '[:space:]')
 rest=${privilege#*|}
-rolsuper=${rest%%|*}
-rolbypass=${rest#*|}
+rolsuper=$(printf '%s' "${rest%%|*}" | tr -d '[:space:]')
+rolbypass=$(printf '%s' "${rest#*|}" | tr -d '[:space:]')
+echo "admin_role=${admin_role} rolsuper=${rolsuper} rolbypassrls=${rolbypass}"
 if [ "$admin_role" = "$APP_ROLE" ]; then
   echo "Refusing to back up as the application role." >&2
   exit 1
