@@ -82,9 +82,7 @@ jobs:
           echo "=== redis url shape ==="
           ready=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
           echo "ready_pod=${ready}"
-          kubectl -n chatwithdocs-api exec "$ready" -- python -c 'from pathlib import Path; u="";
-[globals().__setitem__("u", line.split("=",1)[1]) for line in Path("/app/.env").read_text().splitlines() if line.startswith("REDIS_URL=")];
-print("set", bool(u)); print("scheme", u.split(":",1)[0] if u else ""); print("length", len(u)); print("at", u.count("@")); print("colon", u.count(":")); print("slash", u.count("/")); tail=u.rsplit("@",1)[-1] if "@" in u else ""; print("tail_colon", ":" in tail); print("tail_host", tail.split(":",1)[0] if tail else ""); print("tail_port_digits", tail.split(":",1)[1].split("/",1)[0].isdigit() if ":" in tail else False)'
+          kubectl -n chatwithdocs-api exec "$ready" -- python -c 'from pathlib import Path; u=next((line.split("=",1)[1] for line in Path("/app/.env").read_text().splitlines() if line.startswith("REDIS_URL=")), ""); print("set", bool(u)); print("scheme", u.split(":",1)[0] if u else ""); print("length", len(u)); print("at", u.count("@")); print("colon", u.count(":")); print("slash", u.count("/")); tail=u.rsplit("@",1)[-1] if "@" in u else ""; print("tail_colon", ":" in tail); host=tail.split(":",1)[0] if tail else ""; print("tail_host", host); port=tail.split(":",1)[1].split("/",1)[0] if ":" in tail else ""; print("tail_port_digits", port.isdigit())'
           echo "=== unready worker logs ==="
           for pod in $(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready!=true)]}{.metadata.name}{"\n"}{end}'); do
             echo "--- $pod previous ---"
