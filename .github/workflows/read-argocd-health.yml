@@ -73,4 +73,11 @@ jobs:
           echo "=== pods ==="
           kubectl -n chatwithdocs-api get pods -o wide
           kubectl -n chatwithdocs-web get pods -o wide
+          echo "=== unready api logs ==="
+          for pod in $(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==false)]}{.metadata.name}{"\n"}{end}'); do
+            echo "--- $pod ---"
+            kubectl -n chatwithdocs-api logs "$pod" --tail=80 || true
+            echo "--- $pod previous ---"
+            kubectl -n chatwithdocs-api logs "$pod" --previous --tail=80 || true
+          done
           EOSSH
