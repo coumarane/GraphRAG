@@ -1,0 +1,86 @@
+name: Diagnose DEV database
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [diagnose-dev-database]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    name: Read-only database diagnostics
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 20
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Resolve the database address
+        run: |
+          set -euo pipefail
+          getent hosts database.safranys.com || true
+          getent hosts 167.86.88.114 || true
+          python3 - <<'PY'
+          import socket
+          for host in ("database.safranys.com",):
+              infos = socket.getaddrinfo(host, 5432, type=socket.SOCK_STREAM)
+              print(host, sorted({item[4][0] for item in infos}))
+          PY
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify the existing backup blob
+        run: |
+          set -euo pipefail
+          blob="postgres-backups/dev/20261028T080844Z-40654618343.dump"
+          az storage blob show \
+            --account-name graphragdocsdevbmo9 \
+            --container-name artifacts \
+            --name "$blob" \
+            --auth-mode login \
+            --query "{name:name,size:properties.contentLength,md5:properties.contentSettings.contentMd5,modified:properties.lastModified,accessTier:properties.accessTier}" \
+            -o json
+          mkdir -p "$RUNNER_TEMP/backup"
+          az storage blob download \
+            --account-name graphragdocsdevbmo9 \
+            --container-name artifacts \
+            --name "$blob" \
+            --file "$RUNNER_TEMP/backup/dev.dump" \
+            --auth-mode login \
+            --only-show-errors
+          sha=$(sha256sum "$RUNNER_TEMP/backup/dev.dump" | awk '{print $1}')
+          echo "sha256=${sha}"
+          test "$sha" = "dce76c570817ae417755f8a7fe91ce02f4e88580f1b676c99739dfbef549dc4a"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$RUNNER_TEMP/backup:/backup" postgres:18.6 \
+            pg_restore --list /backup/dev.dump > "$RUNNER_TEMP/backup/restore.list"
+          grep -q "TABLE DATA public documents" "$RUNNER_TEMP/backup/restore.list"
+          grep -q "alembic_version" "$RUNNER_TEMP/backup/restore.list"
+          echo "existing_backup=readable pg_restore_list=passed"
+          rm -rf "$RUNNER_TEMP/backup"
+
+      - name: Read the PostgreSQL host
+        env:
+          SSH_PASSWORD: ${{ secrets.CONTABO_VM2_ROOT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::${SSH_PASSWORD}"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -p "$SSH_PASSWORD" ssh \
+            -o StrictHostKeyChecking=no \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            root@167.86.88.114 \
+            'bash -s' < infra/dev/diagnose-postgres.sh
