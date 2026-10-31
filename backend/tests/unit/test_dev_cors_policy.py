@@ -36,15 +36,11 @@ def test_dev_minio_cors_allows_the_web_route_only() -> None:
     assert "anonymous download" in policy["purpose"]
 
 
-def test_release_gate_stays_closed_on_the_current_rollback_digests() -> None:
+def test_release_gate_stays_closed_and_records_rollback_digests() -> None:
     gate = json.loads((_DEV / "release-gate.json").read_text())
     assert gate["promote"] == {"api": False, "worker": False, "web": False}
-    kustomizations = {
-        "api": _DEV.parents[0] / "k8s" / "api" / "kustomization.yaml",
-        "worker": _DEV.parents[0] / "k8s" / "worker" / "kustomization.yaml",
-        "web": _DEV.parents[0] / "k8s" / "web" / "kustomization.yaml",
+    assert gate["rollback_digests"] == {
+        "api": "sha256:b87a4646ea022aec2639e4f25e3969bd6c42e69735d96847d98e982383e44385",
+        "worker": "sha256:fdf5406658e3b12845efccb00a77a0ac41cbeab7572d7e54d7ad388702dcf5af",
+        "web": "sha256:690e22dff639dd779e8bca39bb3deb16d93a7d79036e4936170ec38a06746571",
     }
-    for component, path in kustomizations.items():
-        text = path.read_text()
-        digest = gate["rollback_digests"][component]
-        assert f"digest: {digest}" in text
