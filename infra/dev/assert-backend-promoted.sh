@@ -12,7 +12,7 @@ digest_of() {
 }
 
 file_digest() {
-  awk '/^[[:space:]]*digest:/ {print $2; exit}' "$1"
+  awk 'match($0, /sha256:[0-9a-f]+/) { print substr($0, RSTART, RLENGTH); exit }' "$1"
 }
 
 api_live="$(file_digest infra/k8s/api/kustomization.yaml)"
