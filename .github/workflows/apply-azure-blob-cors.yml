@@ -1,0 +1,103 @@
+name: Apply Azure Blob CORS
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [apply-azure-blob-cors]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  apply:
+    name: Apply DEV blob CORS
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 15
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore shared SSH key from Key Vault
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secret-name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          key-path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+
+      - name: Configure SSH for master
+        id: master_ssh
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ env.K8S_INVENTORY }}
+          inventory-group: master
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ubuntu
+
+      - name: Set blob CORS from the running API
+        env:
+          MASTER_HOST: ${{ steps.master_ssh.outputs.first-host }}
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" 'bash -s' <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+          pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
+          echo "pod=${pod}"
+          test -n "$pod"
+          kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
+          from pathlib import Path
+          from azure.storage.blob import BlobServiceClient, CorsRule
+
+          env = {}
+          for line in Path("/app/.env").read_text().splitlines():
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              env[key] = value
+          account = env["AZURE_BLOB_ACCOUNT_NAME"]
+          client = BlobServiceClient(
+              account_url=f"https://{account}.blob.core.windows.net",
+              credential=env["AZURE_BLOB_ACCESS_KEY"],
+          )
+          client.set_service_properties(
+              cors=[
+                  CorsRule(
+                      allowed_origins=["https://chatwithdocs.org"],
+                      allowed_methods=["PUT", "OPTIONS", "HEAD", "GET"],
+                      allowed_headers=[
+                          "content-type",
+                          "x-ms-blob-type",
+                          "x-ms-blob-content-type",
+                          "x-ms-date",
+                          "x-ms-version",
+                      ],
+                      exposed_headers=["etag", "x-ms-request-id"],
+                      max_age_in_seconds=600,
+                  )
+              ]
+          )
+          props = client.get_service_properties()
+          rules = props["cors"]
+          print(f"account={account}")
+          print(f"rules={len(rules)}")
+          for rule in rules:
+              print("origins=" + ",".join(rule.allowed_origins))
+              print("methods=" + ",".join(rule.allowed_methods))
+              print("max_age=" + str(rule.max_age_in_seconds))
+          PY
+          EOSSH
