@@ -96,6 +96,10 @@ jobs:
       DB_USER: ${{ secrets.POSTGRES_APP_USER }}
       DB_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
       DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_APP_USER }}:${{ secrets.POSTGRES_APP_PASSWORD }}@${{ github.event.client_payload.target_host || inputs.target_host || 'database.safranys.com' }}:${{ github.event.client_payload.postgres_port || inputs.postgres_port || '5432' }}/${{ secrets.POSTGRES_APP_DB }}
+      ALEMBIC_LOCK_TIMEOUT: 30s
+      ALEMBIC_TCP_KEEPALIVES_IDLE: "30"
+      ALEMBIC_TCP_KEEPALIVES_INTERVAL: "10"
+      ALEMBIC_TCP_KEEPALIVES_COUNT: "5"
       MIGRATION_DIRECTION: ${{ github.event.client_payload.direction || inputs.migration_direction || 'upgrade' }}
       MIGRATION_REVISION: ${{ github.event.client_payload.revision || inputs.revision || 'head' }}
 
@@ -179,6 +183,9 @@ jobs:
         run: |
           echo "Pending migrations:"
           alembic -c alembic.prod.final.ini history --verbose
+
+      - name: Release stale locks that block upload-session DDL
+        run: python ../infra/dev/release-migration-locks.py
 
       - name: Run migrations (${{ env.MIGRATION_DIRECTION }} to ${{ env.MIGRATION_REVISION }})
         run: |
