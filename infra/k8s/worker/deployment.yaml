@@ -38,6 +38,22 @@ spec:
                 value="$(cat "$file")"
                 printf '%s=%s\n' "$name" "$value" >> /work/.env
               done
+              redis_line=$(grep '^REDIS_URL=' /work/.env || true)
+              if [ -n "$redis_line" ]; then
+                redis_value=${redis_line#REDIS_URL=}
+                case "$redis_value" in
+                  redis://*@*|rediss://*@*)
+                    redis_prefix=${redis_value%%@*}
+                    redis_suffix=${redis_value#*@}
+                    redis_scheme=${redis_prefix%%://*}
+                    redis_userinfo=${redis_prefix#*://}
+                    redis_userinfo=$(printf '%s' "$redis_userinfo" | sed 's#/#%2F#g')
+                    grep -v '^REDIS_URL=' /work/.env > /work/.env.redis
+                    printf 'REDIS_URL=%s://%s@%s\n' "$redis_scheme" "$redis_userinfo" "$redis_suffix" >> /work/.env.redis
+                    mv /work/.env.redis /work/.env
+                    ;;
+                esac
+              fi
               printf 'INGEST_EXECUTION=worker\n' >> /work/.env
               printf 'INGEST_QUEUE_BACKEND=redis\n' >> /work/.env
               test -s /work/.env
@@ -60,6 +76,23 @@ spec:
           image: harbor.safranys.com/chatwithdocs/worker:latest
           imagePullPolicy: IfNotPresent
           command: ["enterprise-rag", "worker", "--poll-interval", "1.0"]
+          ports:
+            - name: health
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
           volumeMounts:
             - name: runtime-env
               mountPath: /app/.env

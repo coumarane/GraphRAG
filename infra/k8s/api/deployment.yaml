@@ -36,6 +36,24 @@ spec:
                 value="$(cat "$file")"
                 printf '%s=%s\n' "$name" "$value" >> /work/.env
               done
+              redis_line=$(grep '^REDIS_URL=' /work/.env || true)
+              if [ -n "$redis_line" ]; then
+                redis_value=${redis_line#REDIS_URL=}
+                case "$redis_value" in
+                  redis://*@*|rediss://*@*)
+                    redis_prefix=${redis_value%%@*}
+                    redis_suffix=${redis_value#*@}
+                    redis_scheme=${redis_prefix%%://*}
+                    redis_userinfo=${redis_prefix#*://}
+                    redis_userinfo=$(printf '%s' "$redis_userinfo" | sed 's#/#%2F#g')
+                    grep -v '^REDIS_URL=' /work/.env > /work/.env.redis
+                    printf 'REDIS_URL=%s://%s@%s\n' "$redis_scheme" "$redis_userinfo" "$redis_suffix" >> /work/.env.redis
+                    mv /work/.env.redis /work/.env
+                    ;;
+                esac
+              fi
+              printf 'INGEST_EXECUTION=worker\n' >> /work/.env
+              printf 'INGEST_QUEUE_BACKEND=redis\n' >> /work/.env
               test -s /work/.env
               chmod 0444 /work/.env
           volumeMounts:
