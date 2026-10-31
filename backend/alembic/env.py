@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -20,6 +21,15 @@ if str(SRC) not in sys.path:
 from graph_rag.config.settings import Settings
 from graph_rag.infrastructure.persistence.postgres import models as _models  # noqa: F401
 from graph_rag.infrastructure.persistence.postgres.base import Base
+
+_connect_spec = importlib.util.spec_from_file_location(
+    "alembic_migration_connect_args",
+    Path(__file__).resolve().parent / "connect_args.py",
+)
+assert _connect_spec is not None and _connect_spec.loader is not None
+_connect_mod = importlib.util.module_from_spec(_connect_spec)
+_connect_spec.loader.exec_module(_connect_mod)
+migration_connect_args = _connect_mod.migration_connect_args
 
 config = context.config
 
@@ -67,6 +77,7 @@ async def run_async_migrations() -> None:
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=migration_connect_args(),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

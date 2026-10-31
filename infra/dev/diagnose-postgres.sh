@@ -41,6 +41,33 @@ sudo -u postgres psql -d chatwithdocs_db -v ON_ERROR_STOP=1 -c \
    FROM pg_stat_activity
    WHERE datname = current_database() AND pid <> pg_backend_pid()
    ORDER BY xact_start NULLS LAST;"
+echo "=== conflicting locks ==="
+sudo -u postgres psql -d chatwithdocs_db -v ON_ERROR_STOP=1 -c \
+  "SELECT a.pid, a.usename, a.state, now()-a.xact_start AS xact_age,
+          a.wait_event_type, a.wait_event, c.relname, l.mode, l.granted,
+          left(a.query, 160) AS query
+   FROM pg_locks l
+   JOIN pg_stat_activity a ON a.pid = l.pid
+   LEFT JOIN pg_class c ON c.oid = l.relation
+   WHERE l.relation IN (
+           SELECT cls.oid FROM pg_class cls
+           WHERE cls.oid = 'public.document_versions'::regclass
+              OR cls.oid IN (
+                   SELECT i.indexrelid FROM pg_index i
+                   WHERE i.indrelid = 'public.document_versions'::regclass
+              )
+         )
+   ORDER BY l.granted, a.xact_start NULLS LAST;"
+echo "=== idle transaction locks ==="
+sudo -u postgres psql -d chatwithdocs_db -v ON_ERROR_STOP=1 -c \
+  "SELECT a.pid, a.state, now()-a.xact_start AS xact_age, c.relname, l.mode
+   FROM pg_stat_activity a
+   JOIN pg_locks l ON l.pid = a.pid
+   LEFT JOIN pg_class c ON c.oid = l.relation
+   WHERE a.state = 'idle in transaction'
+     AND a.datname = current_database()
+     AND l.granted
+   ORDER BY a.xact_start, c.relname;"
 echo "=== locks ==="
 sudo -u postgres psql -d chatwithdocs_db -v ON_ERROR_STOP=1 -c \
   "SELECT l.mode, l.granted, a.usename, a.state, left(a.query, 160) AS query
@@ -61,6 +88,8 @@ find /var/log/postgresql -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | hea
 latest=$(find /var/log/postgresql -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {print $2}')
 if [ -n "${latest:-}" ]; then
   echo "latest_log=${latest}"
+  echo "=== failure window unfiltered ==="
+  awk 'index($0,"2026-10-28 09:1") || index($0,"2026-10-28 09:2")' "$latest" | head -n 200
   awk 'index($0,"2026-10-28 08:") || index($0,"2026-10-28 09:") || index($0,"2026-10-28 10:")' "$latest" \
     | awk 'BEGIN{IGNORECASE=1} /fatal|panic|error|reset|terminat|cancel|lock|timeout|etag|document_versions/' \
     | tail -n 80
