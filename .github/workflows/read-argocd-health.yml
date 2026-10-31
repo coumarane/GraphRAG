@@ -59,6 +59,12 @@ jobs:
           echo "=== applications ==="
           kubectl -n argocd get applications.argoproj.io \
             -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REV:.status.sync.revision
+          echo "=== api operation ==="
+          kubectl -n argocd get application chatwithdocs-api -o jsonpath='sync={.status.sync.status} rev={.status.sync.revision} health={.status.health.status} phase={.status.operationState.phase} message={.status.operationState.message}{"\n"}'
+          kubectl -n argocd get application chatwithdocs-api -o jsonpath='{range .status.conditions[*]}{.type}={.message}{"\n"}{end}'
+          echo "=== worker operation ==="
+          kubectl -n argocd get application chatwithdocs-worker -o jsonpath='sync={.status.sync.status} rev={.status.sync.revision} health={.status.health.status} phase={.status.operationState.phase} message={.status.operationState.message}{"\n"}'
+          kubectl -n chatwithdocs-api describe pod -l app.kubernetes.io/name=chatwithdocs-worker | awk '/^Name:|^Status:|State:|Reason:|Image:|Warning|Error|Failed|Pull/'
           echo "=== images ==="
           kubectl -n chatwithdocs-api get deploy api ingestion-worker \
             -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.template.spec.containers[0].image}{"\n"}{end}'
