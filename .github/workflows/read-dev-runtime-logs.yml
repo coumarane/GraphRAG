@@ -1,0 +1,116 @@
+name: Read DEV runtime logs
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [read-dev-runtime-logs]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  read:
+    name: Read runtime evidence
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 15
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore shared SSH key from Key Vault
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secret-name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          key-path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+
+      - name: Configure SSH for master
+        id: master_ssh
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ env.K8S_INVENTORY }}
+          inventory-group: master
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ubuntu
+
+      - name: Read search error and worker crash
+        env:
+          MASTER_HOST: ${{ steps.master_ssh.outputs.first-host }}
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" 'bash -s' <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+          echo "=== argo ==="
+          kubectl -n argocd get applications.argoproj.io -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REV:.status.sync.revision
+          echo "=== pods ==="
+          kubectl -n chatwithdocs-api get pods -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{" reason="}{.status.containerStatuses[0].lastState.terminated.reason}{" exit="}{.status.containerStatuses[0].lastState.terminated.exitCode}{" finished="}{.status.containerStatuses[0].lastState.terminated.finishedAt}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
+          echo
+          echo "=== images ==="
+          kubectl -n chatwithdocs-api get deploy api -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          echo "=== worker log tail ==="
+          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=120 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | tail -n 40
+          pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
+          echo "pod=${pod}"
+          kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+          env = {}
+          for line in Path("/app/.env").read_text().splitlines():
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              env[key] = value
+          email = env.get("AUTH_BOOTSTRAP_EMAIL", "").strip()
+          password = env.get("AUTH_BOOTSTRAP_PASSWORD", "").strip()
+          tenant = env.get("AUTH_BOOTSTRAP_TENANT_KEY", "demo").strip() or "demo"
+
+          def request(method, url, payload=None, headers=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, method=method)
+              for key, value in (headers or {}).items():
+                  req.add_header(key, value)
+              if payload is not None:
+                  req.add_header("content-type", "application/json")
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as response:
+                      return response.status, response.read()
+              except urllib.error.HTTPError as exc:
+                  return exc.code, exc.read()
+
+          status, body = request("POST", "http://127.0.0.1:8000/api/v1/auth/login", {"email": email, "password": password})
+          print("login", status)
+          token = json.loads(body)["access_token"]
+          auth = {"Authorization": "Bearer " + token, "X-Tenant-Key": tenant}
+          status, raw = request(
+              "POST",
+              "http://127.0.0.1:8000/api/v1/retrieval/search",
+              {"question": "rollout-001", "top_k": 3},
+              auth,
+          )
+          payload = json.loads(raw)
+          print("search_http", status)
+          print("search_code", payload.get("code"))
+          print("search_error_type", (payload.get("metadata") or {}).get("error_type"))
+          print("search_evidence", len(payload.get("evidence") or []))
+          PY
+          EOSSH
