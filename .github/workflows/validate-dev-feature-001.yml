@@ -89,6 +89,9 @@ jobs:
             *sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84*) echo web_digest_unchanged true ;;
             *) echo web_digest_unchanged false ;;
           esac
+          echo "=== worker restart ==="
+          kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[*]}{.metadata.name}{" restarts="}{.status.containerStatuses[0].restartCount}{" reason="}{.status.containerStatuses[0].lastState.terminated.reason}{" exit="}{.status.containerStatuses[0].lastState.terminated.exitCode}{" finished="}{.status.containerStatuses[0].lastState.terminated.finishedAt}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
+          echo
           echo "=== pods ==="
           kubectl -n chatwithdocs-api get pods -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{"\n"}{end}'
           kubectl -n chatwithdocs-web get pods -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{"\n"}{end}'
@@ -208,6 +211,25 @@ jobs:
                       info = client.xpending("ingestion-jobs", "ingestion-workers")
                       pending = info.get("pending") if isinstance(info, dict) else (info[0] if info else None)
                       print("redis_jobs_pending", pending)
+                      entries = client.xpending_range("ingestion-jobs", "ingestion-workers", "-", "+", 5)
+                      print("redis_pending_entries", len(entries))
+                      for entry in entries:
+                          idle = entry.get("time_since_delivered") if isinstance(entry, dict) else None
+                          times = entry.get("times_delivered") if isinstance(entry, dict) else None
+                          message_id = entry.get("message_id") if isinstance(entry, dict) else None
+                          print("redis_pending_entry", "idle_ms", idle, "deliveries", times)
+                          if not message_id:
+                              continue
+                          for _item_id, fields in client.xrange("ingestion-jobs", min=message_id, max=message_id, count=1):
+                              raw = fields.get(b"payload") or fields.get("payload") or b"{}"
+                              if isinstance(raw, bytes):
+                                  raw = raw.decode("utf-8", "replace")
+                              payload = json.loads(raw)
+                              print(
+                                  "redis_pending_job",
+                                  "run", payload.get("ingestion_run_id"),
+                                  "document", payload.get("document_id"),
+                              )
                   except Exception as exc:
                       print("redis_jobs_pending_error", type(exc).__name__, redact(exc))
               except Exception as exc:
@@ -456,9 +478,9 @@ jobs:
           echo "api_log_lines $(wc -l < /tmp/feature001-api.log | tr -d ' ')"
           echo "api_log_errorish $(grep -Eic 'error|exception' /tmp/feature001-api.log || true)"
           echo "api_log_matches $(grep -Ec '01a19439-4152-7b32-a7f3-7125ee8fb480' /tmp/feature001-api.log || true)"
-          grep -E '01a19439-4152-7b32-a7f3-7125ee8fb480' /tmp/feature001-api.log \
+          grep -E '01a19439-4152-7b32-a7f3-7125ee8fb480|retrieval_branch_failed|retrieval/search' /tmp/feature001-api.log \
             | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" \
-            | tail -n 15 \
+            | tail -n 20 \
             | sed 's/^/api_log /' || true
           rm -f /tmp/feature001-worker.log /tmp/feature001-api.log
           EOSSH
@@ -672,7 +694,8 @@ jobs:
             await browser.close();
           }
           JS
-          node "$RUNNER_TEMP/browser.mjs"
+          cp "$RUNNER_TEMP/browser.mjs" "$RUNNER_TEMP/pw/browser.mjs"
+          node "$RUNNER_TEMP/pw/browser.mjs"
 
       - name: Track the browser document
         env:
