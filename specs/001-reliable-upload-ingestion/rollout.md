@@ -23,7 +23,11 @@ Do not create a namespace, hostname, database, or bucket for staging. Do not dis
 
 The feature branch cannot start a deployment. Its workflow is `Validate feature SHA`.
 
-Argo CD follows the digest committed on `dev`. These digests are the rollback images, stored again in `infra/dev/release-gate.json`. The unit test checks that the kustomization files still carry them:
+Argo CD follows the digest committed on `dev` in `infra/k8s/{api,worker,web}/kustomization.yaml`. The digests it was serving on 2 November 2026, and the DEV evidence for Feature 001, are in [acceptance.md](acceptance.md).
+
+`infra/dev/release-gate.json` keeps `promote.api`, `promote.worker`, and `promote.web` false and stores the rollback digests. `test_release_gate_stays_closed_and_records_rollback_digests` checks that file. It does not require the kustomization digests to stay equal to the rollback digests. A normal push does not move Argo CD while those flags are false. `Promote DEV image digest` is the writer that moved the API and worker.
+
+Rollback digests:
 
 - API `sha256:b87a4646ea022aec2639e4f25e3969bd6c42e69735d96847d98e982383e44385`
 - Worker `sha256:fdf5406658e3b12845efccb00a77a0ac41cbeab7572d7e54d7ad388702dcf5af`
@@ -34,7 +38,7 @@ Argo CD follows the digest committed on `dev`. These digests are the rollback im
 1. Backend unit tests finish before an API or worker image push. Frontend `tsc` and Vitest finish before a web image push.
 2. The image tag is the validated commit SHA. A different dispatch tag fails the build. `api`, `worker`, and `web` are not tagged `:latest`.
 3. Trivy uses `exit-code: 1` for fixable CRITICAL and HIGH findings. Unfixed findings stay ignored. A failed scan does not reach GitOps.
-4. GitOps also requires the release gate. With the flags false, Harbor can hold the image and Argo CD stays on the digests above.
+4. GitOps also requires the release gate. With the flags false, Harbor can hold an image and a push does not change the digests Argo CD is already serving. The serving digests are in [acceptance.md](acceptance.md).
 5. `Promote DEV image digest` is the only writer that should move a digest. It rejects a SHA whose matching image workflow did not succeed. For `web`, `infra/dev/assert-backend-promoted.sh` requires the API and worker digests already on `dev` to be `api:<SHA>` and `worker:<SHA>`.
 
 ## Object store and browser CORS
@@ -83,7 +87,7 @@ To restore, download that blob with `az storage blob download --auth-mode login`
 
 Revision `0013_upload_sessions` revises `0012_document_search`. It adds nullable `etag` and `object_version_id` on `document_versions` and creates `upload_sessions`. Existing rows are not rewritten. Downgrade drops only that table and those two columns.
 
-1. Merge the tested commit to `dev`. The image workflows may build and scan. They do not migrate, and the closed gate does not change the rollback digests.
+1. Merge the tested commit to `dev`. The image workflows may build and scan. They do not migrate, and the closed gate does not change the digests Argo CD is serving.
 2. Dispatch `Backup DEV database` on `dev`. Confirm the run succeeded, the log shows `admin_privilege=superuser` or `bypassrls`, and both `pg_restore_list` and `restore_database` passed. The metadata records the Alembic revision, PostgreSQL version, sha256, and blob name.
 3. Dispatch `Run Database Migrations` with `backup_confirmed=true` and revision `0013_upload_sessions`. The workflow checks the backup run itself. Confirm `alembic current`. The migration session sets `lock_timeout` to 30 seconds and TCP keepalives, so a lock wait cannot sit idle until the runner path resets the connection. Before Alembic runs, the workflow terminates only this role's transactions that have been idle for more than 60 seconds and hold a granted lock on `document_versions` or one of its indexes. Active queries are left alone. Row level security is unchanged.
 4. Dispatch `Promote DEV image digest` for `api`, then `worker`, using the `dev` commit SHA whose image workflows succeeded. Wait until `chatwithdocs-api` and `chatwithdocs-worker` are Healthy and Synced. Startup pings Redis and refuses to serve when that ping fails. The init container percent-encodes `/` in the Redis userinfo so the existing secret parses, then the API file sets `INGEST_EXECUTION=worker` and `INGEST_QUEUE_BACKEND=redis`. The worker probes `/health/live` and `/health/ready` on port 8081. Later readiness checks Postgres.
@@ -93,6 +97,8 @@ Revision `0013_upload_sessions` revises `0012_document_search`. It adds nullable
 Do not downgrade while an upload session exists or a new etag must be kept. A downgrade is a later dispatch with direction `downgrade` and revision `0012_document_search`, after the previous API and worker digests are serving and no upload is `pending`.
 
 ## Checks after Argo CD syncs
+
+The 2 November 2026 DEV acceptance is recorded in [acceptance.md](acceptance.md).
 
 - API: `GET https://api.chatwithdocs.org/api/v1/health/ready` and `/api/v1/health/live`.
 - Worker: pod Ready, probes `/health/live` and `/health/ready` on port 8081. A crash loop on startup means the Redis ping failed.

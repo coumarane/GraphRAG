@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-27
 
-**Status**: Draft
+**Status**: DEV acceptance recorded in [acceptance.md](acceptance.md). The ingestion and retrieval path is accepted, with the limitations in that document.
 
 **Input**: User description: "Create the first Spec Kit feature specification for Reliable Document Upload and Ingestion on the existing production GraphRAG SaaS. Specify a production-grade path for validation, tenant isolation, durable storage, idempotency, asynchronous ingestion, stage-level recovery, retries, dead-letter handling, progress, errors, and safe reprocessing. Reuse the current architecture. Separate confirmed defects from checks that still need a live run. Do not implement or deploy."
 
