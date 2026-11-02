@@ -1,6 +1,6 @@
 # Implementation review: RAG Reliability and Retrieval Quality
 
-**Updated**: 2 November 2026, 18:23 Europe/Paris
+**Updated**: 2 November 2026, 18:34 Europe/Paris
 
 **Branch**: `cursor/002-rag-reliability-and-retrieval-quality-7784`
 
@@ -40,16 +40,19 @@ This limitation stays open and is not a reason to change the 0.12 floor in this 
 
 ## Image build and scan
 
-The existing workflows are `build-and-push-api-image.yml`, `build-and-push-worker-image.yml`, and `build-and-push-web-image.yml`. Each builds, pushes a tag equal to the commit SHA, and runs Trivy at CRITICAL and HIGH. The GitOps job runs only when `github.ref` is `refs/heads/dev`. On `dev`, `check-release-gate.sh` still reads `promote.<component> == false`, so a closed gate does not write `infra/k8s`.
+The existing workflows are `build-and-push-api-image.yml` (id 333154082), `build-and-push-worker-image.yml` (id 336482825), and `build-and-push-web-image.yml` (id 333154081). Each is `active`, defines `workflow_dispatch` with no branch filter, builds, pushes a tag equal to the commit SHA, and runs Trivy at CRITICAL and HIGH. The same files exist on `main` and on this feature branch. A dispatch with `--ref cursor/002-rag-reliability-and-retrieval-quality-7784` is a valid target. The GitOps job runs only when `github.ref` is `refs/heads/dev`. On `dev`, `check-release-gate.sh` still reads `promote.<component> == false`, so a closed gate does not write `infra/k8s`.
 
-Dispatch from this environment was refused:
+Dispatch was not started. A request with an empty body, which cannot create a run, was refused before GitHub validated the payload:
 
 ```text
 HTTP 403: Resource not accessible by integration
-POST /repos/coumarane/graphrag/actions/workflows/333154082/dispatches
+X-Accepted-Github-Permissions: actions=write
+POST /repos/coumarane/GraphRAG/actions/workflows/build-and-push-api-image.yml/dispatches
 ```
 
-No API, worker, or web image was built. No new digest exists. The running DEV digests are unchanged:
+The caller is the cloud-agent GitHub App installation token (`ghs_`, account `cursor`). That token can read workflows and list runs. It cannot write Actions. The public Cursor GitHub App requests `actions: write`, and Cursor mints the cloud-agent token with Actions read only, so approving the app installation does not give this token write access. No other GitHub token is present in this environment. Repository Actions settings were not changed. The settings endpoint itself requires `administration: read`, which this token also lacks. Recent image builds on `dev` are `push` events, so the workflows run when a permitted caller starts them.
+
+No API, worker, or web image was built for this feature. No new digest exists. The running DEV digests are unchanged:
 
 | Component | Serving digest |
 | --- | --- |
@@ -57,7 +60,7 @@ No API, worker, or web image was built. No new digest exists. The running DEV di
 | Worker | `sha256:17eb0f6f6b57e218ae4d69ec568ece20c1e4573e2057806c0cb0cd56d6f4f1ea` |
 | Web | `sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84` |
 
-Approval is required before these commands run. They build and scan. They do not promote, because the ref is not `dev` and the gate is closed:
+The identity that runs these commands needs `actions: write` on `coumarane/GraphRAG`. Leave `image_tag` empty and `rebuild_base` false. They build and scan. They do not promote, because the ref is not `dev` and the gate is closed:
 
 ```bash
 gh workflow run build-and-push-api-image.yml --ref cursor/002-rag-reliability-and-retrieval-quality-7784
@@ -139,12 +142,13 @@ Recorded 2 November 2026, 16:24 Europe/Paris.
 | `uv run pytest tests/evaluation tests/integration -q -rs` | 30 passed, 7 skipped. Redis crash-recovery and outbox republish passed |
 | Frontend `npx tsc --noEmit` and `npx vitest run` | `tsc` passed. 5 files, 17 tests passed |
 | Changed-file `ruff format` and `ruff check` | Passed |
+| Pull request #44 at `4363753` | Green at 18:31 Europe/Paris. [Validate feature SHA](https://github.com/coumarane/GraphRAG/actions/runs/41491441563): backend unit tests, Redis integration tests, and frontend typecheck and tests passed. [Accept Feature 002](https://github.com/coumarane/GraphRAG/actions/runs/41491441534): product check passed. |
 
 ## Remaining blockers
 
 | Blocker | Why it stays open |
 | --- | --- |
-| Image digests | Build dispatch returned HTTP 403. No new API, worker, or web digest was produced. |
+| Image digests | Dispatch needs `actions: write`. This cloud-agent token is Actions read-only, so no API, worker, or web digest was produced. |
 | T030 | Prepared on `cursor/t030-accept-workflow-only-7784`. Not merged to the default branch and not dispatched. |
 | Live DEV browser acceptance | The command is documented. It has not been run. Today's web digest is not this feature's image. |
 | SC-008 | The feature is not releasable while SC-006 is open and no feature image is serving. |

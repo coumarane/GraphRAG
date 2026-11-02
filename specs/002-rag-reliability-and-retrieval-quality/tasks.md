@@ -189,6 +189,8 @@ Recorded 2 November 2026, 15:01 Europe/Paris. No image was built, no digest was 
 
 T030 stays unchecked. The workflow is prepared on `cursor/t030-accept-workflow-only-7784` and has not been merged or dispatched. The live DEV browser journey stays unrun.
 
+Commit `4363753` is green on pull request #44: backend unit tests, Redis integration tests, frontend typecheck and tests, and the Feature 002 product check. Image dispatch was not started. The cloud-agent token lacks `actions: write`.
+
 ## Follow-up evidence
 
 Recorded 2 November 2026, 16:24 Europe/Paris. This pass fixes the nested fusion score, the heartbeat persist failure, and the Redis CI gap from the implementation review. It does not check T030, build an image, or dispatch a DEV workflow. The review is [checklists/implementation-review.md](checklists/implementation-review.md).
