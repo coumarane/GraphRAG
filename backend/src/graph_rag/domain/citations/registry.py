@@ -92,9 +92,6 @@ def evidence_to_citation(
     evidence_text = item.text.strip() or "(empty evidence)"
     page_start = item.page_start
     page_end = item.page_end
-    # Prefer a precise landing page when legacy multi-page text chunks remain.
-    if page_end - page_start >= 3:
-        page_end = page_start
     return Citation(
         citation_id=citation_id,
         tenant_id=tenant.tenant_id,

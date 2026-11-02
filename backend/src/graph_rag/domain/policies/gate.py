@@ -12,6 +12,7 @@ from graph_rag.domain.conversation.scope_expand import (
     build_scope_miss_message,
 )
 from graph_rag.domain.generation.grounding_policy import (
+    SELECTION_HAS_NO_SUPPORTING_EVIDENCE,
     EvidenceSufficiency,
     assess_evidence,
     finalize_grounded_answer,
@@ -52,9 +53,7 @@ class HardInvariantGate:
             tenant.ensure_authorized()
         except TenantError:
             verdict.blocked = True
-            verdict.block_answer = (
-                "Unauthorized tenant context. This request cannot be processed."
-            )
+            verdict.block_answer = "Unauthorized tenant context. This request cannot be processed."
             verdict.extend_warnings(["security_authorization_failed"])
             return
         verdict.mark(HardInvariant.SECURITY_AUTHORIZATION)
@@ -107,6 +106,8 @@ class HardInvariantGate:
         verdict.extend_warnings(assessment.warnings)
         verdict.mark(HardInvariant.EVIDENCE_SUFFICIENCY)
 
+        if not evidence:
+            verdict.extend_warnings([SELECTION_HAS_NO_SUPPORTING_EVIDENCE])
         # Hard block only when the pinned scope returns no evidence at all.
         # Weak-score insufficiency still flows to generation (may abstain + offer).
         if not evidence and pinned_document_ids and not expanded:

@@ -34,6 +34,34 @@ SUFFICIENCY_PARTIAL = "evidence_partial"
 CONFLICTING_EVIDENCE = "conflicting_evidence"
 GRAPH_PATH_FILTERED = "graph_path_filtered"
 CROSS_DOC_UNAUTHORIZED = "cross_document_search_unauthorized"
+SELECTION_HAS_NO_SUPPORTING_EVIDENCE = "selection_has_no_supporting_evidence"
+EVIDENCE_SCORE_FLOOR = 0.12
+
+
+def retriever_score(item: RetrievedEvidence) -> float:
+    """Score the floor compares.
+
+    Reciprocal-rank fusion replaces ``score`` with a rank contribution and
+    keeps the retriever score as ``source_score_{list}``. A one-list min-max
+    lives in ``score_components`` and is not this value.
+    """
+    source_scores = [
+        float(value)
+        for key, value in item.score_components.items()
+        if key.startswith("source_score_")
+    ]
+    if source_scores:
+        return max(source_scores)
+    return float(item.score or 0.0)
+
+
+def at_or_above_evidence_floor(
+    item: RetrievedEvidence,
+    *,
+    floor: float = EVIDENCE_SCORE_FLOOR,
+) -> bool:
+    """True when the retriever score still counts as support."""
+    return retriever_score(item) >= floor
 
 
 class EvidenceSufficiency(StrEnum):
@@ -66,7 +94,7 @@ def assess_evidence(
     *,
     question: str,
     evidence: Sequence[RetrievedEvidence],
-    min_top_score: float = 0.12,
+    min_top_score: float = EVIDENCE_SCORE_FLOOR,
 ) -> GroundingAssessment:
     """Evaluate whether retrieved evidence is enough to answer grounded."""
     warnings: list[str] = []
@@ -76,7 +104,7 @@ def assess_evidence(
             warnings=[SUFFICIENCY_INSUFFICIENT],
         )
 
-    scores = [float(item.score or 0.0) for item in evidence]
+    scores = [retriever_score(item) for item in evidence]
     top = max(scores) if scores else 0.0
     conflicts = detect_numeric_conflicts(evidence)
     if conflicts:
@@ -118,9 +146,7 @@ def detect_numeric_conflicts(
     evidence: Sequence[RetrievedEvidence],
 ) -> list[EvidenceConflict]:
     """Find label+unit pairs with divergent values across different documents."""
-    by_key: dict[tuple[str, str], dict[str, set[str]]] = defaultdict(
-        lambda: defaultdict(set)
-    )
+    by_key: dict[tuple[str, str], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for item in evidence:
         doc = (item.document_name or str(item.document_id)).strip()
         text = item.text or ""

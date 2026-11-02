@@ -25,6 +25,35 @@ jobs:
         working-directory: backend
         run: uv run pytest tests/unit -q
 
+  backend-redis:
+    name: Redis integration tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Install backend
+        working-directory: backend
+        run: uv sync --all-extras
+      - name: Run Redis stream tests
+        working-directory: backend
+        run: >
+          uv run pytest
+          tests/integration/test_worker_crash_recovery.py
+          tests/integration/test_outbox_restart.py
+          -q
+
   frontend:
     name: Frontend typecheck and tests
     runs-on: ubuntu-latest

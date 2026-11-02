@@ -140,6 +140,7 @@ def test_async_quota_search_returns_zero_and_multiple_sources(search_app) -> Non
     empty_body = empty.json()
     assert empty_body["evidence"] == []
     assert "no_evidence_retrieved" in empty_body["warnings"]
+    assert "selection_has_no_supporting_evidence" in empty_body["warnings"]
     assert empty_body["retrieval_trace_id"]
 
     demo_hit = client.post(

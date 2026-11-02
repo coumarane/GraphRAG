@@ -132,7 +132,11 @@ class IngestionStateMachine:
         for name in reversed(INGESTION_STAGE_ORDER):
             record = self.stages[name]
             retry_count += max(0, record.attempt_count - 1)
-            if latest_warning is None and record.warning:
+            if (
+                latest_warning is None
+                and record.status is StageStatus.COMPLETED_WITH_WARNINGS
+                and record.warning
+            ):
                 latest_warning = record.warning
         return IngestionProgress(
             current_stage=self.current_stage(),
@@ -310,8 +314,7 @@ class IngestionStateMachine:
 
     def _has_warning_stages(self) -> bool:
         return any(
-            record.status is StageStatus.COMPLETED_WITH_WARNINGS or bool(record.warning)
-            for record in self.stages.values()
+            record.status is StageStatus.COMPLETED_WITH_WARNINGS for record in self.stages.values()
         )
 
 

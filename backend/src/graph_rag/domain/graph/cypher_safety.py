@@ -83,3 +83,16 @@ def neighborhood_cypher(*, depth: int) -> str:
         "ORDER BY depth ASC "
         "LIMIT $limit"
     )
+
+
+def structural_neighborhood_cypher() -> str:
+    """Tenant-scoped structural nodes limited to the selected document ids."""
+    return (
+        "MATCH (n {tenant_id: $tenant_id}) "
+        "WHERE n.document_id IN $document_ids "
+        "WITH n LIMIT $limit "
+        "OPTIONAL MATCH (n)-[r]-(m {tenant_id: $tenant_id}) "
+        "WHERE m.document_id IN $document_ids "
+        "RETURN n.node_id AS node_id, n.label AS label, "
+        "type(r) AS via_relationship, properties(n) AS properties"
+    )

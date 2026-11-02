@@ -66,7 +66,7 @@ Largest / complex presentations:
 - `NSG ALL PRODUCT-PRESENTATION ICE 2023.pdf` (99 pages)
 - `NOF LINEUP CATALOG INCI NAME.pdf` (80 pages)
 
-Synthetic evaluation corpus (`evaluation/corpus/`): charts, complex_tables, scanned, scientific_equations, shared_entities_a/b, text_heavy.
+Synthetic evaluation corpus (`data/evaluation/corpus/`): charts, complex_tables, scanned, scientific_equations, shared_entities_a/b, text_heavy.
 
 ## Parser results
 

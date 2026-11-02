@@ -248,6 +248,50 @@ class InMemoryGraphStore:
         )
         return ordered[:limit]
 
+    async def structural_neighborhood(
+        self,
+        tenant: TenantContext,
+        *,
+        document_ids: list[UUID],
+        limit: int = 50,
+    ) -> list[GraphNeighborHit]:
+        allowed = {str(document_id) for document_id in document_ids}
+        if not allowed:
+            return []
+        selected = [
+            node
+            for node in self.nodes.values()
+            if node.tenant_id == tenant.tenant_id
+            and str(node.properties.get("document_id") or "") in allowed
+        ]
+        selected_ids = {node.node_id for node in selected}
+        hits: list[GraphNeighborHit] = []
+        for node in selected:
+            via: str | None = None
+            for rel in self.relationships.values():
+                if rel.tenant_id != tenant.tenant_id:
+                    continue
+                other = None
+                if rel.source_node_id == node.node_id:
+                    other = rel.target_node_id
+                elif rel.target_node_id == node.node_id:
+                    other = rel.source_node_id
+                if other in selected_ids:
+                    via = rel.relationship_type
+                    break
+            hits.append(
+                GraphNeighborHit(
+                    node_id=node.node_id,
+                    label=node.label,
+                    depth=0,
+                    via_relationship=via,
+                    properties=dict(node.properties),
+                )
+            )
+            if len(hits) >= limit:
+                break
+        return hits
+
     async def find_claims(
         self,
         tenant: TenantContext,
@@ -299,9 +343,7 @@ class InMemoryGraphStore:
                     if node.properties.get("object") is not None
                     else None,
                     confidence=(
-                        float(confidence_raw)
-                        if isinstance(confidence_raw, (int, float))
-                        else None
+                        float(confidence_raw) if isinstance(confidence_raw, (int, float)) else None
                     ),
                     source_chunk_id=source_chunk_id,
                 )
@@ -328,9 +370,7 @@ class InMemoryGraphStore:
             }:
                 continue
             name = str(node.properties.get("name") or node.properties.get("canonical_name") or "")
-            normalized = str(
-                node.properties.get("normalized_name") or normalize_entity_name(name)
-            )
+            normalized = str(node.properties.get("normalized_name") or normalize_entity_name(name))
             score = 0.0
             if not terms:
                 score = 0.1

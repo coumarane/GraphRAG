@@ -1,0 +1,48 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: CitationAndEvidence
+$description: >
+  Page and score rules for POST /api/v1/retrieval/search and POST /api/v1/query.
+  Existing fields stay. Search gains the same emptiness rules as the answer.
+
+type: object
+properties:
+  evidence:
+    type: array
+    items:
+      type: object
+      required: [document_id, page_start, page_end, text]
+      properties:
+        document_id: {type: string, format: uuid}
+        page_start: {type: integer, minimum: 1}
+        page_end: {type: integer, minimum: 1}
+        text: {type: string}
+        score: {type: number}
+        score_components:
+          type: object
+          additionalProperties: {type: number}
+  citations:
+    type: array
+    items:
+      type: object
+      required: [document_id, page_start, page_end, evidence]
+      properties:
+        document_id: {type: string, format: uuid}
+        page_start: {type: integer, minimum: 1}
+        page_end: {type: integer, minimum: 1}
+        evidence: {type: string}
+  warnings:
+    type: array
+    items: {type: string}
+
+rules:
+  - page_end is greater than or equal to page_start.
+  - For one passage, search evidence and the answer citation use the same document_id, page_start, and page_end.
+  - A page range is the passage range. A span of three or more pages is not rewritten to the start page.
+  - The quoted text occurs on a page inside that range.
+  - A passage whose retriever score is below 0.12 is absent from evidence and citations.
+  - The 0.12 comparison uses the retriever score, not score_components.normalized and not a reciprocal-rank score. When fusion replaces score, the comparison uses score_components source_score_*.
+  - The floor is applied to retriever hits before parent or neighbor expansion.
+  - A page-exact child remains beside its parent. An expanded neighbor keeps its own page range.
+  - When no selected passage remains at or above 0.12, evidence and citations are empty and warnings include selection_has_no_supporting_evidence.
+  - An above-floor passage may be returned without a verbatim copy of the question.
+  - document_id values stay inside the caller organization and inside document_ids when that filter was sent.

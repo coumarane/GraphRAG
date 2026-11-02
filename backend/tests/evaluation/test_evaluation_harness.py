@@ -25,7 +25,8 @@ def test_corpus_files_exist() -> None:
     for path in files:
         assert path.is_file(), path
         assert path.stat().st_size > 100
-    sample = Path("../data/examples/sample.pdf")
+    repo_root = Path(__file__).resolve().parents[3]
+    sample = repo_root / "data" / "examples" / "sample.pdf"
     assert sample.is_file()
 
 

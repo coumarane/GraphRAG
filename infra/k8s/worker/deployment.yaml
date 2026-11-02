@@ -85,6 +85,8 @@ spec:
               port: health
             initialDelaySeconds: 10
             periodSeconds: 15
+            # timeoutSeconds stays 5. A longer timeout is not the fix.
+            # Liveness is served off the ingestion event loop.
             timeoutSeconds: 5
           readinessProbe:
             httpGet:

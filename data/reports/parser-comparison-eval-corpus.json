@@ -1,7 +1,7 @@
 [
   {
     "filename": "charts.pdf",
-    "path": "evaluation/corpus/charts.pdf",
+    "path": "data/evaluation/corpus/charts.pdf",
     "file_size": 781,
     "pages": 1,
     "text_native_pages": 1,
@@ -65,7 +65,7 @@
   },
   {
     "filename": "complex_tables.pdf",
-    "path": "evaluation/corpus/complex_tables.pdf",
+    "path": "data/evaluation/corpus/complex_tables.pdf",
     "file_size": 768,
     "pages": 1,
     "text_native_pages": 1,
@@ -129,7 +129,7 @@
   },
   {
     "filename": "scanned.pdf",
-    "path": "evaluation/corpus/scanned.pdf",
+    "path": "data/evaluation/corpus/scanned.pdf",
     "file_size": 704,
     "pages": 1,
     "text_native_pages": 1,
@@ -193,7 +193,7 @@
   },
   {
     "filename": "scientific_equations.pdf",
-    "path": "evaluation/corpus/scientific_equations.pdf",
+    "path": "data/evaluation/corpus/scientific_equations.pdf",
     "file_size": 795,
     "pages": 1,
     "text_native_pages": 1,
@@ -259,7 +259,7 @@
   },
   {
     "filename": "shared_entities_a.pdf",
-    "path": "evaluation/corpus/shared_entities_a.pdf",
+    "path": "data/evaluation/corpus/shared_entities_a.pdf",
     "file_size": 740,
     "pages": 1,
     "text_native_pages": 1,
@@ -323,7 +323,7 @@
   },
   {
     "filename": "shared_entities_b.pdf",
-    "path": "evaluation/corpus/shared_entities_b.pdf",
+    "path": "data/evaluation/corpus/shared_entities_b.pdf",
     "file_size": 761,
     "pages": 1,
     "text_native_pages": 1,
@@ -387,7 +387,7 @@
   },
   {
     "filename": "text_heavy.pdf",
-    "path": "evaluation/corpus/text_heavy.pdf",
+    "path": "data/evaluation/corpus/text_heavy.pdf",
     "file_size": 891,
     "pages": 1,
     "text_native_pages": 1,

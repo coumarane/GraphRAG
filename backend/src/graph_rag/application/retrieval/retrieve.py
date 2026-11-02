@@ -11,6 +11,10 @@ from uuid import UUID
 from graph_rag.domain.chunks.models import ChunkBase, ChunkType
 from graph_rag.domain.chunks.protocols import ChunkVectorStore
 from graph_rag.domain.chunks.vectors import VectorSearchHit, VectorSearchRequest
+from graph_rag.domain.generation.grounding_policy import (
+    SELECTION_HAS_NO_SUPPORTING_EVIDENCE,
+    at_or_above_evidence_floor,
+)
 from graph_rag.domain.graph.protocols import GraphStore
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.modality import Modality
@@ -22,16 +26,16 @@ from graph_rag.domain.retrieval.assembly import (
     ensure_document_coverage,
     hit_to_evidence,
 )
+from graph_rag.domain.retrieval.condition_facets import (
+    ConditionFacets,
+    extract_condition_facets,
+    score_facet_alignment,
+)
 from graph_rag.domain.retrieval.enums import RetrievalMode
 from graph_rag.domain.retrieval.expansion import expand_parents_and_neighbors
 from graph_rag.domain.retrieval.fusion import (
     apply_normalized_component,
     reciprocal_rank_fusion,
-)
-from graph_rag.domain.retrieval.condition_facets import (
-    ConditionFacets,
-    extract_condition_facets,
-    score_facet_alignment,
 )
 from graph_rag.domain.retrieval.intent import QueryAnalysis, analyze_query
 from graph_rag.domain.retrieval.models import (
@@ -147,9 +151,7 @@ def _boost_exact_token_matches(
     if not evidence:
         return evidence
     candidates = {
-        token
-        for token in _EXACT_TOKEN_PATTERN.findall(question)
-        if _looks_like_exact_token(token)
+        token for token in _EXACT_TOKEN_PATTERN.findall(question) if _looks_like_exact_token(token)
     }
     if not candidates:
         return evidence
@@ -269,9 +271,11 @@ def _boost_chart_evidence(
     if not wants_charts or not evidence:
         return evidence
 
-    wants_texture = "texture evaluation" in lowered or (
-        "miu" in analysis.tokens and "mmd" in analysis.tokens
-    ) or ("miu" in lowered and "mmd" in lowered)
+    wants_texture = (
+        "texture evaluation" in lowered
+        or ("miu" in analysis.tokens and "mmd" in analysis.tokens)
+        or ("miu" in lowered and "mmd" in lowered)
+    )
     wants_surface_treated = (
         "surface" in lowered
         or "ftd008" in lowered
@@ -325,9 +329,12 @@ def _boost_chart_evidence(
         ):
             boost -= 1.1
         # Demote the different MIU-only bar chart (FTD010/FTD025) when asking MIU+MMD.
-        if wants_texture and "mmd" in lowered and (
-            "ftd010fy" in text or "ftd025fy" in text
-        ) and "ftd008fy-f130" not in text:
+        if (
+            wants_texture
+            and "mmd" in lowered
+            and ("ftd010fy" in text or "ftd025fy" in text)
+            and "ftd008fy-f130" not in text
+        ):
             boost -= 0.7
         # Demote assay bleed when the question is about the appearance chart.
         if ("heavy metal" not in lowered or chart_scope_assay_probe) and (
@@ -534,6 +541,8 @@ class RetrieveEvidenceService:
             fused = reciprocal_rank_fusion(branch_lists)
             fused = apply_normalized_component(fused, component_name="normalized")
 
+        fused = [item for item in fused if at_or_above_evidence_floor(item)]
+
         if request.rerank and self._reranker is not None and fused:
             fused = await self._maybe_rerank(
                 request.question,
@@ -608,9 +617,17 @@ class RetrieveEvidenceService:
         )
         if not assembled:
             warnings.append("weak_evidence")
+            warnings.append(SELECTION_HAS_NO_SUPPORTING_EVIDENCE)
 
         assembled = await self._apply_document_titles(tenant, assembled)
 
+        graph_paths, graph_warnings = await self._graph_paths_or_reason(
+            tenant,
+            request,
+            analysis,
+            graph_paths,
+        )
+        warnings.extend(graph_warnings)
         result = RetrievalResult(
             mode=effective_mode,
             retrieval_trace_id=trace_id,
@@ -630,6 +647,54 @@ class RetrieveEvidenceService:
             analysis=analysis,
             branch_counts=branch_counts,
         )
+
+    async def _graph_paths_or_reason(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+        analysis: QueryAnalysis,
+        graph_paths: list[GraphPath],
+    ) -> tuple[list[GraphPath], list[str]]:
+        if not request.include_graph_paths:
+            return graph_paths, []
+        if graph_paths:
+            return graph_paths, []
+        if self._graph is None:
+            return [], ["graph_not_stored"]
+        structural = await self._structural_paths(tenant, request)
+        if structural:
+            return structural, []
+        if analysis.entity_mentions:
+            return [], ["graph_no_entity_match"]
+        return [], ["graph_no_structural_path"]
+
+    async def _structural_paths(
+        self,
+        tenant: TenantContext,
+        request: RetrievalRequest,
+    ) -> list[GraphPath]:
+        document_ids = list(request.filters.document_ids)
+        if self._graph is None or not document_ids:
+            return []
+        hits = await self._graph.structural_neighborhood(
+            tenant,
+            document_ids=document_ids,
+            limit=12,
+        )
+        allowed = {str(document_id) for document_id in document_ids}
+        kept = [hit for hit in hits if str(hit.properties.get("document_id") or "") in allowed]
+        if not kept:
+            return []
+        return [
+            GraphPath(
+                nodes=[f"{hit.label}:{hit.node_id}" for hit in kept[:8]],
+                relationships=[
+                    hit.via_relationship for hit in kept if hit.via_relationship is not None
+                ][:12],
+                supporting_citations=[],
+                metadata={"path_kind": "structural", "node_count": len(kept)},
+            )
+        ]
 
     async def _cover_requested_documents(
         self,
@@ -663,14 +728,15 @@ class RetrieveEvidenceService:
                     request=sub_request,
                     analysis=analyze_query(request.question, mode=RetrievalMode.NAIVE),
                 )
-            except Exception as exc:  # noqa: BLE001 - best-effort coverage
+            except Exception as exc:
                 logger.warning(
                     "document_coverage_supplement_failed",
                     document_id=str(doc_id),
                     error=str(exc),
                 )
                 continue
-            supplemental.extend(evidence[:2])
+            kept = [item for item in evidence if at_or_above_evidence_floor(item)]
+            supplemental.extend(kept[:2])
         combined_pool = list(pool) + supplemental
         return ensure_document_coverage(
             assembled + supplemental,
@@ -689,7 +755,7 @@ class RetrieveEvidenceService:
         if self._document_titles is not None:
             try:
                 titles.update(dict(await self._document_titles(tenant)))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("document_titles_lookup_failed", error=str(exc))
         if not titles:
             return evidence
@@ -775,9 +841,7 @@ class RetrieveEvidenceService:
         if request.filters.modalities:
             modalities = list(request.filters.modalities)
         elif analysis.modality_hints:
-            modalities = list(
-                dict.fromkeys([*analysis.modality_hints, *_MULTIMODAL_MODALITIES])
-            )
+            modalities = list(dict.fromkeys([*analysis.modality_hints, *_MULTIMODAL_MODALITIES]))
         else:
             modalities = list(_MULTIMODAL_MODALITIES)
         query_vector = await self._embedder.embed_query(analysis.normalized_question)
@@ -902,7 +966,11 @@ class RetrieveEvidenceService:
                         if hit.via_relationship is not None
                     ][:12],
                     supporting_citations=[str(item.chunk_id) for item in evidence[:8]],
-                    metadata={"entity_count": len(entities), "neighbor_count": len(neighbors)},
+                    metadata={
+                        "entity_count": len(entities),
+                        "neighbor_count": len(neighbors),
+                        "path_kind": "entity",
+                    },
                 )
             )
         return evidence[: request.top_k], paths
@@ -942,7 +1010,7 @@ class RetrieveEvidenceService:
                         supporting_citations=[str(item.chunk_id) for item in topic_evidence[:8]],
                         metadata={
                             "topic_count": len(topics),
-                            "path_kind": "topic_nodes",
+                            "path_kind": "entity",
                         },
                     )
                 )

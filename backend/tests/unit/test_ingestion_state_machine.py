@@ -113,6 +113,68 @@ def test_cancel_marks_pending_stages() -> None:
     assert machine.get_stage(IngestionStageName.HASH).status is StageStatus.CANCELLED
 
 
+def _finish_run(
+    machine: IngestionStateMachine,
+    *,
+    warnings: dict[IngestionStageName, str] | None = None,
+    skips: dict[IngestionStageName, str] | None = None,
+) -> None:
+    warnings = warnings or {}
+    skips = skips or {}
+    for stage in INGESTION_STAGE_ORDER:
+        machine.mark_running(stage, idempotency_key="k", config_fingerprint="fp")
+        if stage is IngestionStageName.FINALIZE:
+            machine.mark_completed(stage, warning=warnings.get(stage))
+        elif stage in skips:
+            machine.mark_skipped(stage, reason=skips[stage])
+        else:
+            machine.mark_completed(stage, warning=warnings.get(stage))
+
+
+def test_skip_only_run_completes_without_a_latest_warning() -> None:
+    machine = IngestionStateMachine()
+    skips = {
+        stage: "community summarization disabled"
+        if stage is IngestionStageName.SUMMARIZE_COMMUNITIES
+        else "handled in parse"
+        for stage in INGESTION_STAGE_ORDER
+        if stage is not IngestionStageName.FINALIZE
+    }
+    skips[IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE] = "document_intelligence not requested"
+    skips[IngestionStageName.EXTRACT_GRAPH] = "graph store disabled"
+    _finish_run(machine, skips=skips)
+    assert machine.run_status is IngestionRunStatus.COMPLETED
+    assert machine.progress().latest_warning is None
+    assert (
+        machine.get_stage(IngestionStageName.SUMMARIZE_COMMUNITIES).warning
+        == "community summarization disabled"
+    )
+    assert machine.get_stage(IngestionStageName.SUMMARIZE_COMMUNITIES).status is StageStatus.SKIPPED
+
+
+def test_semantic_graph_failure_is_a_run_warning() -> None:
+    machine = IngestionStateMachine()
+    _finish_run(
+        machine,
+        warnings={IngestionStageName.EXTRACT_GRAPH: "semantic_graph_failed:RuntimeError"},
+        skips={IngestionStageName.SUMMARIZE_COMMUNITIES: "community summarization disabled"},
+    )
+    assert machine.run_status is IngestionRunStatus.COMPLETED_WITH_WARNINGS
+    assert machine.progress().latest_warning == "semantic_graph_failed:RuntimeError"
+
+
+def test_document_intelligence_miss_counts_without_a_prefix_list() -> None:
+    machine = IngestionStateMachine()
+    warning = "document_intelligence: missing=batch_code"
+    _finish_run(
+        machine,
+        warnings={IngestionStageName.EXTRACT_DOCUMENT_INTELLIGENCE: warning},
+        skips={IngestionStageName.SUMMARIZE_COMMUNITIES: "community summarization disabled"},
+    )
+    assert machine.run_status is IngestionRunStatus.COMPLETED_WITH_WARNINGS
+    assert machine.progress().latest_warning == warning
+
+
 def test_build_persisted_stage_records_count() -> None:
     records = build_persisted_stage_records(
         tenant_id=new_id(),

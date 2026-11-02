@@ -23,6 +23,9 @@ from graph_rag.application.usage.context import usage_context
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.conversation.naming import title_from_question
 from graph_rag.domain.conversation.records import ChatConversationRecord, ChatMessageRecord
+from graph_rag.domain.generation.grounding_policy import (
+    SELECTION_HAS_NO_SUPPORTING_EVIDENCE,
+)
 from graph_rag.domain.ids import new_id
 from graph_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
 from graph_rag.domain.retrieval.models import (
@@ -85,12 +88,15 @@ async def retrieval_search(
         raise
     await container.commit_db()
     result = outcome.result
+    warnings = list(result.warnings)
+    if not result.evidence and SELECTION_HAS_NO_SUPPORTING_EVIDENCE not in warnings:
+        warnings.append(SELECTION_HAS_NO_SUPPORTING_EVIDENCE)
     return RetrievalSearchResponse(
         mode=result.mode,
         retrieval_trace_id=result.retrieval_trace_id,
         evidence=list(result.evidence),
         graph_paths=list(result.graph_paths),
-        warnings=list(result.warnings),
+        warnings=warnings,
     )
 
 
@@ -271,13 +277,15 @@ async def graph_search(
     from graph_rag.application.authorization.gate import authorized_document_ids
     from graph_rag.domain.ingestion.stages import DocumentLifecycleStatus
 
-    docs, _ = await container.require_document_repo().list_documents(
-        tenant, offset=0, limit=500
-    )
+    docs, _ = await container.require_document_repo().list_documents(tenant, offset=0, limit=500)
     allowed_ids = authorized_document_ids(
         container.require_authorization(),
         tenant,
-        [d for d in docs if d.status in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}],
+        [
+            d
+            for d in docs
+            if d.status in {DocumentLifecycleStatus.READY, DocumentLifecycleStatus.PARTIAL}
+        ],
     )
 
     entities = await graph.resolve_entities(tenant, names=body.names, limit=body.limit)

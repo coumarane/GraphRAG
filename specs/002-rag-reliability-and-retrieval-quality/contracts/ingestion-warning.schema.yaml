@@ -1,0 +1,30 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: IngestionWarning
+$description: >
+  Behavior change for latest_warning and run status on the existing ingestion
+  run response. Stage status values stay. No new column.
+
+type: object
+required: [status, stages]
+properties:
+  status:
+    enum: [pending, running, completed, completed_with_warnings, partial, failed, cancelled]
+  latest_warning: {type: [string, "null"]}
+  stages:
+    type: array
+    items:
+      type: object
+      required: [stage, status]
+      properties:
+        stage: {type: string}
+        status:
+          enum: [pending, running, completed, completed_with_warnings, failed, skipped, cancelled]
+        warning: {type: [string, "null"]}
+
+rules:
+  - Stage status is authoritative. A stage with status skipped may carry a reason in warning. That reason does not set run status and does not become latest_warning.
+  - latest_warning is the warning of the latest stage whose status is completed_with_warnings, or empty when no such stage exists.
+  - Run status is completed_with_warnings only when at least one stage has status completed_with_warnings. Optional skips alone finish as completed.
+  - A completed_with_warnings stage counts even when its text is not in an example prefix list. Example prefixes are semantic_graph_failed, vision_failed, needs_review, parser_fallback, and parser_routing.
+  - semantic_graph_failed is the graph stage's own warning and that stage is completed_with_warnings. It is not only a raw warning that finalize may copy.
+  - Document status partial remains the needs-review outcome and is independent of a skipped optional stage.

@@ -4,7 +4,7 @@ Offline evaluation for retrieval quality, citation fidelity and answer groundedn
 
 ## Corpus
 
-Versioned fixtures under `evaluation/corpus/`:
+Versioned fixtures under `data/evaluation/corpus/`:
 
 | File | Intent |
 |---|---|
@@ -15,7 +15,7 @@ Versioned fixtures under `evaluation/corpus/`:
 | `complex_tables.pdf` | Supplier comparison tables |
 | `shared_entities_a.pdf` / `shared_entities_b.pdf` | Shared Ingredient X with conflicting density |
 
-Questions live in `evaluation/questions.json`.
+Questions live in `data/evaluation/questions.json`. The loader is `default_corpus_dir` and `default_questions_path` in `graph_rag.application.evaluation.corpus`.
 
 ## Metrics
 
