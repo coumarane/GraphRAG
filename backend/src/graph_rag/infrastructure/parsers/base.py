@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import multiprocessing
+import os
+import pickle
 import signal
+import subprocess
+import sys
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from graph_rag.shared.exceptions import ConfigurationError, ParserError, TransientError
@@ -64,13 +69,6 @@ def _isolatable(fn: Callable[..., Any]) -> bool:
     return bool(name) and name.isidentifier() and qualname == name
 
 
-def _isolated_child(fn: Callable[..., Any], args: tuple, kwargs: dict, queue: Any) -> None:
-    try:
-        queue.put(("ok", fn(*args, **kwargs)))
-    except Exception as exc:
-        queue.put(("err", type(exc).__name__, str(exc)))
-
-
 def _isolated_sync(
     fn: Callable[..., Any],
     args: tuple[Any, ...],
@@ -80,42 +78,64 @@ def _isolated_sync(
     """Run ``fn`` in a child so SIGILL cannot kill the worker.
 
     Exit code 132 is 128+SIGILL. A thread or ``except Exception`` cannot catch
-    that signal, which is why a poison document restarted the worker forever.
+    that signal. ``multiprocessing`` spawn still forks the parent, and a
+    PDFium/OpenMP atfork handler then aborts the worker itself.
     """
-    ctx = multiprocessing.get_context("spawn")
-    queue: Any = ctx.Queue()
-    proc = ctx.Process(target=_isolated_child, args=(fn, args, kwargs, queue))
-    proc.start()
-    join_for = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
-    proc.join(join_for)
-    if proc.is_alive():
-        proc.terminate()
-        proc.join(5)
-        if proc.is_alive():
+    with tempfile.TemporaryDirectory(prefix="parser-isolate-") as tmp:
+        directory = Path(tmp)
+        job_path = directory / "job.pkl"
+        result_path = directory / "result.pkl"
+        job_path.write_bytes(pickle.dumps((fn, args, kwargs)))
+        env = os.environ.copy()
+        pythonpath = os.pathsep.join(sys.path)
+        if env.get("PYTHONPATH"):
+            pythonpath = pythonpath + os.pathsep + env["PYTHONPATH"]
+        env["PYTHONPATH"] = pythonpath
+        proc = subprocess.Popen(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "graph_rag.infrastructure.parsers.isolate_main",
+                str(job_path),
+                str(result_path),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        join_for = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
+        try:
+            _, stderr = proc.communicate(timeout=join_for)
+        except subprocess.TimeoutExpired:
             proc.kill()
-            proc.join(5)
-        raise TransientError(
-            "Parser execution timed out",
-            details={"timeout_seconds": timeout_seconds},
-        )
-    exit_code = proc.exitcode
-    if exit_code not in (0, None):
-        signaled = exit_code < 0
-        reported = (128 - exit_code) if signaled else exit_code
-        signame = None
-        if signaled:
-            try:
-                signame = signal.Signals(-exit_code).name
-            except ValueError:
-                signame = str(-exit_code)
-        raise ParserError(
-            "Native parser process aborted",
-            details={"exit_code": reported, "signal": signame},
-        )
-    try:
-        status, *rest = queue.get_nowait()
-    except Exception as exc:
-        raise ParserError("Native parser process returned no result", cause=exc) from exc
+            proc.communicate(timeout=5)
+            raise TransientError(
+                "Parser execution timed out",
+                details={"timeout_seconds": timeout_seconds},
+            ) from None
+        exit_code = proc.returncode
+        if exit_code not in (0, None):
+            signaled = exit_code is not None and exit_code < 0
+            reported = (128 - exit_code) if signaled and exit_code is not None else exit_code
+            signame = None
+            if signaled and exit_code is not None:
+                try:
+                    signame = signal.Signals(-exit_code).name
+                except ValueError:
+                    signame = str(-exit_code)
+            raise ParserError(
+                "Native parser process aborted",
+                details={"exit_code": reported, "signal": signame},
+            )
+        try:
+            status, *rest = pickle.loads(result_path.read_bytes())  # noqa: S301
+        except Exception as exc:
+            detail = (stderr or b"").decode("utf-8", "replace")[-240:]
+            raise ParserError(
+                "Native parser process returned no result",
+                details={"stderr": detail},
+                cause=exc,
+            ) from exc
     if status == "ok":
         return rest[0]
     error_name = rest[0] if rest else "Exception"

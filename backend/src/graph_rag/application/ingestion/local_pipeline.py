@@ -81,6 +81,10 @@ from graph_rag.domain.retrieval.condition_facets import (
 from graph_rag.domain.retrieval.protocols import ChunkLookupStore, LexicalSearchStore
 from graph_rag.domain.storage.protocols import ObjectStore
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.parsers.base import (
+    DEFAULT_PARSE_TIMEOUT_SECONDS,
+    run_callable_isolated,
+)
 from graph_rag.infrastructure.parsers.pdfium.extractor import (
     extract_pdf_raw as _extract_pdf_raw,
 )
@@ -383,8 +387,12 @@ async def _parse_document_raw(
         logger.warning("ingest_parser_routing_failed", error=str(exc))
         mime = mime_type.lower()
         if mime == "application/pdf" or filename.lower().endswith(".pdf"):
-            raw = await asyncio.to_thread(
-                _extract_pdf_raw, data, filename=filename, max_pages=max_pages
+            raw = await run_callable_isolated(
+                _extract_pdf_raw,
+                data,
+                filename=filename,
+                max_pages=max_pages,
+                timeout_seconds=DEFAULT_PARSE_TIMEOUT_SECONDS,
             )
             raw.warnings.append(f"parser_routing_fallback:{type(exc).__name__}")
             used = raw.parser_name or "pdfium"
