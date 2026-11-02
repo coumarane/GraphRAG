@@ -62,6 +62,8 @@ The tests still use `compose_redis`. They skip when that port is closed. They ar
 
 On 2 November 2026 a local `redis-server` answered `PONG` on port 6380. `uv run pytest tests/evaluation tests/integration -q -rs` then passed both Redis tests. Seven other integration tests still skipped because Postgres, MinIO, and Azurite were not listening. Those seven are Feature 001 service checks and are not new Feature 002 blockers.
 
+GitHub Actions run [41471435896](https://github.com/coumarane/GraphRAG/actions/runs/41471435896) finished success at 16:28 Europe/Paris. The job `Redis integration tests` passed against the workflow's Redis service, together with the unit and frontend jobs.
+
 ## Corpus paths
 
 The corpus stays in `data/evaluation/corpus`. References that still named `evaluation/corpus` now point there:

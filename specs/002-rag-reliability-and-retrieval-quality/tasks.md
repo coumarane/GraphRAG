@@ -198,7 +198,7 @@ Recorded 2 November 2026, 16:24 Europe/Paris. This pass fixes the nested fusion 
 | `uv run pytest tests/unit -q` | 627 passed |
 | `uv run pytest tests/evaluation tests/integration -q -rs` | 30 passed, 7 skipped. The two Redis tests passed against Redis on 127.0.0.1:6380 |
 | Frontend `tsc --noEmit` and Vitest | `tsc` passed. 5 files, 17 tests passed |
-| Redis CI | `.github/workflows/validate-feature.yml` starts `redis:7-alpine` on port 6380 and runs `test_worker_crash_recovery.py` and `test_outbox_restart.py` |
+| Redis CI | `.github/workflows/validate-feature.yml` starts `redis:7-alpine` on port 6380 and runs `test_worker_crash_recovery.py` and `test_outbox_restart.py`. Run [41471435896](https://github.com/coumarane/GraphRAG/actions/runs/41471435896) finished success at 16:28 Europe/Paris, including the Redis job |
 
 ## Requirement coverage
 
