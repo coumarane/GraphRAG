@@ -37,6 +37,8 @@ def reciprocal_rank_fusion(
             rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + contribution
             components = component_lists.setdefault(chunk_id, {})
             components[f"rrf_list_{list_index}"] = contribution
+            # Keep the pre-fusion retriever score. The evidence floor reads
+            # source_score_* and must not compare 0.12 to the rank contribution.
             if item.score is not None:
                 components[f"source_score_{list_index}"] = float(item.score)
             for key, value in item.score_components.items():

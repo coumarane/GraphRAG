@@ -7,6 +7,7 @@
     "worker": false,
     "web": false
   },
+  "rollback_in_effect": false,
   "rollback_digests": {
     "api": "sha256:b87a4646ea022aec2639e4f25e3969bd6c42e69735d96847d98e982383e44385",
     "worker": "sha256:fdf5406658e3b12845efccb00a77a0ac41cbeab7572d7e54d7ad388702dcf5af",

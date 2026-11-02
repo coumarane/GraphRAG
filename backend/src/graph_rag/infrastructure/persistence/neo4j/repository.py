@@ -11,6 +11,7 @@ from graph_rag.domain.graph.cypher_safety import (
     merge_relationship_cypher,
     neighborhood_cypher,
     require_tenant_param,
+    structural_neighborhood_cypher,
 )
 from graph_rag.domain.graph.models import ProjectedGraph
 from graph_rag.domain.graph.query import (
@@ -90,8 +91,7 @@ class Neo4jGraphStore:
                         "source_node_id": str(relationship.source_node_id),
                         "target_node_id": str(relationship.target_node_id),
                         "properties": {
-                            key: _jsonable(value)
-                            for key, value in relationship.properties.items()
+                            key: _jsonable(value) for key, value in relationship.properties.items()
                         },
                     }
                     require_tenant_param(params)
@@ -222,6 +222,47 @@ class Neo4jGraphStore:
                     depth=int(row.get("depth") or 0),
                     via_relationship=str(via) if via is not None else None,
                     properties=dict(row.get("properties") or {}),
+                )
+            )
+        return hits
+
+    async def structural_neighborhood(
+        self,
+        tenant: TenantContext,
+        *,
+        document_ids: list[UUID],
+        limit: int = 50,
+    ) -> list[GraphNeighborHit]:
+        if not document_ids:
+            return []
+        query = structural_neighborhood_cypher()
+        params = {
+            "tenant_id": str(tenant.tenant_id),
+            "document_ids": [str(document_id) for document_id in document_ids],
+            "limit": limit,
+        }
+        require_tenant_param(params)
+        rows = self._run(query, params)
+        hits: list[GraphNeighborHit] = []
+        seen: set[UUID] = set()
+        allowed = {str(document_id) for document_id in document_ids}
+        for row in rows:
+            node_id = UUID(str(row["node_id"]))
+            if node_id in seen:
+                continue
+            properties = dict(row.get("properties") or {})
+            document_id = str(properties.get("document_id") or "")
+            if document_id not in allowed:
+                continue
+            seen.add(node_id)
+            via = row.get("via_relationship")
+            hits.append(
+                GraphNeighborHit(
+                    node_id=node_id,
+                    label=str(row.get("label") or properties.get("label") or ""),
+                    depth=0,
+                    via_relationship=str(via) if via is not None else None,
+                    properties=properties,
                 )
             )
         return hits

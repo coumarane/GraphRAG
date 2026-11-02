@@ -1156,6 +1156,7 @@ class DocumentPipeline:
             parents=[chunk for chunk in w.chunks if chunk.parent_chunk_id is None],
             children=[chunk for chunk in w.chunks if chunk.parent_chunk_id is not None],
         )
+        semantic_warning: str | None = None
         try:
             if w.service.structured_extractor is not None and w.service.semantic_graph:
                 parents = list(chunking_result.parents)[:30]
@@ -1183,8 +1184,9 @@ class DocumentPipeline:
                 error=str(graph_exc),
                 document_id=str(context.document_id),
             )
+            semantic_warning = f"semantic_graph_failed:{type(graph_exc).__name__}"
             if w.raw is not None:
-                w.raw.warnings.append(f"semantic_graph_failed:{type(graph_exc).__name__}")
+                w.raw.warnings.append(semantic_warning)
             projected = StructuralGraphBuilder().build(w.normalized, chunking_result)
             w.graph_counts = await w.service.graph_store.upsert_graph(context.tenant, projected)
         mapped_nodes, mapped_rels = await self._build_mapped_entity_graph(context)
@@ -1205,6 +1207,11 @@ class DocumentPipeline:
             }
         w.audit.mark_downstream(graph_index=True)
         await w.save_json("graph", {"counts": w.graph_counts, "upserted": True})
+        if semantic_warning:
+            return StageOutcome(
+                status=StageOutcomeStatus.COMPLETED_WITH_WARNINGS,
+                warning=semantic_warning,
+            )
         return StageOutcome(status=StageOutcomeStatus.COMPLETED)
 
     async def _build_mapped_entity_graph(

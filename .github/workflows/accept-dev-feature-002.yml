@@ -1,0 +1,95 @@
+name: Accept Feature 002
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/accept-dev-feature-002.yml"
+      - "backend/tests/unit/test_citation_page_range.py"
+      - "backend/tests/unit/test_retrieval_evidence_floor.py"
+      - "backend/tests/unit/test_structural_graph_paths.py"
+      - "backend/tests/unit/test_worker_liveness.py"
+      - "backend/tests/unit/test_release_identity.py"
+
+permissions:
+  contents: read
+
+jobs:
+  product-check:
+    name: Feature 002 product check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Generate a four-page PDF and run the product check
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          uv sync --all-extras
+          python - <<'CHK'
+          from pathlib import Path
+
+          sentences = [
+              "Page one introduces the citrine serum base.",
+              "Page two cites ceramide at two percent.",
+              "Page three records the twelve week stability claim.",
+              "Page four states the usage is twice daily.",
+          ]
+          font_id = 3
+          content_ids = list(range(4, 4 + len(sentences)))
+          page_ids = list(range(4 + len(sentences), 4 + 2 * len(sentences)))
+          objects = {
+              1: "<< /Type /Catalog /Pages 2 0 R >>",
+              3: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+          }
+          kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+          objects[2] = f"<< /Type /Pages /Count {len(sentences)} /Kids [{kids}] >>"
+          for sentence, content_id, page_id in zip(sentences, content_ids, page_ids, strict=True):
+              stream = f"BT /F1 18 Tf 72 720 Td ({sentence}) Tj ET"
+              objects[content_id] = (
+                  f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream"
+              )
+              objects[page_id] = (
+                  f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                  f"/Contents {content_id} 0 R "
+                  f"/Resources << /Font << /F1 {font_id} 0 R >> >> >>"
+              )
+          chunks = []
+          offsets = [0]
+          for number in range(1, max(objects) + 1):
+              body = objects[number]
+              chunks.append(f"{number} 0 obj\n{body}\nendobj\n")
+              offsets.append(offsets[-1] + len(chunks[-1].encode("latin-1")))
+          header = "%PDF-1.4\n"
+          body = "".join(chunks).encode("latin-1")
+          xref_at = len(header) + len(body)
+          xref = [f"xref\n0 {len(offsets)}\n", "0000000000 65535 f \n"]
+          cursor = len(header)
+          for chunk in chunks:
+              xref.append(f"{cursor:010d} 00000 n \n")
+              cursor += len(chunk.encode("latin-1"))
+          trailer = (
+              f"trailer<< /Size {len(offsets)} /Root 1 0 R >>\n"
+              f"startxref\n{xref_at}\n%%EOF\n"
+          )
+          pdf = header.encode("latin-1") + body + "".join(xref).encode("latin-1") + trailer.encode("latin-1")
+          destination = Path("/tmp/feature-002-four-page.pdf")
+          destination.write_bytes(pdf)
+          print("pdf_bytes", destination.stat().st_size)
+          print("pdf_pages", len(sentences))
+          CHK
+          uv run pytest \
+            tests/unit/test_feature_002_scope.py \
+            tests/unit/test_worker_liveness.py \
+            tests/unit/test_worker_heartbeat.py \
+            tests/unit/test_citation_page_range.py \
+            tests/unit/test_retrieval_evidence_floor.py \
+            tests/unit/test_structural_graph_paths.py \
+            tests/unit/test_ingestion_state_machine.py \
+            tests/unit/test_graph_stage_warning.py \
+            tests/unit/test_release_identity.py \
+            tests/unit/test_workflow_heredoc.py \
+            tests/evaluation/test_four_page_evidence_floor.py \
+            -q

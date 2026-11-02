@@ -62,6 +62,16 @@ class GraphStore(Protocol):
         """Bounded multi-hop neighborhood around seed nodes."""
         ...
 
+    async def structural_neighborhood(
+        self,
+        tenant: TenantContext,
+        *,
+        document_ids: list[UUID],
+        limit: int = 50,
+    ) -> list[GraphNeighborHit]:
+        """Document, version, and passage nodes for the selected documents only."""
+        ...
+
     async def find_claims(
         self,
         tenant: TenantContext,

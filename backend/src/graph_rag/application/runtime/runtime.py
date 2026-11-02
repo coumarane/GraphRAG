@@ -111,6 +111,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     user_repo = None
 
     meta_backend = metadata_store_backend()
+    session_factory = None
     if meta_backend in {"postgres", "postgresql", "pg"}:
         import asyncio
 
@@ -230,6 +231,7 @@ def build_runtime_container(settings: Settings | None = None) -> ServiceContaine
     if ready_checks:
         container.ready_checks = list(container.ready_checks) + ready_checks
     container.db_session = db_session
+    container.db_session_factory = session_factory
     container.user_repo = user_repo
     if resolved.security.auth_enabled:
         from graph_rag.application.auth import AuthService

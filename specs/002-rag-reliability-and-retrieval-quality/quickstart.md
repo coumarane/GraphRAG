@@ -43,7 +43,7 @@ cd frontend
 npx playwright test e2e/rag-citation.spec.ts
 ```
 
-DEV, only after this feature's web image is deployed and the credentials are injected outside the repo. The web digest serving on 2 November 2026 (`sha256:eb34e619…dc84`) is not that image:
+DEV, only after this feature's web image is deployed and the credentials are injected outside the repo. The web digest serving on 2 November 2026 (`sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84`) is not that image:
 
 ```bash
 cd frontend

@@ -113,6 +113,7 @@ class ServiceContainer:
     ready_checks: list[ReadyCheck] = field(default_factory=list)
     metrics: dict[str, int] = field(default_factory=lambda: {"requests_total": 0})
     db_session: Any | None = None
+    db_session_factory: Any | None = None
     on_commit: Any | None = None
     user_repo: Any | None = None
     auth_service: Any | None = None

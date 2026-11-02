@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from graph_rag.domain.ingestion.records import (
@@ -167,6 +167,26 @@ class SqlAlchemyIngestionRepository:
         model.completed_at = run.completed_at
         await self._session.flush()
         return run_to_record(model)
+
+    async def touch_heartbeat(
+        self,
+        tenant: TenantContext,
+        ingestion_run_id: UUID,
+        heartbeat_at: object,
+        worker_id: str,
+    ) -> None:
+        """Refresh the persisted heartbeat without writing the pipeline session."""
+        tenant.ensure_authorized()
+        await set_tenant_context(self._session, tenant)
+        await self._session.execute(
+            update(IngestionRunModel)
+            .where(
+                IngestionRunModel.ingestion_run_id == ingestion_run_id,
+                IngestionRunModel.tenant_id == tenant.tenant_id,
+            )
+            .values(heartbeat_at=heartbeat_at, worker_id=worker_id)
+        )
+        await self._session.flush()
 
     async def list_stages(
         self,
