@@ -187,7 +187,18 @@ Recorded 2 November 2026, 15:01 Europe/Paris. No image was built, no digest was 
 | Acceptance workflow PDF generator | Executed locally. It wrote a 4-page PDF (1515 bytes) and does not promote an image |
 | `specs/001-reliable-upload-ingestion/acceptance.md` | Still names serving digests `sha256:5abf5b69…`, `sha256:17eb0f6f…`, and `sha256:eb34e619…`, and points the open gaps at feature 002 |
 
-T030 stays open until a reviewed dispatch copies only `.github/workflows/accept-dev-feature-002.yml` to the default branch. The live DEV browser journey stays unrun. The implementation review is [checklists/implementation-review.md](checklists/implementation-review.md), recorded 2 November 2026, 15:22 Europe/Paris. That review does not check T030.
+T030 stays open until a reviewed dispatch copies only `.github/workflows/accept-dev-feature-002.yml` to the default branch. The live DEV browser journey stays unrun.
+
+## Follow-up evidence
+
+Recorded 2 November 2026, 16:24 Europe/Paris. This pass fixes the nested fusion score, the heartbeat persist failure, and the Redis CI gap from the implementation review. It does not check T030, build an image, or dispatch a DEV workflow. The review is [checklists/implementation-review.md](checklists/implementation-review.md).
+
+| Check | Result |
+| --- | --- |
+| `uv run pytest tests/unit -q` | 627 passed |
+| `uv run pytest tests/evaluation tests/integration -q -rs` | 30 passed, 7 skipped. The two Redis tests passed against Redis on 127.0.0.1:6380 |
+| Frontend `tsc --noEmit` and Vitest | `tsc` passed. 5 files, 17 tests passed |
+| Redis CI | `.github/workflows/validate-feature.yml` starts `redis:7-alpine` on port 6380 and runs `test_worker_crash_recovery.py` and `test_outbox_restart.py` |
 
 ## Requirement coverage
 

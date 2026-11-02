@@ -2,7 +2,7 @@
 """Generate adversarial RAG challenge questions from parsed document evidence.
 
 Usage:
-  uv run python scripts/generate_rag_challenge.py evaluation/corpus --output tests/evaluation/generated/challenge.json
+  uv run python scripts/generate_rag_challenge.py ../data/evaluation/corpus --output tests/evaluation/generated/challenge.json
 """
 
 from __future__ import annotations

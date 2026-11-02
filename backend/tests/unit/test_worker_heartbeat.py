@@ -7,14 +7,20 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from graph_rag.application.ingestion.orchestrator import OrchestrationResult
 from graph_rag.application.ingestion.progress import derive_progress_state
 from graph_rag.domain.ids import content_sha256_hex, new_id
 from graph_rag.domain.ingestion.records import IngestionRunRecord
+from graph_rag.domain.ingestion.retry import IngestionTaskMessage
+from graph_rag.domain.ingestion.stages import IngestionRunStatus, IngestionStageName
+from graph_rag.domain.ingestion.state_machine import IngestionProgress
 from graph_rag.domain.tenant import TenantContext
+from graph_rag.infrastructure.persistence.dead_letters import InMemoryDeadLetterStore
 from graph_rag.infrastructure.workers.ingestion_worker import (
     IngestionWorker,
     heartbeat_is_stale,
 )
+from graph_rag.infrastructure.workers.memory import InMemoryIngestionTaskQueue
 
 
 def _run() -> tuple[TenantContext, IngestionRunRecord]:
@@ -89,3 +95,66 @@ async def test_heartbeat_loop_uses_an_independent_session() -> None:
     assert pipeline_session not in heartbeat_sessions
     assert run.heartbeat_at is not None
     assert derive_progress_state("running", run.heartbeat_at) == "running"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_persist_failure_still_acks_the_finished_run() -> None:
+    tenant, run = _run()
+    stages: list[object] = []
+    queue = InMemoryIngestionTaskQueue()
+    await queue.enqueue(
+        IngestionTaskMessage(
+            tenant_id=tenant.tenant_id,
+            ingestion_run_id=run.ingestion_run_id,
+            document_id=run.document_id,
+            version_id=run.version_id,
+            content_hash=run.content_hash or "",
+            config_fingerprint=run.config_fingerprint or "fp",
+        )
+    )
+    attempts = {"count": 0}
+
+    async def persist_heartbeat(*_args: object) -> None:
+        attempts["count"] += 1
+        raise RuntimeError("transient database error")
+
+    async def load_run(*_args: object) -> tuple[IngestionRunRecord, list[object]]:
+        return run, stages
+
+    async def persist_run(_tenant: object, updated: IngestionRunRecord, rows: list[object]) -> None:
+        nonlocal run
+        run = updated
+        stages[:] = rows
+
+    async def pipeline(**kwargs: object) -> OrchestrationResult:
+        await asyncio.sleep(0.2)
+        current = kwargs["run"]
+        assert isinstance(current, IngestionRunRecord)
+        current.status = IngestionRunStatus.COMPLETED
+        return OrchestrationResult(
+            run_status=IngestionRunStatus.COMPLETED,
+            progress=IngestionProgress(
+                current_stage=IngestionStageName.VALIDATE,
+                completed_stages=[],
+                pages_processed=0,
+                elements_processed=0,
+                estimated_completion_percent=1.0,
+                retry_count=0,
+            ),
+        )
+
+    worker = IngestionWorker(
+        queue=queue,
+        dead_letter_store=InMemoryDeadLetterStore(),
+        load_run=load_run,
+        persist_run=persist_run,
+        run_pipeline=pipeline,
+        persist_heartbeat=persist_heartbeat,
+        heartbeat_seconds=0.05,
+        worker_id="worker-a",
+    )
+    tick = await worker.process_one(timeout_seconds=0.2)
+    assert attempts["count"] >= 2
+    assert tick.acknowledged is True
+    assert run.status is IngestionRunStatus.COMPLETED
+    assert await queue.depth() == 0

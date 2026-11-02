@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -199,9 +198,7 @@ class IngestionWorker:
         try:
             result = await self._execute(tenant, run, stages, message)
         finally:
-            heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await heartbeat_task
+            await self._stop_heartbeat(heartbeat_task)
 
         # The production pipeline (run_document_pipeline) loads its own
         # run/stages internally and commits incrementally as it goes; it
@@ -331,6 +328,23 @@ class IngestionWorker:
             return claimed
         return None
 
+    async def _stop_heartbeat(self, heartbeat_task: asyncio.Task[None]) -> None:
+        """Stop the heartbeat task without discarding the pipeline result.
+
+        A persist error must not escape here. Otherwise a finished run is left
+        unacknowledged and the worker loop exits.
+        """
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception(
+                "ingestion_heartbeat_failed",
+                worker_id=self.worker_id,
+            )
+
     async def _heartbeat_loop(
         self,
         tenant: TenantContext,
@@ -343,10 +357,19 @@ class IngestionWorker:
             if self._should_stop():
                 return
             stamp = datetime.now(UTC)
+            if self._persist_heartbeat is not None:
+                try:
+                    await _maybe_await(self._persist_heartbeat(tenant, run.ingestion_run_id, stamp))
+                except Exception:
+                    logger.warning(
+                        "ingestion_heartbeat_persist_failed",
+                        ingestion_run_id=str(run.ingestion_run_id),
+                        worker_id=self.worker_id,
+                        exc_info=True,
+                    )
+                    continue
             run.heartbeat_at = stamp
             run.worker_id = self.worker_id
-            if self._persist_heartbeat is not None:
-                await _maybe_await(self._persist_heartbeat(tenant, run.ingestion_run_id, stamp))
             get_metrics().set_gauge(
                 "ingest_worker_heartbeat_timestamp", run.heartbeat_at.timestamp()
             )
