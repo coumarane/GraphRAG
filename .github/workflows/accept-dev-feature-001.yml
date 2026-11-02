@@ -1,0 +1,610 @@
+name: Accept Feature 001 DEV
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [accept-dev-feature-001]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  K8S_INVENTORY: infra/ansible/kubernetes/inventory.ini
+
+jobs:
+  accept:
+    name: Multipage acceptance
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 40
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore shared SSH key from Key Vault
+        id: restore_shared_ssh
+        uses: ./.github/actions/restore-ssh-key-from-keyvault
+        with:
+          key-vault-name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secret-name: ${{ vars.OVH_SSH_PRIVATE_KEY_SECRET_NAME || 'ovh-rag-reinstall-ssh-private-key' }}
+          key-path: ${{ vars.OVH_SSH_PRIVATE_KEY_PATH || '~/.ssh/ovh-rag-reinstall-ed25519' }}
+
+      - name: Configure SSH for master
+        id: master_ssh
+        uses: ./.github/actions/configure-ssh-from-inventory
+        with:
+          inventory-path: ${{ env.K8S_INVENTORY }}
+          inventory-group: master
+          ssh-private-key-file: ${{ steps.restore_shared_ssh.outputs.key-path }}
+          ssh-user: ubuntu
+
+      - name: Read the DEV login and worker baseline
+        env:
+          MASTER_HOST: ${{ steps.master_ssh.outputs.first-host }}
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" 'bash -s' <<'EOSSH' > "$RUNNER_TEMP/baseline.txt"
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+          echo "=== argo ==="
+          kubectl -n argocd get applications.argoproj.io -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REV:.status.sync.revision
+          echo "=== images ==="
+          kubectl -n chatwithdocs-api get deploy api -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          echo "=== worker before ==="
+          kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
+          echo
+          pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
+          test -n "$pod"
+          kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
+          import json
+          from pathlib import Path
+          env = {}
+          for line in Path("/app/.env").read_text().splitlines():
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              env[key] = value
+          print("CREDS_JSON " + json.dumps({
+              "email": env.get("AUTH_BOOTSTRAP_EMAIL", "").strip(),
+              "password": env.get("AUTH_BOOTSTRAP_PASSWORD", "").strip(),
+              "tenant": (env.get("AUTH_BOOTSTRAP_TENANT_KEY", "demo").strip() or "demo"),
+          }))
+          PY
+          EOSSH
+          python3 - << 'CHK'
+          import json, os
+          from pathlib import Path
+          raw = Path(os.environ["RUNNER_TEMP"], "baseline.txt").read_text()
+          start = raw.find("CREDS_JSON ")
+          if start < 0:
+              raise SystemExit("creds missing")
+          line = raw[start:].splitlines()[0]
+          data = json.loads(line[len("CREDS_JSON "):])
+          Path(os.environ["RUNNER_TEMP"], "creds.json").write_text(json.dumps(data))
+          visible = "\n".join(item for item in raw.splitlines() if not item.startswith("CREDS_JSON "))
+          Path(os.environ["RUNNER_TEMP"], "baseline.txt").write_text(visible + "\n")
+          print(visible)
+          print("creds_email_set", bool(data.get("email")))
+          print("creds_password_set", bool(data.get("password")))
+          CHK
+
+      - name: Upload three documents and check citations
+        env:
+          CREDS_FILE: ${{ runner.temp }}/creds.json
+          RESULT_FILE: ${{ runner.temp }}/acceptance-result.txt
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import json
+          import os
+          import re
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          API = "https://api.chatwithdocs.org"
+          STAMP = os.environ.get("GITHUB_RUN_ID", "local")
+          RESULT = Path(os.environ["RESULT_FILE"])
+          checks = {}
+
+          def redact(value):
+              text = str(value).replace("\n", " ")
+              text = re.sub(r"https?://\S+", "<url>", text)
+              text = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "<email>", text)
+              return text[:240]
+
+          def build_pdf(pages):
+              n = len(pages)
+              font_num = 3 + n * 2
+              objects = [b""]
+              objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+              kids = " ".join(f"{3 + i * 2} 0 R" for i in range(n))
+              objects.append(f"<< /Type /Pages /Count {n} /Kids [{kids}] >>".encode())
+              for index, text in enumerate(pages):
+                  content_num = 4 + index * 2
+                  safe = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+                  stream = f"BT /F1 12 Tf 72 720 Td ({safe}) Tj ET\n".encode()
+                  objects.append(
+                      (
+                          f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                          f"/Contents {content_num} 0 R /Resources << /Font << /F1 {font_num} 0 R >> >> >>"
+                      ).encode()
+                  )
+                  objects.append(b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"endstream")
+              objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+              if len(objects) - 1 != font_num:
+                  raise RuntimeError("pdf object count")
+              out = bytearray(b"%PDF-1.4\n")
+              offsets = [0]
+              for number, obj in enumerate(objects[1:], start=1):
+                  offsets.append(len(out))
+                  out += f"{number} 0 obj\n".encode() + obj + b"\nendobj\n"
+              xref = len(out)
+              size = len(objects)
+              out += f"xref\n0 {size}\n".encode()
+              out += b"0000000000 65535 f \n"
+              for offset in offsets[1:]:
+                  out += f"{offset:010d} 00000 n \n".encode()
+              out += f"trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+              return bytes(out)
+
+          def request(method, url, payload=None, headers=None, raw=None, timeout=120):
+              data = raw
+              if payload is not None:
+                  data = json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, method=method)
+              for key, value in (headers or {}).items():
+                  req.add_header(key, value)
+              if payload is not None:
+                  req.add_header("content-type", "application/json")
+              try:
+                  with urllib.request.urlopen(req, timeout=timeout) as response:
+                      return response.status, response.read()
+              except urllib.error.HTTPError as exc:
+                  return exc.code, exc.read()
+
+          def parse(raw):
+              try:
+                  return json.loads(raw) if raw else {}
+              except json.JSONDecodeError:
+                  return {}
+
+          creds = json.loads(Path(os.environ["CREDS_FILE"]).read_text())
+          auth = {"X-Tenant-Key": creds["tenant"]}
+
+          def login():
+              status, body = request(
+                  "POST",
+                  API + "/api/v1/auth/login",
+                  {"email": creds["email"], "password": creds["password"]},
+              )
+              print("login", status)
+              if status != 200:
+                  print("login_failed", redact(body.decode("utf-8", "replace")))
+                  RESULT.write_text("acceptance_documents false\n")
+                  raise SystemExit(1)
+              auth["Authorization"] = "Bearer " + json.loads(body)["access_token"]
+
+          login()
+
+          documents = {
+              "serum": {
+                  "title": "citrine-serum-" + STAMP,
+                  "filename": "citrine-serum-" + STAMP + ".pdf",
+                  "pages": [
+                      "CitrineSerum page one. Daily niacinamide serum for the face. PageOneNiacinamideAnchor. run " + STAMP,
+                      "CitrineSerum page two. Formula with ceramide and glycerin. PageTwoCeramideAnchor. run " + STAMP,
+                      "CitrineSerum page three. Safety patch test under EU cosmetic regulation 1223. PageThreeClaimAnchor. run " + STAMP,
+                      "CitrineSerum page four. Apply two drops of the serum at night. PageFourUsageAnchor. run " + STAMP,
+                  ],
+              },
+              "toner": {
+                  "title": "willow-toner-" + STAMP,
+                  "filename": "willow-toner-" + STAMP + ".pdf",
+                  "pages": [
+                      "IsolatedToner page one. Willow bark mist for a different product. IsolatePhraseWillowBark. run " + STAMP,
+                  ],
+              },
+              "balm": {
+                  "title": "stability-balm-" + STAMP,
+                  "filename": "stability-balm-" + STAMP + ".pdf",
+                  "pages": [
+                      "StabilityBalm page one. Shea occlusive balm. StabilityPhrasePetrolatum. run " + STAMP,
+                  ],
+              },
+          }
+
+          def upload(spec):
+              data = build_pdf(spec["pages"])
+              print("pdf", spec["title"], "pages", len(spec["pages"]), "bytes", len(data))
+              status, raw = request(
+                  "POST",
+                  API + "/api/v1/documents/uploads",
+                  {"filename": spec["filename"], "byte_size": len(data), "title": spec["title"]},
+                  auth,
+              )
+              created = parse(raw)
+              print("create", spec["title"], status)
+              if status != 201 or not created.get("upload"):
+                  print("create_error", redact(raw.decode("utf-8", "replace")))
+                  return None
+              target = created["upload"]
+              put_url = target["url"]
+              host = put_url.split("/")[2]
+              path = put_url.split("?", 1)[0]
+              print("put_host", host)
+              print("put_has_uploads", "/uploads/" in path)
+              print("put_has_staging", "/staging/" in path)
+              put_headers = {str(key): str(value) for key, value in (target.get("headers") or {}).items()}
+              status, raw = request("PUT", put_url, headers=put_headers, raw=data, timeout=120)
+              print("put", spec["title"], status)
+              if status not in {200, 201}:
+                  print("put_error", redact(raw.decode("utf-8", "replace")))
+                  return None
+              status, raw = request(
+                  "POST",
+                  API + "/api/v1/documents/uploads/" + created["upload_id"] + "/complete",
+                  {"title": spec["title"]},
+                  auth,
+              )
+              completed = parse(raw)
+              print("complete", spec["title"], status, "document", completed.get("document_id"))
+              if status != 202:
+                  print("complete_error", redact(raw.decode("utf-8", "replace")))
+                  return None
+              return str(completed["document_id"])
+
+          ids = {}
+          for key, spec in documents.items():
+              document_id = upload(spec)
+              ids[key] = document_id
+              if document_id is None:
+                  RESULT.write_text("acceptance_documents false\n")
+                  raise SystemExit(1)
+
+          terminal_doc = {"ready", "partial", "failed", "deleted"}
+          terminal_run = {"completed", "completed_with_warnings", "partial", "failed", "cancelled"}
+          states = {}
+          pending = set(ids)
+          for attempt in range(1, 41):
+              if not pending:
+                  break
+              time.sleep(15)
+              for key in list(pending):
+                  status, raw = request("GET", API + "/api/v1/documents/" + ids[key], headers=auth)
+                  if status == 401:
+                      login()
+                      status, raw = request("GET", API + "/api/v1/documents/" + ids[key], headers=auth)
+                  doc = parse(raw)
+                  status_run, raw_run = request(
+                      "GET",
+                      API + "/api/v1/documents/" + ids[key] + "/ingestion-runs/latest",
+                      headers=auth,
+                  )
+                  run = parse(raw_run)
+                  print(
+                      "poll", key, "attempt", attempt,
+                      "document", doc.get("status"),
+                      "run", run.get("status"),
+                      "stage", run.get("current_stage"),
+                      "parser", run.get("parser_used"),
+                      "pages", run.get("pages_processed"),
+                  )
+                  if doc.get("status") in terminal_doc and run.get("status") in terminal_run:
+                      states[key] = (doc, run)
+                      pending.discard(key)
+          if pending:
+              print("still_running", ",".join(sorted(pending)))
+              RESULT.write_text("acceptance_documents false\n")
+              raise SystemExit(1)
+
+          optional_markers = ("disabled", "not requested", "not configured", "handled in")
+          genuine_markers = ("semantic_graph_failed", "vision_failed", "needs_review", "parser_fallback", "parser_routing")
+
+          def classify(run):
+              intentional = []
+              genuine = []
+              for stage in run.get("stages") or []:
+                  warning = stage.get("warning") or ""
+                  status = stage.get("status")
+                  print(
+                      "stage", run.get("document_id") or "",
+                      stage.get("stage"), status,
+                      "warning", redact(warning),
+                  )
+                  lowered = warning.lower()
+                  if status == "skipped" and any(marker in lowered for marker in optional_markers):
+                      intentional.append(stage.get("stage") + ":" + warning)
+                  elif status == "completed_with_warnings" or any(marker in lowered for marker in genuine_markers):
+                      genuine.append(stage.get("stage") + ":" + status + ":" + warning)
+              return intentional, genuine
+
+          for key, (_doc, run) in states.items():
+              run["document_id"] = ids[key]
+              intentional, genuine = classify(run)
+              print("run_status", key, run.get("status"), "latest_warning", redact(run.get("latest_warning") or ""))
+              print("optional_skips", key, ",".join(intentional) if intentional else "none")
+              print("genuine_warnings", key, ",".join(genuine) if genuine else "none")
+              only_optional = run.get("status") == "completed_with_warnings" and not genuine and bool(intentional)
+              clean = run.get("status") == "completed" and not genuine
+              print("warnings_only_optional_skips", key, str(only_optional or clean).lower())
+
+          login()
+          serum_id = ids["serum"]
+          toner_id = ids["toner"]
+          balm_id = ids["balm"]
+          serum_doc, serum_run = states["serum"]
+          checks["serum_ready"] = serum_doc.get("status") == "ready"
+          checks["serum_run_finished"] = serum_run.get("status") in {"completed", "completed_with_warnings"}
+          checks["serum_pages"] = int(serum_run.get("pages_processed") or 0) >= 4
+          indexed = {
+              stage.get("stage"): stage.get("status")
+              for stage in serum_run.get("stages") or []
+          }
+          for stage_name in ("PARSE", "CHUNK", "EMBED", "INDEX_VECTOR", "INDEX_GRAPH", "FINALIZE"):
+              checks["serum_" + stage_name.lower()] = indexed.get(stage_name) in {"completed", "completed_with_warnings"}
+          checks["toner_ready"] = states["toner"][0].get("status") == "ready"
+          checks["balm_ready"] = states["balm"][0].get("status") == "ready"
+
+          status, raw = request("GET", API + "/api/v1/documents/" + serum_id + "/chunks?limit=20", headers=auth)
+          chunks = parse(raw)
+          items = chunks.get("items") or []
+          print("serum_chunks", chunks.get("total"), "returned", len(items))
+          for item in items:
+              text = item.get("text") or ""
+              anchors = [
+                  name
+                  for name in (
+                      "PageOneNiacinamideAnchor",
+                      "PageTwoCeramideAnchor",
+                      "PageThreeClaimAnchor",
+                      "PageFourUsageAnchor",
+                  )
+                  if name in text
+              ]
+              print(
+                  "serum_chunk",
+                  "pages", item.get("page_start"), item.get("page_end"),
+                  "anchors", ",".join(anchors) if anchors else "none",
+              )
+          def chunk_on_page(page, anchor):
+              return any(
+                  int(item.get("page_start") or 0) == page
+                  and int(item.get("page_end") or 0) == page
+                  and anchor in str(item.get("text") or "")
+                  for item in items
+              )
+
+          checks["serum_chunks"] = int(chunks.get("total") or 0) >= 2
+          checks["chunk_page_two"] = chunk_on_page(2, "PageTwoCeramideAnchor")
+          checks["chunk_page_four"] = chunk_on_page(4, "PageFourUsageAnchor")
+
+          def search(question, document_ids):
+              status, raw = request(
+                  "POST",
+                  API + "/api/v1/retrieval/search",
+                  {
+                      "question": question,
+                      "document_ids": document_ids,
+                      "top_k": 5,
+                      "include_graph_paths": True,
+                  },
+                  auth,
+              )
+              payload = parse(raw)
+              evidence = payload.get("evidence") or []
+              print(
+                  "search", question,
+                  "http", status,
+                  "evidence", len(evidence),
+                  "ids", ",".join(sorted({str(item.get("document_id")) for item in evidence})) or "none",
+                  "paths", len(payload.get("graph_paths") or []),
+                  "warnings", redact(payload.get("warnings") or ""),
+              )
+              for item in evidence:
+                  print(
+                      "evidence",
+                      "doc", item.get("document_id"),
+                      "name", item.get("document_name"),
+                      "pages", item.get("page_start"), item.get("page_end"),
+                      "phrase", question in str(item.get("text") or ""),
+                  )
+              return status, evidence
+
+          def query(question, document_ids):
+              status, raw = request(
+                  "POST",
+                  API + "/api/v1/query",
+                  {
+                      "question": question,
+                      "document_ids": document_ids,
+                      "interaction_mode": "search",
+                      "top_k": 5,
+                  },
+                  auth,
+                  timeout=180,
+              )
+              payload = parse(raw)
+              citations = payload.get("citations") or []
+              print(
+                  "query", question,
+                  "http", status,
+                  "citations", len(citations),
+                  "ids", ",".join(sorted({str(item.get("document_id")) for item in citations})) or "none",
+                  "names", ",".join(sorted({str(item.get("document_name")) for item in citations})) or "none",
+              )
+              for item in citations:
+                  print(
+                      "citation",
+                      "doc", item.get("document_id"),
+                      "name", item.get("document_name"),
+                      "pages", item.get("page_start"), item.get("page_end"),
+                      "phrase", question in str(item.get("evidence") or ""),
+                  )
+              return status, citations
+
+          def covers(item, page, phrase):
+              text = str(item.get("text") or item.get("evidence") or "")
+              start = int(item.get("page_start") or 0)
+              end = int(item.get("page_end") or 0)
+              return phrase in text and start <= page <= end and str(item.get("document_id")) == serum_id
+
+          status, evidence = search("PageTwoCeramideAnchor", [serum_id])
+          checks["page_two_search"] = status == 200 and any(covers(item, 2, "PageTwoCeramideAnchor") for item in evidence)
+          checks["page_two_only_serum"] = bool(evidence) and {str(item.get("document_id")) for item in evidence} == {serum_id}
+          status, citations = query("PageTwoCeramideAnchor", [serum_id])
+          checks["page_two_citation"] = status == 200 and any(covers(item, 2, "PageTwoCeramideAnchor") for item in citations)
+          status, evidence = search("PageFourUsageAnchor", [serum_id])
+          checks["page_four_search"] = status == 200 and any(covers(item, 4, "PageFourUsageAnchor") for item in evidence)
+          checks["page_four_only_serum"] = bool(evidence) and {str(item.get("document_id")) for item in evidence} == {serum_id}
+          status, citations = query("PageFourUsageAnchor", [serum_id])
+          checks["page_four_citation"] = status == 200 and any(covers(item, 4, "PageFourUsageAnchor") for item in citations)
+
+          status, evidence = search("IsolatePhraseWillowBark", [serum_id])
+          checks["serum_hides_toner"] = status == 200 and all(
+              str(item.get("document_id")) != toner_id and "IsolatePhraseWillowBark" not in str(item.get("text") or "")
+              for item in evidence
+          )
+          status, evidence = search("IsolatePhraseWillowBark", [toner_id])
+          checks["toner_isolated"] = (
+              status == 200
+              and bool(evidence)
+              and {str(item.get("document_id")) for item in evidence} == {toner_id}
+              and any("IsolatePhraseWillowBark" in str(item.get("text") or "") for item in evidence)
+          )
+          status, evidence = search("PageTwoCeramideAnchor", [toner_id])
+          checks["toner_hides_serum"] = status == 200 and all(
+              str(item.get("document_id")) != serum_id and "PageTwoCeramideAnchor" not in str(item.get("text") or "")
+              for item in evidence
+          )
+          status, evidence = search("StabilityPhrasePetrolatum", [balm_id])
+          checks["balm_retrieved"] = (
+              status == 200
+              and bool(evidence)
+              and {str(item.get("document_id")) for item in evidence} == {balm_id}
+          )
+
+          for name, ok in checks.items():
+              print("check", name, str(bool(ok)).lower())
+          ok = all(checks.values())
+          print("acceptance_documents", str(ok).lower())
+          print("serum_document", serum_id)
+          print("toner_document", toner_id)
+          print("balm_document", balm_id)
+          RESULT.write_text("acceptance_documents " + str(ok).lower() + "\n")
+          if not ok:
+              raise SystemExit(1)
+          PY
+
+      - name: Confirm worker, Argo CD, and Redis
+        if: always()
+        env:
+          MASTER_HOST: ${{ steps.master_ssh.outputs.first-host }}
+          RESULT_FILE: ${{ runner.temp }}/acceptance-result.txt
+          BASELINE_FILE: ${{ runner.temp }}/baseline.txt
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" 'bash -s' <<'EOSSH' > "$RUNNER_TEMP/after.txt"
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+          echo "=== argo ==="
+          kubectl -n argocd get applications.argoproj.io -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REV:.status.sync.revision
+          echo "=== images ==="
+          kubectl -n chatwithdocs-api get deploy api -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          echo "=== worker after ==="
+          kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
+          echo
+          pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
+          test -n "$pod"
+          kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          env = {}
+          for line in Path("/app/.env").read_text().splitlines():
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              env[key] = value
+
+          def redact(value):
+              text = str(value).replace("\n", " ")
+              text = re.sub(r"rediss?://\S+", "redis://redacted", text)
+              return text[:200]
+
+          try:
+              import redis
+              client = redis.Redis.from_url(env.get("REDIS_URL", ""), socket_timeout=5)
+              print("redis_ping", bool(client.ping()))
+              for key in ("ingestion-jobs", "ingestion-dlq"):
+                  print("redis_xlen", key, int(client.xlen(key)))
+              info = client.xpending("ingestion-jobs", "ingestion-workers")
+              pending = info.get("pending") if isinstance(info, dict) else (info[0] if info else None)
+              print("redis_jobs_pending", pending)
+              entries = client.xpending_range("ingestion-jobs", "ingestion-workers", "-", "+", 5)
+              print("redis_pending_entries", len(entries))
+          except Exception as exc:
+              print("redis_error", type(exc).__name__, redact(exc))
+          PY
+          EOSSH
+          python3 - << 'CHK'
+          import os
+          import re
+          from pathlib import Path
+          after = Path(os.environ["RUNNER_TEMP"], "after.txt").read_text()
+          print(after)
+          baseline = Path(os.environ["BASELINE_FILE"]).read_text() if Path(os.environ["BASELINE_FILE"]).exists() else ""
+          result = Path(os.environ["RESULT_FILE"]).read_text() if Path(os.environ["RESULT_FILE"]).exists() else "acceptance_documents false\n"
+          print(result.strip())
+
+          def worker_line(text):
+              for line in text.splitlines():
+                  if line.startswith("ingestion-worker-"):
+                      return line
+              return ""
+
+          before = worker_line(baseline)
+          current = worker_line(after)
+          print("worker_before", before or "missing")
+          print("worker_after", current or "missing")
+          ready = "ready=true" in current and "restarts=0" in current
+          same_start = "started=" in before and "started=" in current and before.split("started=", 1)[1] == current.split("started=", 1)[1]
+          pending = None
+          match = re.search(r"redis_jobs_pending (\d+)", after)
+          if match:
+              pending = int(match.group(1))
+          dlq = None
+          match = re.search(r"redis_xlen ingestion-dlq (\d+)", after)
+          if match:
+              dlq = int(match.group(1))
+          entries = None
+          match = re.search(r"redis_pending_entries (\d+)", after)
+          if match:
+              entries = int(match.group(1))
+          stable = ready and same_start and pending == 0 and entries == 0 and dlq == 0
+          print("worker_stable", str(stable).lower())
+          print("redis_pending_clear", str(pending == 0 and entries == 0).lower())
+          print("redis_dlq_clear", str(dlq == 0).lower())
+          documents_ok = "acceptance_documents true" in result
+          if not (stable and documents_ok):
+              raise SystemExit(1)
+          PY
+
+      - name: Remove login material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/creds.json"
