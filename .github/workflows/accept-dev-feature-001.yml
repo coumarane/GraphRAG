@@ -63,12 +63,17 @@ jobs:
           kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           echo "=== worker before ==="
-          kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
+          kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{" reason="}{.status.containerStatuses[0].lastState.terminated.reason}{" exit="}{.status.containerStatuses[0].lastState.terminated.exitCode}{" finished="}{.status.containerStatuses[0].lastState.terminated.finishedAt}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
           echo
+          echo "=== previous worker log ==="
+          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --previous --tail=120 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | grep -E 'worker_stopped|worker_started|SIGILL|Killed|OOM|Traceback|Error|liveness' | tail -n 30 || true
+          worker_pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{.items[0].metadata.name}')
+          echo "=== worker events ==="
+          kubectl -n chatwithdocs-api get events --field-selector "involvedObject.name=${worker_pod}" --sort-by=.lastTimestamp | tail -n 12 || true
           pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
           test -n "$pod"
           kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
-          import json
+          import re
           from pathlib import Path
           env = {}
           for line in Path("/app/.env").read_text().splitlines():
@@ -76,37 +81,42 @@ jobs:
                   continue
               key, value = line.split("=", 1)
               env[key] = value
-          print("CREDS_JSON " + json.dumps({
-              "email": env.get("AUTH_BOOTSTRAP_EMAIL", "").strip(),
-              "password": env.get("AUTH_BOOTSTRAP_PASSWORD", "").strip(),
-              "tenant": (env.get("AUTH_BOOTSTRAP_TENANT_KEY", "demo").strip() or "demo"),
-          }))
+
+          def redact(value):
+              text = str(value).replace("\n", " ")
+              text = re.sub(r"rediss?://\S+", "redis://redacted", text)
+              return text[:200]
+
+          try:
+              import redis
+              client = redis.Redis.from_url(env.get("REDIS_URL", ""), socket_timeout=5)
+              print("redis_ping", bool(client.ping()))
+              for key in ("ingestion-jobs", "ingestion-dlq"):
+                  print("redis_before_xlen", key, int(client.xlen(key)))
+              info = client.xpending("ingestion-jobs", "ingestion-workers")
+              pending = info.get("pending") if isinstance(info, dict) else (info[0] if info else None)
+              print("redis_before_pending", pending)
+              entries = client.xpending_range("ingestion-jobs", "ingestion-workers", "-", "+", 5)
+              print("redis_before_entries", len(entries))
+          except Exception as exc:
+              print("redis_before_error", type(exc).__name__, redact(exc))
           PY
           EOSSH
-          python3 - << 'CHK'
-          import json, os
-          from pathlib import Path
-          raw = Path(os.environ["RUNNER_TEMP"], "baseline.txt").read_text()
-          start = raw.find("CREDS_JSON ")
-          if start < 0:
-              raise SystemExit("creds missing")
-          line = raw[start:].splitlines()[0]
-          data = json.loads(line[len("CREDS_JSON "):])
-          Path(os.environ["RUNNER_TEMP"], "creds.json").write_text(json.dumps(data))
-          visible = "\n".join(item for item in raw.splitlines() if not item.startswith("CREDS_JSON "))
-          Path(os.environ["RUNNER_TEMP"], "baseline.txt").write_text(visible + "\n")
-          print(visible)
-          print("creds_email_set", bool(data.get("email")))
-          print("creds_password_set", bool(data.get("password")))
-          CHK
+          cat "$RUNNER_TEMP/baseline.txt"
 
       - name: Upload three documents and check citations
         env:
-          CREDS_FILE: ${{ runner.temp }}/creds.json
+          MASTER_HOST: ${{ steps.master_ssh.outputs.first-host }}
           RESULT_FILE: ${{ runner.temp }}/acceptance-result.txt
         run: |
           set -euo pipefail
-          python3 - << 'PY'
+          set +e
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" "STAMP='${GITHUB_RUN_ID}' bash -s" <<'EOSSH' | tee "$RUNNER_TEMP/acceptance-log.txt"
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+          pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
+          test -n "$pod"
+          kubectl -n chatwithdocs-api exec -i "$pod" -- env STAMP="$STAMP" python - <<'PY'
           import json
           import os
           import re
@@ -115,10 +125,15 @@ jobs:
           import urllib.request
           from pathlib import Path
 
-          API = "https://api.chatwithdocs.org"
-          STAMP = os.environ.get("GITHUB_RUN_ID", "local")
-          RESULT = Path(os.environ["RESULT_FILE"])
+          API = "http://127.0.0.1:8000"
+          STAMP = os.environ.get("STAMP") or os.environ.get("GITHUB_RUN_ID", "local")
+          RESULT = Path(os.environ["RESULT_FILE"]) if os.environ.get("RESULT_FILE") else None
           checks = {}
+
+          def save(line):
+              print(line)
+              if RESULT is not None:
+                  RESULT.write_text(line + "\n")
 
           def redact(value):
               text = str(value).replace("\n", " ")
@@ -182,7 +197,17 @@ jobs:
               except json.JSONDecodeError:
                   return {}
 
-          creds = json.loads(Path(os.environ["CREDS_FILE"]).read_text())
+          creds = {}
+          for line in Path("/app/.env").read_text().splitlines():
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              creds[key] = value
+          creds = {
+              "email": creds.get("AUTH_BOOTSTRAP_EMAIL", "").strip(),
+              "password": creds.get("AUTH_BOOTSTRAP_PASSWORD", "").strip(),
+              "tenant": creds.get("AUTH_BOOTSTRAP_TENANT_KEY", "demo").strip() or "demo",
+          }
           auth = {"X-Tenant-Key": creds["tenant"]}
 
           def login():
@@ -194,7 +219,7 @@ jobs:
               print("login", status)
               if status != 200:
                   print("login_failed", redact(body.decode("utf-8", "replace")))
-                  RESULT.write_text("acceptance_documents false\n")
+                  save("acceptance_documents false")
                   raise SystemExit(1)
               auth["Authorization"] = "Bearer " + json.loads(body)["access_token"]
 
@@ -272,7 +297,7 @@ jobs:
               document_id = upload(spec)
               ids[key] = document_id
               if document_id is None:
-                  RESULT.write_text("acceptance_documents false\n")
+                  save("acceptance_documents false")
                   raise SystemExit(1)
 
           terminal_doc = {"ready", "partial", "failed", "deleted"}
@@ -308,7 +333,7 @@ jobs:
                       pending.discard(key)
           if pending:
               print("still_running", ",".join(sorted(pending)))
-              RESULT.write_text("acceptance_documents false\n")
+              save("acceptance_documents false")
               raise SystemExit(1)
 
           optional_markers = ("disabled", "not requested", "not configured", "handled in")
@@ -500,14 +525,25 @@ jobs:
           for name, ok in checks.items():
               print("check", name, str(bool(ok)).lower())
           ok = all(checks.values())
-          print("acceptance_documents", str(ok).lower())
           print("serum_document", serum_id)
           print("toner_document", toner_id)
           print("balm_document", balm_id)
-          RESULT.write_text("acceptance_documents " + str(ok).lower() + "\n")
+          save("acceptance_documents " + str(ok).lower())
           if not ok:
               raise SystemExit(1)
           PY
+          EOSSH
+          upload_status=${PIPESTATUS[0]}
+          set -e
+          python3 - << 'CHK'
+          import os
+          from pathlib import Path
+          log = Path(os.environ["RUNNER_TEMP"], "acceptance-log.txt").read_text()
+          line = next((item for item in log.splitlines() if item.startswith("acceptance_documents ")), "acceptance_documents false")
+          Path(os.environ["RESULT_FILE"]).write_text(line + "\n")
+          print(line)
+          CHK
+          test "$upload_status" -eq 0
 
       - name: Confirm worker, Argo CD, and Redis
         if: always()
@@ -582,8 +618,14 @@ jobs:
           current = worker_line(after)
           print("worker_before", before or "missing")
           print("worker_after", current or "missing")
-          ready = "ready=true" in current and "restarts=0" in current
+          def restart_count(line):
+              match = re.search(r"restarts=(\d+)", line)
+              return int(match.group(1)) if match else None
+
+          ready = "ready=true" in current
           same_start = "started=" in before and "started=" in current and before.split("started=", 1)[1] == current.split("started=", 1)[1]
+          same_restarts = restart_count(before) is not None and restart_count(before) == restart_count(current)
+          print("worker_restarts_unchanged", str(same_restarts).lower())
           pending = None
           match = re.search(r"redis_jobs_pending (\d+)", after)
           if match:
@@ -596,7 +638,7 @@ jobs:
           match = re.search(r"redis_pending_entries (\d+)", after)
           if match:
               entries = int(match.group(1))
-          stable = ready and same_start and pending == 0 and entries == 0 and dlq == 0
+          stable = ready and same_start and same_restarts and pending == 0 and entries == 0 and dlq == 0
           print("worker_stable", str(stable).lower())
           print("redis_pending_clear", str(pending == 0 and entries == 0).lower())
           print("redis_dlq_clear", str(dlq == 0).lower())
