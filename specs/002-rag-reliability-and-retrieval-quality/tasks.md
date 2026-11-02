@@ -187,7 +187,7 @@ Recorded 2 November 2026, 15:01 Europe/Paris. No image was built, no digest was 
 | Acceptance workflow PDF generator | Executed locally. It wrote a 4-page PDF (1515 bytes) and does not promote an image |
 | `specs/001-reliable-upload-ingestion/acceptance.md` | Still names serving digests `sha256:5abf5b69…`, `sha256:17eb0f6f…`, and `sha256:eb34e619…`, and points the open gaps at feature 002 |
 
-T030 stays open until a reviewed dispatch copies only `.github/workflows/accept-dev-feature-002.yml` to the default branch.
+T030 stays open until a reviewed dispatch copies only `.github/workflows/accept-dev-feature-002.yml` to the default branch. The live DEV browser journey stays unrun. The implementation review is [checklists/implementation-review.md](checklists/implementation-review.md), recorded 2 November 2026, 15:22 Europe/Paris. That review does not check T030.
 
 ## Requirement coverage
 

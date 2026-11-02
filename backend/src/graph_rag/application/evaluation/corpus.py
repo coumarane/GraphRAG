@@ -18,12 +18,17 @@ CORPUS_FILES = (
 )
 
 
+def _repo_root() -> Path:
+    # corpus.py lives at backend/src/graph_rag/application/evaluation/corpus.py
+    return Path(__file__).resolve().parents[5]
+
+
 def default_corpus_dir() -> Path:
-    return Path(__file__).resolve().parents[4] / "evaluation" / "corpus"
+    return _repo_root() / "data" / "evaluation" / "corpus"
 
 
 def default_questions_path() -> Path:
-    return Path(__file__).resolve().parents[4] / "evaluation" / "questions.json"
+    return _repo_root() / "data" / "evaluation" / "questions.json"
 
 
 def list_corpus_files(corpus_dir: Path | None = None) -> list[Path]:
