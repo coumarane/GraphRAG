@@ -66,7 +66,7 @@ jobs:
           kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           echo "=== worker log tail ==="
-          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=120 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | tail -n 40
+          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=1500 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | grep -E 'ingest_parser|Native parser|SIGILL|dead_letter|01a19b9a|parser_used|exit_code' | tail -n 40
           pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
           echo "pod=${pod}"
           kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
@@ -112,5 +112,20 @@ jobs:
           print("search_code", payload.get("code"))
           print("search_error_type", (payload.get("metadata") or {}).get("error_type"))
           print("search_evidence", len(payload.get("evidence") or []))
+          DOC = "01a19b9a-2e5a-77c9-8be5-d3755dbc9fc3"
+          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC, auth)
+          doc = json.loads(raw) if status == 200 else {}
+          print("citrine_document_http", status, "status", doc.get("status") if isinstance(doc, dict) else None)
+          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC + "/ingestion-runs/latest", auth)
+          run = json.loads(raw) if status == 200 else {}
+          print("citrine_run_http", status, "run", run.get("status"), "stage", run.get("current_stage"), "parser", run.get("parser_used"), "error", (run.get("error_message") or "")[:160])
+          for stage in run.get("stages") or []:
+              if stage.get("stage") in {"PARSE", "CHUNK", "EMBED", "INDEX_VECTOR", "EXTRACT_GRAPH", "INDEX_GRAPH", "FINALIZE"} or stage.get("status") in {"failed", "completed_with_warnings"}:
+                  print("citrine_stage", stage.get("stage"), stage.get("status"))
+          status, raw = request("POST", "http://127.0.0.1:8000/api/v1/retrieval/search", {"question": "Feature001CitrineHarbor", "document_ids": [DOC], "top_k": 5}, auth)
+          search = json.loads(raw) if status == 200 else {}
+          evidence = search.get("evidence") or [] if isinstance(search, dict) else []
+          ids = sorted({str(item.get("document_id")) for item in evidence})
+          print("citrine_search_http", status, "evidence", len(evidence), "ids", ",".join(ids) if ids else "none", "phrase", any("Feature001CitrineHarbor" in str(item.get("text") or "") for item in evidence))
           PY
           EOSSH
