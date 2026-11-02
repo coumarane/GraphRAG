@@ -145,9 +145,11 @@ jobs:
           COMMIT_SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
         run: |
           set -euo pipefail
-          digest="$(docker buildx imagetools inspect \
-            "${REGISTRY_HOST}/${HARBOR_PROJECT}/${COMPONENT}:${COMMIT_SHA}" \
-            | awk '/^Digest:/ {print $2; exit}')"
+          # Read the full inspect output before parsing. An early awk exit
+          # closes the pipe, and Buildx then returns 255 under pipefail.
+          inspect_out="$(docker buildx imagetools inspect \
+            "${REGISTRY_HOST}/${HARBOR_PROJECT}/${COMPONENT}:${COMMIT_SHA}")"
+          digest="$(printf '%s\n' "${inspect_out}" | awk '/^Digest:/ {print $2; exit}')"
           case "${digest}" in
             sha256:*) ;;
             *) echo "No digest for ${COMPONENT}:${COMMIT_SHA}"; exit 1 ;;
