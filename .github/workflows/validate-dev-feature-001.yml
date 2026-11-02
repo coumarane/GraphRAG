@@ -814,6 +814,27 @@ jobs:
           PY
           EOSSH
 
+      - name: Confirm the worker stayed ready
+        if: always()
+        env:
+          MASTER_HOST: ${{ steps.master_ssh.outputs.first-host }}
+          NEW_DOC_FILE: ${{ runner.temp }}/new-doc-id
+        run: |
+          set -euo pipefail
+          new_id=$(tr -d '[:space:]' < "$NEW_DOC_FILE" || true)
+          echo "tracked_document_id ${new_id:-missing}"
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" "NEW_DOC_ID='${new_id}' bash -s" <<'EOSSH'
+          set -euo pipefail
+          export KUBECONFIG=/home/ubuntu/.kube/config
+          echo "=== worker after upload ==="
+          kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-worker -o jsonpath='{range .items[*]}{.metadata.name}{" ready="}{.status.containerStatuses[0].ready}{" restarts="}{.status.containerStatuses[0].restartCount}{" reason="}{.status.containerStatuses[0].lastState.terminated.reason}{" exit="}{.status.containerStatuses[0].lastState.terminated.exitCode}{" started="}{.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}'
+          echo
+          echo "=== argo ==="
+          kubectl -n argocd get applications.argoproj.io -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REV:.status.sync.revision
+          echo "=== worker log ==="
+          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=800 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | grep -E "worker_started|ingest_parser|SIGILL|exit_code|isolate|${NEW_DOC_ID}|dead_letter|ParserError" | tail -n 40 || true
+          EOSSH
+
       - name: Upload browser screenshots
         if: always()
         uses: actions/upload-artifact@v4
