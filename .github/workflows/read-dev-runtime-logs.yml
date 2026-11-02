@@ -71,6 +71,7 @@ jobs:
           echo "pod=${pod}"
           kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
           import json
+          import re
           import urllib.error
           import urllib.request
           from pathlib import Path
@@ -83,6 +84,13 @@ jobs:
           email = env.get("AUTH_BOOTSTRAP_EMAIL", "").strip()
           password = env.get("AUTH_BOOTSTRAP_PASSWORD", "").strip()
           tenant = env.get("AUTH_BOOTSTRAP_TENANT_KEY", "demo").strip() or "demo"
+
+          def redact(value):
+              text = str(value).replace("\n", " ")
+              text = re.sub(r"(?i)(password|sig|access_token|authorization)=[^&\s\"]+", r"\1=redacted", text)
+              text = re.sub(r"rediss?://\S+", "redis://redacted", text)
+              text = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "<email>", text)
+              return text[:240]
 
           def request(method, url, payload=None, headers=None):
               data = None if payload is None else json.dumps(payload).encode()
@@ -113,19 +121,55 @@ jobs:
           print("search_error_type", (payload.get("metadata") or {}).get("error_type"))
           print("search_evidence", len(payload.get("evidence") or []))
           DOC = "01a19b9a-2e5a-77c9-8be5-d3755dbc9fc3"
-          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC, auth)
+          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC, headers=auth)
           doc = json.loads(raw) if status == 200 else {}
-          print("citrine_document_http", status, "status", doc.get("status") if isinstance(doc, dict) else None)
-          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC + "/ingestion-runs/latest", auth)
+          print(
+              "citrine_document_http", status,
+              "status", doc.get("status") if isinstance(doc, dict) else None,
+              "title", doc.get("title") if isinstance(doc, dict) else None,
+              "failed_stage", doc.get("failed_stage") if isinstance(doc, dict) else None,
+              "failure", redact(doc.get("failure_reason") or "") if isinstance(doc, dict) else "",
+          )
+          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC + "/ingestion-runs/latest", headers=auth)
           run = json.loads(raw) if status == 200 else {}
-          print("citrine_run_http", status, "run", run.get("status"), "stage", run.get("current_stage"), "parser", run.get("parser_used"), "error", (run.get("error_message") or "")[:160])
+          print("citrine_run_http", status, "run", run.get("status"), "stage", run.get("current_stage"), "parser", run.get("parser_used"), "error", redact(run.get("error_message") or ""))
           for stage in run.get("stages") or []:
               if stage.get("stage") in {"PARSE", "CHUNK", "EMBED", "INDEX_VECTOR", "EXTRACT_GRAPH", "INDEX_GRAPH", "FINALIZE"} or stage.get("status") in {"failed", "completed_with_warnings"}:
-                  print("citrine_stage", stage.get("stage"), stage.get("status"))
+                  print("citrine_stage", stage.get("stage"), stage.get("status"), "attempts", stage.get("attempt_count"), "error", redact(stage.get("error_message") or ""))
+          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC + "/chunks?limit=1", headers=auth)
+          chunks = json.loads(raw) if status == 200 else {}
+          print("citrine_chunks_http", status, "total", chunks.get("total") if isinstance(chunks, dict) else None)
           status, raw = request("POST", "http://127.0.0.1:8000/api/v1/retrieval/search", {"question": "Feature001CitrineHarbor", "document_ids": [DOC], "top_k": 5}, auth)
           search = json.loads(raw) if status == 200 else {}
           evidence = search.get("evidence") or [] if isinstance(search, dict) else []
           ids = sorted({str(item.get("document_id")) for item in evidence})
-          print("citrine_search_http", status, "evidence", len(evidence), "ids", ",".join(ids) if ids else "none", "phrase", any("Feature001CitrineHarbor" in str(item.get("text") or "") for item in evidence))
+          print("citrine_search_http", status, "evidence", len(evidence), "ids", ",".join(ids) if ids else "none", "phrase", any("Feature001CitrineHarbor" in str(item.get("text") or "") for item in evidence), "warnings", ",".join(search.get("warnings") or []) if isinstance(search, dict) else "")
+          try:
+              import redis
+
+              client = redis.Redis.from_url(env.get("REDIS_URL", ""), socket_timeout=5)
+              print("redis_ping", bool(client.ping()))
+              for key in ("ingestion-jobs", "ingestion-dlq"):
+                  print("redis_xlen", key, int(client.xlen(key)))
+              info = client.xpending("ingestion-jobs", "ingestion-workers")
+              pending = info.get("pending") if isinstance(info, dict) else (info[0] if info else None)
+              print("redis_jobs_pending", pending)
+              entries = client.xpending_range("ingestion-jobs", "ingestion-workers", "-", "+", 5)
+              print("redis_pending_entries", len(entries))
+              for entry in entries:
+                  idle = entry.get("time_since_delivered") if isinstance(entry, dict) else None
+                  times = entry.get("times_delivered") if isinstance(entry, dict) else None
+                  message_id = entry.get("message_id") if isinstance(entry, dict) else None
+                  print("redis_pending_entry", "idle_ms", idle, "deliveries", times)
+                  if not message_id:
+                      continue
+                  for _item_id, fields in client.xrange("ingestion-jobs", min=message_id, max=message_id, count=1):
+                      raw_payload = fields.get(b"payload") or fields.get("payload") or b"{}"
+                      if isinstance(raw_payload, bytes):
+                          raw_payload = raw_payload.decode("utf-8", "replace")
+                      job = json.loads(raw_payload)
+                      print("redis_pending_job", "run", job.get("ingestion_run_id"), "document", job.get("document_id"))
+          except Exception as exc:
+              print("redis_error", type(exc).__name__, redact(exc))
           PY
           EOSSH
