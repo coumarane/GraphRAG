@@ -110,13 +110,56 @@ jobs:
           RESULT_FILE: ${{ runner.temp }}/acceptance-result.txt
         run: |
           set -euo pipefail
+          python3 -m pip install --quiet fpdf2
+          python3 - << 'PDF'
+          import base64
+          import os
+          from fpdf import FPDF
+          from pathlib import Path
+
+          def render(pages):
+              pdf = FPDF()
+              pdf.set_auto_page_break(auto=False)
+              for text in pages:
+                  pdf.add_page()
+                  pdf.set_font("Helvetica", size=14)
+                  pdf.multi_cell(0, 8, text)
+              return base64.b64encode(bytes(pdf.output())).decode()
+
+          stamp = os.environ["GITHUB_RUN_ID"]
+          files = {
+              "SERUM_B64": [
+                  "CitrineSerum page one. Daily niacinamide serum for the face. PageOneNiacinamideAnchor. run " + stamp,
+                  "CitrineSerum page two. Formula with ceramide and glycerin. PageTwoCeramideAnchor. run " + stamp,
+                  "CitrineSerum page three. Safety patch test under EU cosmetic regulation 1223. PageThreeClaimAnchor. run " + stamp,
+                  "CitrineSerum page four. Apply two drops of the serum at night. PageFourUsageAnchor. run " + stamp,
+              ],
+              "TONER_B64": [
+                  "IsolatedToner page one. Willow bark mist for a different product. IsolatePhraseWillowBark. run " + stamp,
+              ],
+              "BALM_B64": [
+                  "StabilityBalm page one. Shea occlusive balm. StabilityPhrasePetrolatum. run " + stamp,
+              ],
+          }
+          lines = []
+          for name, pages in files.items():
+              encoded = render(pages)
+              lines.append(f"{name}={encoded}")
+              print(name, "pages", len(pages), "b64", len(encoded))
+          Path(os.environ["RUNNER_TEMP"], "pdfs.env").write_text("\n".join(lines) + "\n")
+          PDF
+          set -a
+          # shellcheck disable=SC1091
+          source "$RUNNER_TEMP/pdfs.env"
+          set +a
           set +e
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" "STAMP='${GITHUB_RUN_ID}' bash -s" <<'EOSSH' | tee "$RUNNER_TEMP/acceptance-log.txt"
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes "$MASTER_HOST" "STAMP='${GITHUB_RUN_ID}' SERUM_B64='${SERUM_B64}' TONER_B64='${TONER_B64}' BALM_B64='${BALM_B64}' bash -s" <<'EOSSH' | tee "$RUNNER_TEMP/acceptance-log.txt"
           set -euo pipefail
           export KUBECONFIG=/home/ubuntu/.kube/config
           pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
           test -n "$pod"
-          kubectl -n chatwithdocs-api exec -i "$pod" -- env STAMP="$STAMP" python - <<'PY'
+          kubectl -n chatwithdocs-api exec -i "$pod" -- env STAMP="$STAMP" SERUM_B64="$SERUM_B64" TONER_B64="$TONER_B64" BALM_B64="$BALM_B64" python - <<'PY'
+          import base64
           import json
           import os
           import re
@@ -229,32 +272,26 @@ jobs:
               "serum": {
                   "title": "citrine-serum-" + STAMP,
                   "filename": "citrine-serum-" + STAMP + ".pdf",
-                  "pages": [
-                      "CitrineSerum page one. Daily niacinamide serum for the face. PageOneNiacinamideAnchor. run " + STAMP,
-                      "CitrineSerum page two. Formula with ceramide and glycerin. PageTwoCeramideAnchor. run " + STAMP,
-                      "CitrineSerum page three. Safety patch test under EU cosmetic regulation 1223. PageThreeClaimAnchor. run " + STAMP,
-                      "CitrineSerum page four. Apply two drops of the serum at night. PageFourUsageAnchor. run " + STAMP,
-                  ],
+                  "pages": 4,
+                  "data": base64.b64decode(os.environ["SERUM_B64"]),
               },
               "toner": {
                   "title": "willow-toner-" + STAMP,
                   "filename": "willow-toner-" + STAMP + ".pdf",
-                  "pages": [
-                      "IsolatedToner page one. Willow bark mist for a different product. IsolatePhraseWillowBark. run " + STAMP,
-                  ],
+                  "pages": 1,
+                  "data": base64.b64decode(os.environ["TONER_B64"]),
               },
               "balm": {
                   "title": "stability-balm-" + STAMP,
                   "filename": "stability-balm-" + STAMP + ".pdf",
-                  "pages": [
-                      "StabilityBalm page one. Shea occlusive balm. StabilityPhrasePetrolatum. run " + STAMP,
-                  ],
+                  "pages": 1,
+                  "data": base64.b64decode(os.environ["BALM_B64"]),
               },
           }
 
           def upload(spec):
-              data = build_pdf(spec["pages"])
-              print("pdf", spec["title"], "pages", len(spec["pages"]), "bytes", len(data))
+              data = spec["data"]
+              print("pdf", spec["title"], "pages", spec["pages"], "bytes", len(data))
               status, raw = request(
                   "POST",
                   API + "/api/v1/documents/uploads",
@@ -415,6 +452,7 @@ jobs:
 
           checks["serum_chunks"] = int(chunks.get("total") or 0) >= 2
           checks["chunk_page_two"] = chunk_on_page(2, "PageTwoCeramideAnchor")
+          checks["chunk_page_three"] = chunk_on_page(3, "PageThreeClaimAnchor")
           checks["chunk_page_four"] = chunk_on_page(4, "PageFourUsageAnchor")
 
           def search(question, document_ids):
