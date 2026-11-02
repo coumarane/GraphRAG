@@ -66,7 +66,7 @@ jobs:
           kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           echo "=== worker log tail ==="
-          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=1500 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | grep -E 'ingest_parser|Native parser|SIGILL|dead_letter|01a19b9a|parser_used|exit_code' | tail -n 40
+          kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=400 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | grep -vE 'File "|site-packages|azure/' | tail -n 50 || true
           pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
           echo "pod=${pod}"
           kubectl -n chatwithdocs-api exec -i "$pod" -- python - <<'PY'
