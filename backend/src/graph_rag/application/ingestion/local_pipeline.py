@@ -227,7 +227,9 @@ def _parse_parser_name(value: str | None) -> str | None:
     if not value:
         return None
     lowered = value.strip().casefold()
-    if lowered in {"", "auto"}:
+    # ``reindex`` is a job scope, not a parser. Treating it as an override
+    # selected an unregistered parser and then walked the native fallbacks.
+    if lowered in {"", "auto", "reindex"}:
         return None
     return lowered
 

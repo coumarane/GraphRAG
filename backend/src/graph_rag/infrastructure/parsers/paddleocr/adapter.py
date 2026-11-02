@@ -15,7 +15,7 @@ from graph_rag.domain.parsing.types import (
 from graph_rag.infrastructure.parsers.base import (
     DEFAULT_PARSE_TIMEOUT_SECONDS,
     require_optional_dependency,
-    run_parser_sync,
+    run_callable_isolated,
 )
 from graph_rag.infrastructure.parsers.convert import dict_to_raw_result
 from graph_rag.infrastructure.parsers.paddleocr.convert import paddleocr_convert
@@ -49,8 +49,11 @@ class PaddleOCRParser:
         if self._uses_default_convert:
             require_optional_dependency("paddleocr", extra_name="parsers-ocr")
         data = source.require_bytes()
-        payload = await run_parser_sync(
-            lambda: self._convert_fn(data, source.filename, options),
+        payload = await run_callable_isolated(
+            self._convert_fn,
+            data,
+            source.filename,
+            options,
             timeout_seconds=DEFAULT_PARSE_TIMEOUT_SECONDS,
         )
         return dict_to_raw_result(self.name, payload)

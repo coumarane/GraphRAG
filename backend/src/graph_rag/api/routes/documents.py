@@ -122,6 +122,7 @@ async def create_upload_session(
             expires_at=accepted.expires_at.isoformat(),
             headers=accepted.headers or {},
         )
+    await container.commit_db()
     return UploadCreateResponse(
         upload_id=accepted.upload_id,
         expires_at=accepted.expires_at,

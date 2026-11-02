@@ -12,16 +12,16 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
-from graph_rag.application.authorization.gate import reserve_quota
-from graph_rag.application.quotas.service import InMemoryQuotaService
+from graph_rag.application.authorization.gate import commit_quota, release_quota, reserve_quota
 from graph_rag.domain.quotas.models import QuotaMetric, QuotaPeriod
 from graph_rag.domain.tenant import TenantContext
 
 
 @asynccontextmanager
 async def quota_guard(
-    quotas: InMemoryQuotaService,
+    quotas: Any,
     tenant: TenantContext,
     *,
     metric: QuotaMetric,
@@ -29,10 +29,14 @@ async def quota_guard(
     period: QuotaPeriod | None = QuotaPeriod.DAY,
 ) -> AsyncIterator[None]:
     """Reserve a quota unit, commit on success, release on failure."""
-    reservation = reserve_quota(quotas, tenant, metric=metric, quantity=quantity, period=period)
+    reservation = await reserve_quota(
+        quotas, tenant, metric=metric, quantity=quantity, period=period
+    )
     try:
         yield
     except Exception:
-        quotas.release(reservation_id=reservation.reservation_id)
+        await release_quota(quotas, reservation_id=reservation.reservation_id)
         raise
-    quotas.commit(reservation_id=reservation.reservation_id, actual_quantity=quantity)
+    await commit_quota(
+        quotas, reservation_id=reservation.reservation_id, actual_quantity=quantity
+    )

@@ -13,7 +13,12 @@ from graph_rag.api.schemas import (
     RetrievalSearchRequest,
     RetrievalSearchResponse,
 )
-from graph_rag.application.authorization.gate import require_action, reserve_quota
+from graph_rag.application.authorization.gate import (
+    commit_quota,
+    release_quota,
+    require_action,
+    reserve_quota,
+)
 from graph_rag.application.usage.context import usage_context
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.conversation.naming import title_from_question
@@ -38,8 +43,9 @@ async def retrieval_search(
     container: ContainerDep,
 ) -> RetrievalSearchResponse:
     require_action(container.require_authorization(), tenant, Action.QUERY_EXECUTE)
-    reservation = reserve_quota(
-        container.require_quotas(),
+    quotas = container.require_quotas()
+    reservation = await reserve_quota(
+        quotas,
         tenant,
         metric=QuotaMetric.QUERIES,
         quantity=1,
@@ -69,12 +75,13 @@ async def retrieval_search(
                     rerank=body.rerank,
                 ),
             )
-        container.require_quotas().commit(
+        await commit_quota(
+            quotas,
             reservation_id=reservation.reservation_id,
             actual_quantity=1,
         )
     except Exception:
-        container.require_quotas().release(reservation_id=reservation.reservation_id)
+        await release_quota(quotas, reservation_id=reservation.reservation_id)
         raise
     await container.commit_db()
     result = outcome.result
@@ -135,8 +142,9 @@ async def query_documents(
     # inject fabricated prior turns straight into entity-pinning/clarification
     # prompt construction, and would silently diverge from what's persisted.
 
-    reservation = reserve_quota(
-        container.require_quotas(),
+    quotas = container.require_quotas()
+    reservation = await reserve_quota(
+        quotas,
         tenant,
         metric=QuotaMetric.QUERIES,
         quantity=1,
@@ -186,12 +194,13 @@ async def query_documents(
                     ),
                 )
                 response = outcome.response
-        container.require_quotas().commit(
+        await commit_quota(
+            quotas,
             reservation_id=reservation.reservation_id,
             actual_quantity=1,
         )
     except Exception:
-        container.require_quotas().release(reservation_id=reservation.reservation_id)
+        await release_quota(quotas, reservation_id=reservation.reservation_id)
         raise
 
     next_pending = conversation.pending_expand_question

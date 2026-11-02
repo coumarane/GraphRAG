@@ -9,6 +9,10 @@ from graph_rag.domain.parsing.types import (
     ParseSource,
     RawParserResult,
 )
+from graph_rag.infrastructure.parsers.base import (
+    DEFAULT_PARSE_TIMEOUT_SECONDS,
+    run_callable_isolated,
+)
 from graph_rag.infrastructure.parsers.pdfium.extractor import extract_pdf_raw, extract_text_raw
 from graph_rag.infrastructure.parsers.pdfium.inspector import PdfiumInspector
 from graph_rag.shared.exceptions import ValidationError
@@ -40,7 +44,13 @@ class PdfiumParser:
         mime = (source.mime_type or "").lower()
         filename = source.filename
         if mime == "application/pdf" or filename.lower().endswith(".pdf"):
-            return extract_pdf_raw(data, filename=filename, max_pages=self._max_pages)
+            return await run_callable_isolated(
+                extract_pdf_raw,
+                data,
+                filename=filename,
+                max_pages=self._max_pages,
+                timeout_seconds=DEFAULT_PARSE_TIMEOUT_SECONDS,
+            )
         if mime.startswith("text/") or filename.lower().endswith(
             (".txt", ".md", ".markdown", ".csv")
         ):

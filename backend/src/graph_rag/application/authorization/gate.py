@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+from typing import Any
 from uuid import UUID
 
 from graph_rag.application.authorization.filters import document_is_authorized
@@ -10,7 +12,6 @@ from graph_rag.application.authorization.service import (
     resource_from_document,
     subject_from_tenant,
 )
-from graph_rag.application.quotas.service import InMemoryQuotaService
 from graph_rag.domain.authorization.models import Action
 from graph_rag.domain.ingestion.records import DocumentRecord
 from graph_rag.domain.quotas.models import QuotaMetric, QuotaPeriod, QuotaReservation
@@ -44,21 +45,49 @@ def require_action(
     authz.require(subject=subject, action=action, resource=resource)
 
 
-def reserve_quota(
-    quotas: InMemoryQuotaService,
+async def reserve_quota(
+    quotas: Any,
     tenant: TenantContext,
     *,
     metric: QuotaMetric,
     quantity: int,
     period: QuotaPeriod | None = None,
 ) -> QuotaReservation:
-    return quotas.reserve(
+    """Reserve quota on either the in-memory or Postgres service.
+
+    ``PostgresQuotaService.reserve`` is a coroutine. Calling it without
+    awaiting made ``reservation.reservation_id`` raise AttributeError after a
+    successful search and turned the HTTP response into a 500.
+    """
+    result = quotas.reserve(
         tenant_id=tenant.tenant_id,
         user_id=tenant.user_id,
         metric=metric,
         quantity=quantity,
         period=period,
     )
+    if inspect.isawaitable(result):
+        result = await result
+    if not isinstance(result, QuotaReservation):
+        raise TypeError("Quota reserve did not return a reservation")
+    return result
+
+
+async def commit_quota(
+    quotas: Any,
+    *,
+    reservation_id: UUID,
+    actual_quantity: int,
+) -> None:
+    result = quotas.commit(reservation_id=reservation_id, actual_quantity=actual_quantity)
+    if inspect.isawaitable(result):
+        await result
+
+
+async def release_quota(quotas: Any, *, reservation_id: UUID) -> None:
+    result = quotas.release(reservation_id=reservation_id)
+    if inspect.isawaitable(result):
+        await result
 
 
 def ensure_document_read(
