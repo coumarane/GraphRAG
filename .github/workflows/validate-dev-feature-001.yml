@@ -545,7 +545,7 @@ jobs:
           python3 - << 'PDF'
           import os
           from pathlib import Path
-          phrase = "Feature001CitrineHarbor citation marker"
+          phrase = "Feature001CitrineHarbor citation marker citrine-002"
           content = f"BT /F1 18 Tf 72 720 Td ({phrase}) Tj ET\n".encode()
           objects = [
               b"<< /Type /Catalog /Pages 2 0 R >>",
@@ -603,6 +603,12 @@ jobs:
           page.on("requestfailed", (request) => {
             failedRequests.push(`${request.method()} ${redact(request.url())} ${request.failure()?.errorText || ""}`);
           });
+          page.on("response", (response) => {
+            const path = new URL(response.url()).pathname;
+            if (!path.includes("/uploads")) return;
+            const kind = path.endsWith("/complete") ? "complete" : path.endsWith("/uploads") ? "create" : "blob";
+            console.log("browser_upload_http", response.request().method(), response.status(), kind);
+          });
 
           async function shot(name) {
             await page.screenshot({ path: `${shotDir}/${name}.png`, fullPage: true });
@@ -648,7 +654,7 @@ jobs:
 
             await page.goto("https://chatwithdocs.org/upload", { waitUntil: "domcontentloaded" });
             await page.locator("input[type=file]").setInputFiles(pdfPath);
-            await page.getByLabel("Title (optional)").fill("citrine-001");
+            await page.getByLabel("Title (optional)").fill("citrine-002");
             const putPromise = page.waitForRequest((request) => request.method() === "PUT", { timeout: 30000 });
             const putResponsePromise = page.waitForResponse(
               (response) => response.request().method() === "PUT",
@@ -686,11 +692,18 @@ jobs:
 
             await page.goto("https://chatwithdocs.org/documents", { waitUntil: "domcontentloaded" });
             await page.getByRole("heading", { name: "Documents" }).waitFor();
-            console.log("browser_accept_title_visible", (await page.getByText("citrine-001").count()) > 0);
+            console.log("browser_accept_title_visible", (await page.getByText("citrine-002").count()) > 0);
             console.log("browser_failure_title_visible", (await page.getByText("failure-001").count()) > 0);
             await shot("documents-after");
           } catch (error) {
             console.log("browser_exception", redact(error && error.message ? error.message : error));
+            try {
+              const text = await page.locator("body").innerText();
+              const line = text.split("\n").map((item) => item.trim()).find((item) => /already uploaded|could not|unsupported|invalid|error|failed|status /i.test(item));
+              console.log("browser_exception_line", redact(line || "none"));
+            } catch {
+              console.log("browser_exception_line", "unreadable");
+            }
             try {
               await shot("exception");
             } catch {
