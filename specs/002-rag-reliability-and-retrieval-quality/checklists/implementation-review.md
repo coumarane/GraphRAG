@@ -1,6 +1,6 @@
 # Implementation review: RAG Reliability and Retrieval Quality
 
-**Updated**: 2 November 2026, 16:24 Europe/Paris
+**Updated**: 2 November 2026, 18:23 Europe/Paris
 
 **Branch**: `cursor/002-rag-reliability-and-retrieval-quality-7784`
 
@@ -12,14 +12,68 @@
 
 ## Recommendation
 
-**NO-GO** for merging pull request #44, building an image, promoting a digest, or dispatching a DEV workflow.
+**NO-GO** for merging pull request #44, for promoting an image, for changing a running DEV digest, and for dispatching DEV acceptance.
 
-The nested-fusion score bug, the heartbeat persist failure, and the missing Redis CI job are fixed. Two acceptance items stay open because their prerequisites are not met:
+The Feature 002 code requirements are implemented on this branch, with two limits that stay explicit: the lexical score is not a cosine, and SC-001's automated trial is one blocked sleep rather than three parser runs. T030 and the DEV browser journey are prepared and have not been executed. Image build dispatch did not start.
 
-- T030. `.github/workflows/accept-dev-feature-002.yml` is on this branch only. It has not been dispatched and it is not on the default branch.
-- Live DEV browser acceptance (FR-017, SC-006). The journey fails closed without DEV address and credentials. It has not been run. The serving web digest is not this feature's web image.
+## Final requirement review
 
-SC-008 stays failed while those two items are open.
+Reviewed 2 November 2026 against `spec.md` FR-001–FR-021, NFR-001–NFR-006, and SC-001–SC-009. Serving digests and `infra/dev/release-gate.json` were not edited. `rollback_in_effect` remains `false`. Promotion switches remain `false`.
+
+| Requirement | Result |
+| --- | --- |
+| FR-001, FR-003, NFR-001 | Implemented. `/health/live` is served on the `worker-health` thread. Readiness stays on the ingestion loop. The probe timeout stays 5 seconds. |
+| FR-002, SC-001 | The liveness mechanism is implemented. The automated trial is one `time.sleep(6)` with live probes, not three CPU-heavy parser runs. |
+| FR-004, FR-020, NFR-005 | Implemented. The upload session, direct object write, and isolated parser stay. No second queue, no Celery path, and no new Alembic revision. |
+| FR-005, FR-006, FR-007, SC-002, NFR-002 | Implemented. Citations keep the stored page range. The four-page parent is not collapsed to page 1. |
+| FR-008, FR-009, FR-010, SC-003, NFR-003 | Implemented for assigned retriever scores. Nested fusion keeps `source_score_*` and puts the rank contribution on `score` and `rrf`. The floor runs before parent and neighbor expansion. Search and the pinned answer return `selection_has_no_supporting_evidence` when nothing remains. |
+| FR-011, FR-012, FR-013, SC-004 | Implemented. Vector, lexical, and structural reads stay inside the tenant and the selected documents. A path request returns a `structural` or `entity` path, or one of `graph_not_stored`, `graph_no_entity_match`, or `graph_no_structural_path`. |
+| FR-014, FR-015, FR-016, SC-005 | Implemented. A skip does not set the run warning. `semantic_graph_failed` is on the graph stage. Community summarization stays skipped. |
+| FR-017, FR-018, SC-006 | The browser spec and fail-closed DEV target are implemented. The DEV upload has not been run. |
+| FR-019, SC-007 | Local release-identity and heredoc checks pass. The acceptance workflow's last step is the product-check pytest and it does not promote. T030 is prepared below and is not executed. |
+| FR-021, SC-009, NFR-006 | Implemented. The heartbeat uses a separate session, is capped at 60 seconds, and a persist error does not leave a finished run unacknowledged. |
+| SC-008 | Not releasable. SC-006 has not been run, and no image from this feature is serving. |
+
+## Lexical-score limitation
+
+This limitation stays open and is not a reason to change the 0.12 floor in this phase. `InMemoryLexicalSearchStore` ranks with a term-frequency score. Hybrid fusion stores that score as a qualification score. A passage whose dense score is below 0.12 can still pass the floor when the lexical score is at least 0.12. The regression tests assign both scores, so they do not measure a live lexical index. `quickstart.md` records the same limit.
+
+## Image build and scan
+
+The existing workflows are `build-and-push-api-image.yml`, `build-and-push-worker-image.yml`, and `build-and-push-web-image.yml`. Each builds, pushes a tag equal to the commit SHA, and runs Trivy at CRITICAL and HIGH. The GitOps job runs only when `github.ref` is `refs/heads/dev`. On `dev`, `check-release-gate.sh` still reads `promote.<component> == false`, so a closed gate does not write `infra/k8s`.
+
+Dispatch from this environment was refused:
+
+```text
+HTTP 403: Resource not accessible by integration
+POST /repos/coumarane/graphrag/actions/workflows/333154082/dispatches
+```
+
+No API, worker, or web image was built. No new digest exists. The running DEV digests are unchanged:
+
+| Component | Serving digest |
+| --- | --- |
+| API | `sha256:5abf5b69c59e7f1607d99ca87bfb6c7ff2e7ac26d28a57c644a3e6d2f06711a2` |
+| Worker | `sha256:17eb0f6f6b57e218ae4d69ec568ece20c1e4573e2057806c0cb0cd56d6f4f1ea` |
+| Web | `sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84` |
+
+Approval is required before these commands run. They build and scan. They do not promote, because the ref is not `dev` and the gate is closed:
+
+```bash
+gh workflow run build-and-push-api-image.yml --ref cursor/002-rag-reliability-and-retrieval-quality-7784
+gh workflow run build-and-push-worker-image.yml --ref cursor/002-rag-reliability-and-retrieval-quality-7784 -f rebuild_base=false
+gh workflow run build-and-push-web-image.yml --ref cursor/002-rag-reliability-and-retrieval-quality-7784
+```
+
+## T030 and browser acceptance, prepared and not executed
+
+T030 stays unchecked. The workflow file was not copied onto `origin/main` and `accept-dev-feature-002` was not dispatched.
+
+The workflow now has a `git_ref` input. A later dispatch checks out that ref, generates the four-page PDF, and runs the product checks, including the nested-fusion test. A pull request run checks out the pull request. The job does not promote.
+
+`cursor/t030-accept-workflow-only-7784` contains only that workflow file on top of `origin/main`. It is not merged and it has no pull request. Merging it, or dispatching it, waits for approval.
+
+The DEV browser command in `quickstart.md` is the prepared acceptance command. It was not run.
 
 ## Score propagation
 
@@ -90,9 +144,10 @@ Recorded 2 November 2026, 16:24 Europe/Paris.
 
 | Blocker | Why it stays open |
 | --- | --- |
-| T030 | The acceptance workflow has not been copied to the default branch and has not been dispatched. Copying it is a later workflow-only change. |
-| Live DEV browser acceptance | FR-017 and SC-006 run after this feature's web image is deployed. Today's serving web digest `sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84` is not that image. |
-| SC-008 | The feature is not releasable while SC-006 is open. |
+| Image digests | Build dispatch returned HTTP 403. No new API, worker, or web digest was produced. |
+| T030 | Prepared on `cursor/t030-accept-workflow-only-7784`. Not merged to the default branch and not dispatched. |
+| Live DEV browser acceptance | The command is documented. It has not been run. Today's web digest is not this feature's image. |
+| SC-008 | The feature is not releasable while SC-006 is open and no feature image is serving. |
 
 ## Remaining technical debt
 

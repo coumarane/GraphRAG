@@ -2,6 +2,12 @@ name: Accept Feature 002
 
 on:
   workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Ref to check. Does not promote an image or change a DEV digest."
+        required: false
+        default: "cursor/002-rag-reliability-and-retrieval-quality-7784"
+        type: string
   pull_request:
     paths:
       - ".github/workflows/accept-dev-feature-002.yml"
@@ -19,7 +25,11 @@ jobs:
     name: Feature 002 product check
     runs-on: ubuntu-latest
     steps:
+      # workflow_dispatch reads this file from the default branch and checks out
+      # git_ref. A pull request checks out that pull request. Neither path promotes.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.sha }}
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
@@ -86,6 +96,7 @@ jobs:
             tests/unit/test_worker_heartbeat.py \
             tests/unit/test_citation_page_range.py \
             tests/unit/test_retrieval_evidence_floor.py \
+            tests/unit/test_nested_fusion_evidence_floor.py \
             tests/unit/test_structural_graph_paths.py \
             tests/unit/test_ingestion_state_machine.py \
             tests/unit/test_graph_stage_warning.py \

@@ -57,6 +57,12 @@ npx playwright test e2e/rag-citation.spec.ts
 
 If `E2E_TARGET=dev` and any of those values is missing, the process exits before login. It does not use `admin@example.com` or `change-me-now-12`. The output does not print the password or a presigned URL.
 
+This DEV command is prepared and has not been run. It waits until this feature's web image is the image serving DEV. Running it against `sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84` is not acceptance.
+
+## Lexical score limitation
+
+The evidence floor reads the original retriever score, including a lexical score stored as `source_score_*`. The in-memory lexical rank is a term-frequency score, not a 0–1 cosine. A hybrid passage can therefore clear 0.12 because the lexical score is high while the dense score is below 0.12. The assigned-score tests set both scores explicitly. They do not measure a live lexical index. Changing that scale is a later evaluation change, not part of this promotion.
+
 ## Release identity and workflow shape
 
 From `backend/`:
@@ -67,9 +73,15 @@ uv run pytest tests/unit/test_dev_cors_policy.py tests/unit/test_release_identit
 
 Promotion switches stay false. Serving digests and rollback digests both exist. They differ while `rollback_in_effect` is false.
 
+## Prepared acceptance workflow
+
+`.github/workflows/accept-dev-feature-002.yml` is ready to be copied, by itself, onto the default branch. That copy is T030. It has not been done. The workflow has not been dispatched.
+
+On a later dispatch it checks out `git_ref`, which defaults to `cursor/002-rag-reliability-and-retrieval-quality-7784`, generates a four-page PDF, and runs the product-check pytest. The job does not promote an image and does not edit a kustomization digest. A pull request run checks out the pull request instead.
+
 ## What this quickstart does not do
 
-- It does not dispatch `promote-dev-image`.
+- It does not dispatch `promote-dev-image` or `accept-dev-feature-002`.
 - It does not change `infra/k8s/*/kustomization.yaml`.
 - It does not run Alembic.
 - It does not call the public API from a runner that receives Cloudflare error 1010 and then report that call as a browser success.
