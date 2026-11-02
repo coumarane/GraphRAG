@@ -683,7 +683,7 @@ jobs:
           documents_ok = "acceptance_documents true" in result
           if not (stable and documents_ok):
               raise SystemExit(1)
-          PY
+          CHK
 
       - name: Remove login material
         if: always()
