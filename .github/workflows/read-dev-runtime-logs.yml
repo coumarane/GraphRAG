@@ -120,7 +120,7 @@ jobs:
           print("search_code", payload.get("code"))
           print("search_error_type", (payload.get("metadata") or {}).get("error_type"))
           print("search_evidence", len(payload.get("evidence") or []))
-          DOC = "01a19b9a-2e5a-77c9-8be5-d3755dbc9fc3"
+          DOC = "01a19bcc-5666-7174-8c64-d751bfa710f7"
           status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC, headers=auth)
           doc = json.loads(raw) if status == 200 else {}
           print(
