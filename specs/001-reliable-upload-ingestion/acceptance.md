@@ -118,6 +118,10 @@ Read `stages[].status` together with the warning:
 7. The rollback digests in `infra/dev/release-gate.json` are not the images Argo CD is running. They remain the rollback target. The gate flags stay false, so a later push does not move the serving digests.
 8. Community summarization, unrequested document intelligence, table and equation enrichment, context build, and entity resolution stay intentionally skipped on this path.
 
+## Follow-on
+
+The open gaps in section 5 are specified as feature `002-rag-reliability-and-retrieval-quality`. That feature does not replace this upload path. It is not deployed by this acceptance record.
+
 ## 6. What stayed in place
 
 - No image build and no promotion during this review.

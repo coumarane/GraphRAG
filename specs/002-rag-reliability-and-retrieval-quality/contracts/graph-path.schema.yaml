@@ -1,0 +1,39 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: GraphPathResult
+$description: >
+  Additive reason for an empty graph_paths list on search and query when
+  include_graph_paths is true. Existing GraphPath fields stay.
+
+type: object
+properties:
+  include_graph_paths: {type: boolean}
+  graph_paths:
+    type: array
+    items:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items: {type: string}
+        relationships:
+          type: array
+          items: {type: string}
+        supporting_citations:
+          type: array
+          items: {type: string}
+        metadata:
+          type: object
+          properties:
+            path_kind:
+              enum: [structural, entity]
+  warnings:
+    type: array
+    items: {type: string}
+
+rules:
+  - When include_graph_paths is false, graph_paths may be empty and no graph reason is required.
+  - When include_graph_paths is true and graph_paths is non-empty, every path has metadata.path_kind structural or entity, and every node belongs to the caller organization and the selected documents.
+  - When include_graph_paths is true and graph_paths is empty, warnings contain exactly one of graph_not_stored, graph_no_entity_match, or graph_no_structural_path.
+  - A structural path may connect the document, its version, and its passages without an entity name.
+  - graph_not_stored is the reason when the graph step was skipped because the graph store was disabled.
+  - A finished INDEX_GRAPH stage with an empty path and none of those reasons violates this contract.
