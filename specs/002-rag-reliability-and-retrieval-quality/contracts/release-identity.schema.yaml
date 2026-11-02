@@ -30,4 +30,5 @@ rules:
   - A promotion changes serving_digests for that part and writes the previous serving digest into rollback_digests. It does not write the new digest into rollback_digests.
   - When rollback_in_effect is false, each serving digest differs from that part's rollback digest.
   - When rollback_in_effect is true, serving digests equal rollback digests.
-  - This feature's specification change does not modify either digest and does not set rollback_in_effect.
+  - This specification change does not modify either digest, does not edit the gate file, and does not set rollback_in_effect. Task T027 adds the field later without changing promote or rollback_digests.
+  - A test asserts inequality of serving and rollback while rollback_in_effect is false. It does not hardcode a serving digest as a permanent expected value.

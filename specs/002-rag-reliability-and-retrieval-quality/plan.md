@@ -6,7 +6,7 @@
 
 ## Summary
 
-Keep Feature 001's upload session, object write, completion, and parser child. Make the worker answer liveness while a parse holds the ingestion lock. Stop rewriting a multipage parent citation onto its first page. Apply the existing 0.12 retrieval-score floor to search and to answers, and treat a missing distinctive phrase as no evidence. Return a structural graph path or an explicit reason after graph indexing. Ignore optional skip reasons when deriving run status and the latest warning. Add a DEV browser journey that uses a generated PDF, and make serving digests, rollback digests, and the acceptance job result agree.
+Keep Feature 001's upload session, object write, completion, and parser child. Answer liveness from an acceptor that is not the ingestion event loop, including while synchronous work occupies that loop. Persist the run heartbeat during a long stage from a session that is not the pipeline session. Stop rewriting a multipage parent citation onto its first page, and keep the page-exact child beside the parent. Apply the existing 0.12 retriever-score floor to search and to answers before parent or neighbor expansion. A fused rank score and a one-list rescaling are not that score. An above-floor passage may be returned without a verbatim copy of the question. Return a structural graph path limited to the selected documents, or an explicit reason, after graph indexing. Treat step status as authoritative so optional skip reasons do not warn the run, and record a semantic graph failure on the graph step. Add a DEV browser journey for this feature's web image, using a generated PDF. Make serving digests, rollback digests, and the acceptance job result agree, and guard the historical mismatched heredoc with a fixture.
 
 This plan does not build an image, change a kustomization digest, or dispatch a promotion.
 
@@ -24,7 +24,7 @@ This plan does not build an image, change a kustomization digest, or dispatch a 
 
 **Project Type**: Existing web application (`backend/` + `frontend/` + `infra/k8s/` + `.github/workflows/`)
 
-**Performance Goals**: Liveness responds within 5 seconds during a parse. Page citations on the four-page fixture match the page that contains the sentence. An unsupported pinned question returns no evidence.
+**Performance Goals**: Liveness responds within 5 seconds during a parse and during synchronous work longer than 5 seconds. A stage longer than 120 seconds keeps a persisted heartbeat newer than 60 seconds. Page citations on the four-page fixture match the page that contains the sentence. A pinned question whose passages are all below 0.12 returns no evidence.
 
 **Constraints**: Do not replace the upload architecture. Do not add Celery. Do not change PDFium, Torch, or Marker versions. Do not enable community summarization to clear a warning. Do not open the release-gate promotion switches. Do not print secrets. Repository dispatch executes workflow YAML from the default branch.
 
@@ -62,6 +62,7 @@ specs/002-rag-reliability-and-retrieval-quality/
 │   ├── ingestion-warning.schema.yaml
 │   └── release-identity.schema.yaml
 ├── checklists/requirements.md
+├── checklists/analysis.md
 └── tasks.md
 ```
 
@@ -69,15 +70,16 @@ specs/002-rag-reliability-and-retrieval-quality/
 
 ```text
 backend/src/graph_rag/
-├── infrastructure/workers/main.py          # liveness off the ingestion lock
+├── infrastructure/workers/main.py          # liveness off the ingestion loop
+├── infrastructure/workers/ingestion_worker.py  # persisted heartbeat, separate session
 ├── domain/citations/registry.py            # page range of the quoted passage
 ├── domain/retrieval/fusion.py              # normalized score stays a component
 ├── domain/generation/grounding_policy.py   # existing 0.12 floor
 ├── domain/policies/gate.py                 # empty evidence blocks pinned answers
-├── application/retrieval/retrieve.py       # floor, phrase absence, structural paths
+├── application/retrieval/retrieve.py       # floor before expansion, structural paths
 ├── infrastructure/persistence/neo4j/       # tenant-scoped structural neighborhood
 ├── domain/ingestion/state_machine.py       # skip text is not a run warning
-└── application/ingestion/                  # Feature 001 pipeline, unchanged upload
+└── application/ingestion/                  # unchanged upload; graph step records semantic_graph_failed
 
 backend/tests/unit/                         # liveness, citation, floor, graph, warnings
 backend/tests/evaluation/                   # four-page fixture quality check
@@ -94,31 +96,33 @@ infra/dev/release-gate.json                 # rollback identities; switches stay
 
 ### Worker liveness
 
-`/health/live` today is an asyncio callback on the loop that runs `process_one` while holding `db_lock`. `/health/ready` may keep using that loop because it checks dependencies. Liveness moves to a handler that does not take `db_lock` and does not wait for the parse child. The existing `run_callable_isolated` child stays the parser boundary.
+`/health/live` today is an asyncio callback on the loop that runs `process_one`. That call holds `db_lock`, but a lock held across an await does not stop the health callback. `run_callable_isolated` already waits on a child process from a worker thread, so a healthy isolated parse does not by itself block the loop. The observed timeout means the loop was not scheduling the probe. Liveness moves to an acceptor that runs even when synchronous work blocks the ingestion loop. Dropping `db_lock` while remaining on that loop is not sufficient. A unit test that only holds the lock across an await does not prove the fix. The test occupies the loop with synchronous work longer than 5 seconds and still receives `/health/live` within 5 seconds.
 
-The probe in `infra/k8s/worker/deployment.yaml` keeps a 5-second timeout. Lengthening the timeout is not the fix. SIGTERM from an operator remains a clean stop. A healthy parse must not need that signal.
+`/health/ready` stays on the loop because it checks dependencies. The probe in `infra/k8s/worker/deployment.yaml` keeps a 5-second timeout. Lengthening the timeout is not the fix. SIGTERM from a probe and from an operator are the same signal. Operator stop remains a clean stop. A healthy parse must not need that signal, and the product does not distinguish the two after the fact.
+
+`IngestionWorker._heartbeat_loop` updates the in-memory run about every 15 seconds and does not persist, because it shares the pipeline `AsyncSession`. Member progress stalls after 120 seconds without a persisted heartbeat. Reclaim uses a 90-second stale window. The persisted heartbeat is refreshed at least every 60 seconds during a running stage, from a session that is not the pipeline session. The Redis stream, consumer group, acknowledgement, and parser child stay.
 
 ### Citation provenance
 
-`evidence_to_citation` currently sets `page_end = page_start` when `page_end - page_start >= 3`. Remove that collapse. Parent and child passages already store `page_start` and `page_end` in `HierarchicalChunker`. Search and query both go through this citation builder for answers; search evidence already returns the stored range. After the change, both surfaces return that stored range. A citation whose text occurs only on a later page must include that page.
+`evidence_to_citation` currently sets `page_end = page_start` when `page_end - page_start >= 3`. Remove that collapse. Parent and child passages already store `page_start` and `page_end` in `HierarchicalChunker`. Search evidence already returns the stored range. After the change, the answer citation uses that stored range too. A page-exact child remains beside its parent. A neighbor added by expansion keeps its own pages. A multipage parent's element identifier may still be the first element. That is out of scope.
 
 ### Evidence floor
 
-`assess_evidence` already uses `min_top_score` 0.12 on `RetrievedEvidence.score`. `apply_normalized_component` stores min-max in `score_components` and does not replace `score`. Search never calls the floor, so a pinned document always yields `top_k` hits. Retrieval drops candidates below 0.12 before assembly, and a pinned question whose distinctive phrase is absent from the selected passages returns no evidence even when a residual score remains. The query gate already blocks an empty pinned list. Search returns the same empty list plus a stable warning. RRF may still replace `score` with a rank score; the floor compares the pre-fusion retrieval score kept in `score_components`, not the rank score and not the min-max of a one-item list.
+`assess_evidence` already uses `min_top_score` 0.12 on `RetrievedEvidence.score`. `apply_normalized_component` stores min-max in `score_components` and does not replace `score`. A constant list, including one score, normalizes to 1.0. `reciprocal_rank_fusion` replaces `score` with `1/(60+rank)`, so rank 1 is about 0.016, and stores the retriever score as `source_score_{list_index}`. Search never calls the floor, so a pinned document always yields `top_k` hits. Retrieval drops candidates whose retriever score is below 0.12 before `expand_parents_and_neighbors`, then before assembly. Applying the floor to the rank score would make every fused result no-evidence. Applying it after expansion would let a below-floor child become a parent that looks kept. When none remain, search and the pinned answer return an empty list and `selection_has_no_supporting_evidence`. An above-floor passage may be returned without a verbatim copy of the question. Tests assign scores. The DEV toner hit's cosine was not logged. The query gate already blocks an empty pinned list.
 
 ### Graph paths
 
-`stage_extract_graph` upserts a semantic graph or, on failure and when semantic extraction is off, `StructuralGraphBuilder`. `_local` calls `resolve_entities` and otherwise returns dense hits with no path. When `include_graph_paths` is true and indexing stored nodes for the selected document, retrieval asks the graph store for a structural neighborhood of those document and chunk nodes. Entity neighborhood stays as it is when entities resolve. If neither walk returns nodes, the response warning is one of `graph_not_stored`, `graph_no_entity_match`, or `graph_no_structural_path`. An empty `graph_paths` list without one of those reasons fails the contract. Every query keeps the tenant parameter already required by the Neo4j adapter.
+`stage_extract_graph` upserts a semantic graph or, on failure and when semantic extraction is off, `StructuralGraphBuilder`. A semantic failure currently appends `semantic_graph_failed` to the raw warning list and still returns completed. This feature returns completed with warnings on that graph step, with that text as the step warning. `_local` calls `resolve_entities` and otherwise returns dense hits with no path. When `include_graph_paths` is true and indexing stored nodes for the selected documents, retrieval asks the graph store for a structural neighborhood limited to the caller's organization and those documents. Entity neighborhood stays when entities resolve, and a shared entity does not add another selected-out document's passages. If neither walk returns nodes, the response warning is exactly one of `graph_not_stored`, `graph_no_entity_match`, or `graph_no_structural_path`. An empty `graph_paths` list without one of those reasons fails the contract. `test_local_graph_retrieval_respects_document_scope` and `test_local_graph_retrieval_returns_mentioned_chunks` stay green.
 
 ### Warnings
 
-`mark_skipped` may keep the reason on the stage. `_has_warning_stages` and `progress()` ignore a warning whose stage status is `skipped`. `latest_warning` is the latest stage whose status is `completed_with_warnings`. Run status `completed_with_warnings` follows that set only. The existing unit test that expects a skip reason plus a parse warning to warn still expects a warning because of the parse warning; a new test covers a skip alone.
+`mark_skipped` may keep the reason on the stage. `_has_warning_stages` and `progress()` ignore a warning whose stage status is `skipped`. `latest_warning` is the latest stage whose status is `completed_with_warnings`. Run status `completed_with_warnings` follows that set only. Step status is authoritative. Prefixes are examples, not a closed allowlist. The existing unit test that expects a skip reason plus a parse warning to warn still expects a warning because of the parse warning; a new test covers a skip alone. A semantic graph failure is genuine because the graph step is completed with warnings, not because its prefix is listed.
 
 ### Browser journey and acceptance
 
-Playwright reads `E2E_BASE_URL`. When `E2E_TARGET=dev`, missing URL or credentials fail the process, and the built-in `admin@example.com` / `change-me-now-12` pair is not used. The PDF is generated in the test process with a standard PDF library. The journey asserts page 2 and document isolation. The job that runs it uses a runner that can open the DEV origin. Cloudflare error 1010 on a hosted runner is a failed job.
+Playwright reads `E2E_BASE_URL`. When `E2E_TARGET=dev`, missing URL or credentials fail the process, and the built-in `admin@example.com` / `change-me-now-12` pair is not used. The PDF is generated in the test process with a standard PDF library. The journey asserts page 2 and document isolation. That journey is the check after this feature's web image is deployed. The web digest serving on 2 November 2026, `sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84`, is not that image. The job that runs it uses a runner that can open the DEV origin. Cloudflare error 1010 on a hosted runner is a failed job. An in-cluster API call is not a browser success.
 
-The acceptance workflow's Python blocks use matching openers and closers. A repository unit test parses those workflows. The job exits with the product-check status. Because repository dispatch reads the default branch, the reviewed workflow file is copied there as a workflow-only change and is not a feature merge and not an image promotion.
+The acceptance workflow's Python blocks use matching openers and closers. `accept-dev-feature-001.yml` is on the default branch and is not on this branch, so a scan of this branch cannot see the historical `CHK` opener closed with `PY`. The unit test includes that mismatched fixture and fails it. The new workflow exits with the product-check status. Because repository dispatch reads the default branch, the reviewed workflow file is copied there later as a workflow-only change and is not a feature merge and not an image promotion. This specification does not perform that copy.
 
 ### Release identity
 

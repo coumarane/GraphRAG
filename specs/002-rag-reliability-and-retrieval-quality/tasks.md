@@ -24,16 +24,17 @@
 
 ## Phase 2: User Story 1 - Parsing stays up (Priority: P1)
 
-**Goal**: Liveness answers within 5 seconds while a parse holds the worker, and a finished parse does not restart it.
+**Goal**: Liveness answers within 5 seconds while synchronous work occupies the ingestion loop, a long stage keeps a persisted heartbeat, and a finished parse does not restart the worker.
 
-**Independent Test**: `uv run pytest tests/unit/test_worker_liveness.py -q`
+**Independent Test**: `uv run pytest tests/unit/test_worker_liveness.py tests/unit/test_worker_heartbeat.py -q`
 
-- [ ] T003 [US1] Write `backend/tests/unit/test_worker_liveness.py` so a held processing tick still gets `/health/live` within 5 seconds, and an exited server does not answer
-- [ ] T004 [US1] Serve `/health/live` in `backend/src/graph_rag/infrastructure/workers/main.py` without taking `db_lock` and without waiting on `process_one`
+- [ ] T003 [US1] Write `backend/tests/unit/test_worker_liveness.py` so synchronous work longer than 5 seconds still gets `/health/live` within 5 seconds, and an exited server does not answer. An await-under-lock test is not sufficient and must not be the only case
+- [ ] T004 [US1] Serve `/health/live` from an acceptor that is not the ingestion event loop in `backend/src/graph_rag/infrastructure/workers/main.py`. Dropping `db_lock` while remaining on that loop is not this task. Do not add Celery or change the Redis stream
 - [ ] T005 [US1] Keep `/health/ready` on the dependency checks in `backend/src/graph_rag/infrastructure/workers/main.py`
 - [ ] T006 [US1] Leave the 5-second liveness timeout in `infra/k8s/worker/deployment.yaml` and state in a comment there that a longer timeout is not the fix
+- [ ] T034 [US1] Write `backend/tests/unit/test_worker_heartbeat.py` and persist `heartbeat_at` at least every 60 seconds during a running stage from a session that is not the pipeline `AsyncSession` in `backend/src/graph_rag/infrastructure/workers/ingestion_worker.py`. A stage longer than 120 seconds is not stalled and is not reclaimed while that worker is alive. Do not write the heartbeat through the locked pipeline session
 
-**Checkpoint**: SC-001 passes locally. No image is built.
+**Checkpoint**: SC-001 and SC-009 pass locally. No image is built.
 
 ---
 
@@ -43,7 +44,7 @@
 
 **Independent Test**: `uv run pytest tests/unit/test_citation_page_range.py -q`
 
-- [ ] T007 [US2] Write `backend/tests/unit/test_citation_page_range.py` for a parent spanning pages 1–4 and children on pages 2, 3, and 4, asserting the citation range includes the page that contains the quoted sentence
+- [ ] T007 [US2] Write `backend/tests/unit/test_citation_page_range.py` for a parent spanning pages 1–4 and children on pages 2, 3, and 4. The parent citation still covers the quoted page, the page-exact child remains beside the parent, and a neighbor keeps its own pages
 - [ ] T008 [US2] Remove the `page_end - page_start >= 3` collapse in `backend/src/graph_rag/domain/citations/registry.py`
 - [ ] T009 [US2] Assert in the same test that search evidence and the citation built from that evidence share `document_id`, `page_start`, and `page_end`
 
@@ -53,13 +54,13 @@
 
 ## Phase 4: User Story 3 - An unsupported question returns no evidence (Priority: P1)
 
-**Goal**: Search and answer share the 0.12 retrieval-score floor and return no evidence when the distinctive phrase is absent.
+**Goal**: Search and answer share the 0.12 retriever-score floor, applied before expansion, and return no evidence when every selected passage is below it.
 
 **Independent Test**: `uv run pytest tests/unit/test_retrieval_evidence_floor.py -q`
 
-- [ ] T010 [P] [US3] Write `backend/tests/unit/test_retrieval_evidence_floor.py` covering a below-floor score, a one-item min-max of 1.0 that must not pass the floor, a missing distinctive phrase inside a pinned document, a hit inside the document that contains the phrase, and a second tenant receiving nothing
-- [ ] T011 [US3] Keep the retrieval score available for the floor in `backend/src/graph_rag/domain/retrieval/fusion.py` when reciprocal-rank fusion replaces `score`
-- [ ] T012 [US3] Filter below-floor passages and phrase misses in `backend/src/graph_rag/application/retrieval/retrieve.py` before assembly, using 0.12 from `backend/src/graph_rag/domain/generation/grounding_policy.py`
+- [ ] T010 [P] [US3] Write `backend/tests/unit/test_retrieval_evidence_floor.py` covering a below-floor retriever score, a one-item min-max of 1.0 that must not pass, a reciprocal-rank score that must not pass, an above-floor paraphrase that may pass, a second tenant receiving nothing, and the other document's sentence absent when that document's hits are below the floor. Do not assert that every non-verbatim question returns empty. Assign scores. Do not depend on a live cosine. Keep `test_vector_search_hides_other_tenant_chunks` green
+- [ ] T011 [US3] Keep the retriever score available for the floor in `backend/src/graph_rag/domain/retrieval/fusion.py` when reciprocal-rank fusion replaces `score`
+- [ ] T012 [US3] Filter below-floor passages in `backend/src/graph_rag/application/retrieval/retrieve.py` before `expand_parents_and_neighbors`, using the retriever or source score and 0.12 from `backend/src/graph_rag/domain/generation/grounding_policy.py`. Do not compare 0.12 to the reciprocal-rank score and do not filter on verbatim phrase absence alone
 - [ ] T013 [US3] Return `selection_has_no_supporting_evidence` from search in `backend/src/graph_rag/api/routes/retrieval.py` and from the pinned empty-evidence path in `backend/src/graph_rag/domain/policies/gate.py`
 - [ ] T014 [US3] Add the four-page case to `backend/tests/evaluation` without calling a live model unless `RUN_LIVE_OPENAI_TESTS=true`
 
@@ -74,7 +75,7 @@
 **Independent Test**: `uv run pytest tests/unit/test_structural_graph_paths.py -q`
 
 - [ ] T015 [US4] Write `backend/tests/unit/test_structural_graph_paths.py` for a structural document/passage graph, an entity neighborhood, a disabled graph store, and a second tenant
-- [ ] T016 [US4] Add a tenant-scoped structural neighborhood on the graph store port and on `backend/src/graph_rag/infrastructure/persistence/neo4j/repository.py` and `backend/src/graph_rag/infrastructure/persistence/neo4j/memory.py`
+- [ ] T016 [US4] Add a structural neighborhood filtered by tenant and by the selected `document_ids` on the graph store port and on `backend/src/graph_rag/infrastructure/persistence/neo4j/repository.py` and `backend/src/graph_rag/infrastructure/persistence/neo4j/memory.py`. A shared entity must not add another document's passages. Keep `test_local_graph_retrieval_respects_document_scope` and `test_local_graph_retrieval_returns_mentioned_chunks` green
 - [ ] T017 [US4] When `include_graph_paths` is true, return that path or `graph_not_stored`, `graph_no_entity_match`, or `graph_no_structural_path` from `backend/src/graph_rag/application/retrieval/retrieve.py`
 - [ ] T018 [US4] Put `path_kind` of `structural` or `entity` on `GraphPath.metadata` in `backend/src/graph_rag/domain/retrieval/models.py`
 
@@ -88,11 +89,12 @@
 
 **Independent Test**: `uv run pytest tests/unit/test_ingestion_state_machine.py -q`
 
-- [ ] T019 [US5] Add a skip-only case and a `semantic_graph_failed` case to `backend/tests/unit/test_ingestion_state_machine.py`
-- [ ] T020 [US5] Change `_has_warning_stages` and `progress` in `backend/src/graph_rag/domain/ingestion/state_machine.py` so a `skipped` stage does not set run status or `latest_warning`
+- [ ] T019 [US5] Add a skip-only case and a `semantic_graph_failed` case to `backend/tests/unit/test_ingestion_state_machine.py`. Also cover a genuine warning whose text is not in the example prefix list, such as a document-intelligence miss
+- [ ] T020 [US5] Change `_has_warning_stages` and `progress` in `backend/src/graph_rag/domain/ingestion/state_machine.py` so a `skipped` stage does not set run status or `latest_warning`. Step status is authoritative. Do not classify by a closed prefix list
 - [ ] T021 [US5] Keep `test_happy_path_progress_and_finalize_gate` expecting `completed_with_warnings` because of the parse warning `low ocr`, not because of the skip reason
+- [ ] T035 [US5] Make `stage_extract_graph` in `backend/src/graph_rag/application/ingestion/stage_pipeline.py` return `completed_with_warnings` with `semantic_graph_failed` on that stage. Do not leave the failure only on `raw.warnings`
 
-**Checkpoint**: SC-005 passes. Community summarization stays disabled.
+**Checkpoint**: SC-005 passes. The graph step carries `semantic_graph_failed`. Community summarization stays disabled.
 
 ---
 
@@ -105,9 +107,9 @@
 - [ ] T022 [P] [US6] Add `frontend/e2e/rag-citation.spec.ts` that generates a four-page PDF, uploads it through the existing session flow, and asserts a page-2 citation for that document only
 - [ ] T023 [US6] Update `frontend/playwright.config.ts` and the spec so `E2E_TARGET=dev` fails closed without `E2E_BASE_URL`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, and `E2E_TENANT_KEY`
 - [ ] T024 [US6] Remove the hand-built PDF body from the citation journey. Leave `frontend/e2e/upload-journey.spec.ts` on its local upload check unless it also claims page provenance
-- [ ] T025 [US6] Document the DEV command in `specs/002-rag-reliability-and-retrieval-quality/quickstart.md` and do not commit credentials
+- [ ] T025 [US6] Document the DEV command in `specs/002-rag-reliability-and-retrieval-quality/quickstart.md` and do not commit credentials. State that the journey runs after this feature's web image is deployed and that serving web digest `sha256:eb34e619be4107352fbb0ce3e543e8b368865059746060809589afe6d290dc84` is not that image
 
-**Checkpoint**: The local journey passes. The DEV journey is not run from this task until review, and a runner that cannot open the origin fails rather than skipping.
+**Checkpoint**: The local journey passes. The DEV journey is not run against today's web image. A runner that cannot open the origin fails rather than skipping. An in-cluster API call is not a pass.
 
 ---
 
@@ -117,9 +119,9 @@
 
 **Independent Test**: `uv run pytest tests/unit/test_release_identity.py tests/unit/test_workflow_heredoc.py -q`
 
-- [ ] T026 [P] [US7] Add `backend/tests/unit/test_release_identity.py` that reads `infra/k8s/api/kustomization.yaml`, `infra/k8s/worker/kustomization.yaml`, `infra/k8s/web/kustomization.yaml`, and `infra/dev/release-gate.json`, and fails when `rollback_in_effect` is false while a serving digest equals its rollback digest
-- [ ] T027 [US7] Add `rollback_in_effect: false` to `infra/dev/release-gate.json` without changing `promote` or `rollback_digests`
-- [ ] T028 [P] [US7] Add `backend/tests/unit/test_workflow_heredoc.py` that every Python heredoc in `.github/workflows/*.yml` closes with the token that opened it
+- [ ] T026 [P] [US7] Add `backend/tests/unit/test_release_identity.py` that reads `infra/k8s/api/kustomization.yaml`, `infra/k8s/worker/kustomization.yaml`, `infra/k8s/web/kustomization.yaml`, and `infra/dev/release-gate.json`, and fails when `rollback_in_effect` is false while a serving digest equals its rollback digest. Compare inequality. Do not hardcode today's serving digest as a permanent expected value. Keep `test_release_gate_stays_closed_and_records_rollback_digests` green
+- [ ] T027 [US7] Add `rollback_in_effect: false` to `infra/dev/release-gate.json` without changing `promote` or `rollback_digests`. This specification review does not edit that file
+- [ ] T028 [P] [US7] Add `backend/tests/unit/test_workflow_heredoc.py` that every Python heredoc in `.github/workflows/*.yml` closes with the token that opened it, and that an in-test fixture opened with `CHK` and closed with `PY` fails. `accept-dev-feature-001.yml` is on the default branch and is not on this branch, so a directory scan alone cannot see that bug
 - [ ] T029 [US7] Add `.github/workflows/accept-dev-feature-002.yml` whose final exit status is the product-check status, which generates the PDF with a standard library, and which does not promote an image
 - [ ] T030 [US7] When that workflow is dispatched, copy only the workflow file to the default branch. Do not merge this feature and do not promote an image
 
@@ -148,7 +150,7 @@
 
 ### Parallel Opportunities
 
-- T003, T007, T010, T015, T019, T022, T026, and T028 touch different new test files and can be written together.
+- T003, T007, T010, T015, T019, T022, T026, T028, and T034 touch different new test files and can be written together.
 - Implementation of liveness, citations, warnings, and release identity then proceeds in those separate files.
 
 ## Implementation Strategy
@@ -161,6 +163,44 @@
 
 ## Notes
 
-- This task list does not authorize a DEV deploy.
+- This task list does not authorize a DEV deploy, a merge, or an edit of application code during the specification review.
 - Parser package versions stay pinned.
 - Community summarization stays skipped.
+- T027, T029, and T030 are implementation tasks. This review does not edit `release-gate.json`, kustomize, or workflow files.
+
+## Requirement coverage
+
+Every functional requirement and success criterion maps to a task. Tests are written before the behavior change.
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T003, T004, T006 |
+| FR-002 | T003 |
+| FR-003 | T003, T004, T006 |
+| FR-004 | T001, T002 |
+| FR-005 | T007, T008, T009 |
+| FR-006 | T007, T008 |
+| FR-007 | T007, T008 |
+| FR-008 | T010, T011, T012, T013 |
+| FR-009 | T010, T012, T013 |
+| FR-010 | T010, T011, T012 |
+| FR-011 | T010, T015, T016 |
+| FR-012 | T015, T016, T017 |
+| FR-013 | T015, T016, T017, T018 |
+| FR-014 | T019, T020 |
+| FR-015 | T019, T020, T021, T035 |
+| FR-016 | T021, T033 |
+| FR-017 | T022, T024, T025 |
+| FR-018 | T023, T025 |
+| FR-019 | T026, T027, T028, T029, T030 |
+| FR-020 | T001, T004 |
+| FR-021 | T034 |
+| SC-001 | T003, T004, T006 |
+| SC-002 | T007, T008, T009 |
+| SC-003 | T010, T011, T012, T013, T014 |
+| SC-004 | T015, T016, T017, T018 |
+| SC-005 | T019, T020, T021, T035 |
+| SC-006 | T022, T023, T024, T025 |
+| SC-007 | T026, T027, T028, T029 |
+| SC-008 | T030, T031, T033 |
+| SC-009 | T034 |

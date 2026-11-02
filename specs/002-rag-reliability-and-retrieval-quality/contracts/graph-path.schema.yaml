@@ -32,7 +32,7 @@ properties:
 
 rules:
   - When include_graph_paths is false, graph_paths may be empty and no graph reason is required.
-  - When include_graph_paths is true and graph_paths is non-empty, every path has metadata.path_kind structural or entity, and every node belongs to the caller organization and the selected documents.
+  - When include_graph_paths is true and graph_paths is non-empty, every path has metadata.path_kind structural or entity, and every node and supporting passage belongs to the caller organization. When document_ids is set, they belong only to those documents. A shared entity does not add another document's passages.
   - When include_graph_paths is true and graph_paths is empty, warnings contain exactly one of graph_not_stored, graph_no_entity_match, or graph_no_structural_path.
   - A structural path may connect the document, its version, and its passages without an entity name.
   - graph_not_stored is the reason when the graph step was skipped because the graph store was disabled.

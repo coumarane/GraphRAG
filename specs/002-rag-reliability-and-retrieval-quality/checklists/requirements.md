@@ -34,4 +34,5 @@
 - Validation of spec.md on 2026-11-02. Member and operator outcomes are in the scenarios. File-level evidence is in research.md and plan.md, which are the planning artifacts and are allowed to name modules.
 - The findings name the accepted DEV behavior so the gaps are auditable. They do not choose a new queue, a new parser, or a new cluster.
 - Feature 001's upload architecture is an assumption, not a work item.
-- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`.
+- Pre-implementation analysis on 2 November 2026 is recorded in [analysis.md](./analysis.md). Critical and high inconsistencies were resolved in the specification, plan, research, data model, contracts, and tasks. No application code was changed.
+- Items marked incomplete require spec updates before implementation. None are incomplete after that analysis.

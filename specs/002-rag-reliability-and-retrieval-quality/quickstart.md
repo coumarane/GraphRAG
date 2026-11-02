@@ -10,7 +10,13 @@ From `backend/`:
 uv run pytest tests/unit/test_worker_liveness.py -q
 ```
 
-The test holds a processing tick and requests `/health/live`. The response arrives within 5 seconds. Readiness is unchanged.
+The test occupies the worker with synchronous work longer than 5 seconds and requests `/health/live`. The response arrives within 5 seconds. A test that only holds an asynchronous lock is not this check. Readiness is unchanged.
+
+```bash
+uv run pytest tests/unit/test_worker_heartbeat.py -q
+```
+
+A stage longer than 120 seconds keeps a persisted heartbeat newer than 60 seconds. The write does not use the pipeline session. The run is not stalled and is not reclaimed while that worker is alive.
 
 ## Page citations and no-evidence
 
@@ -18,7 +24,7 @@ The test holds a processing tick and requests `/health/live`. The response arriv
 uv run pytest tests/unit/test_citation_page_range.py tests/unit/test_retrieval_evidence_floor.py -q
 ```
 
-The four-page fixture is generated in the test with fpdf2 or an equivalent standard writer. A hand-built PDF body is not the fixture. Pages 2, 3, and 4 each have a sentence that appears on that page only. The page-2 citation includes page 2. The same sentence limited to the other document returns no evidence and `selection_has_no_supporting_evidence`.
+The four-page fixture is generated in the test with fpdf2 or an equivalent standard writer. A hand-built PDF body is not the fixture. Pages 2, 3, and 4 each have a sentence that appears on that page only. The page-2 citation includes page 2, and the page-exact child remains beside a parent that spans pages 1–4. Below-floor scores are assigned in the test. When every selected passage is below 0.12, the response is empty evidence and `selection_has_no_supporting_evidence`. An above-floor paraphrase may still be returned. A one-item rescaling to 1.0 and a reciprocal-rank score do not pass the floor.
 
 ## Graph paths and warnings
 
@@ -37,7 +43,7 @@ cd frontend
 npx playwright test e2e/rag-citation.spec.ts
 ```
 
-DEV, only after this feature is reviewed and the credentials are injected outside the repo:
+DEV, only after this feature's web image is deployed and the credentials are injected outside the repo. The web digest serving on 2 November 2026 (`sha256:eb34e619…dc84`) is not that image:
 
 ```bash
 cd frontend

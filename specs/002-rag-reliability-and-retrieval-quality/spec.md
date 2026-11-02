@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-02
 
-**Status**: Draft
+**Status**: Reviewed 2026-11-02. Critical and high inconsistencies from the pre-implementation analysis are resolved here. Implementation has not started, and this specification does not deploy.
 
 **Input**: User description: "Create Spec Kit feature 002-rag-reliability-and-retrieval-quality. Feature 001 is accepted on DEV. Do not redesign or reimplement its upload architecture. Focus on worker liveness under CPU-intensive parsing, page-level citation provenance for parent and child chunks, retrieval relevance and no-evidence behavior, Neo4j indexing versus graph traversal, skipped optional stages versus genuine warnings, reproducible browser end-to-end tests against DEV, and CI/CD acceptance plus deployed/rollback digest consistency. Use the existing architecture. Do not modify the running DEV deployment until this feature is reviewed."
 
@@ -16,14 +16,15 @@ A member submits a document that needs heavy reading. Processing continues, and 
 
 **Why this priority**: Feature 001 accepted the upload and the isolated parser. On 2 November 2026 the DEV worker restarted once at 11:44 Europe/Paris because its liveness check timed out, and Kubernetes recorded that restart as a clean completion. Later uploads on the same process succeeded. A health check that cannot be answered during real work will keep restarting a healthy worker.
 
-**Independent Test**: Start one worker, submit three documents that each hold the parser, and confirm the same worker process answers its liveness check within 5 seconds throughout. Stop the process and confirm it is reported unhealthy.
+**Independent Test**: Start one worker, occupy it with synchronous work longer than 5 seconds, and confirm liveness still answers within 5 seconds. Submit three documents that each hold the parser and confirm the same worker process keeps answering. Confirm a stage longer than two minutes still has a fresh persisted heartbeat. Stop the process and confirm it is reported unhealthy.
 
 **Acceptance Scenarios**:
 
 1. **Given** a worker that is parsing one document, **When** its liveness check runs, **Then** the check succeeds within 5 seconds and the parse continues on the same process.
 2. **Given** three documents parsed one after another, **When** each parse is CPU-heavy, **Then** the worker restart count does not increase because of those parses.
 3. **Given** the worker process has exited, **When** the platform health check runs, **Then** the worker is unhealthy.
-4. **Given** an operator stops the worker on purpose, **When** the process leaves, **Then** that stop is distinguishable from a liveness timeout during a healthy parse.
+4. **Given** an operator stops the worker, **When** the process leaves, **Then** that stop remains a clean exit. A healthy parse does not rely on a liveness kill. A probe kill and an operator stop arrive as the same signal, so the product must not need the kill in order to keep parsing, and it must not tell those two stops apart after the fact.
+5. **Given** one stage runs longer than two minutes inside a live worker, **When** a member reads progress and another worker considers reclaim, **Then** the persisted heartbeat is newer than 60 seconds, the run is not stalled, and the run is not reclaimed.
 
 ---
 
@@ -38,8 +39,8 @@ A member asks about a sentence that appears on one page of a multipage document.
 **Acceptance Scenarios**:
 
 1. **Given** a phrase that exists only on page 2, **When** the member searches or asks for it inside that document, **Then** at least one citation includes page 2 and the quoted text contains the phrase.
-2. **Given** the same phrase is also present in a parent passage spanning pages 1–4, **When** that parent is cited, **Then** its page range still covers page 2 and is not reduced to page 1 alone.
-3. **Given** a child passage built from page 4 only, **When** it is cited, **Then** its page range is page 4.
+2. **Given** the same phrase is also present in a parent passage spanning pages 1–4, **When** that parent is cited, **Then** its page range still covers page 2 and is not reduced to page 1 alone. The page-exact child remains available beside that parent.
+3. **Given** a child passage built from page 4 only, **When** it is cited, **Then** its page range is page 4. A neighboring passage returned with it keeps that neighbor's own pages.
 4. **Given** the same passage is returned by search and by the answer, **When** both are shown, **Then** they name the same document and the same page range.
 
 ---
@@ -48,16 +49,16 @@ A member asks about a sentence that appears on one page of a multipage document.
 
 A member limits a question to one document. If that document does not support the question, the product returns no evidence and no citation, and it says the selected document did not support the question. It does not fill the answer with the nearest passage from that document. The same question limited to the document that does contain the fact returns only that document. Another organization sees neither document.
 
-**Why this priority**: On the accepted DEV run, a serum sentence searched inside the toner document returned the toner passage with the sentence absent. Search currently returns the nearest passages inside the selected documents. The answer path has a sufficiency check, and search does not use it. A weak hit is shown as support.
+**Why this priority**: On the accepted DEV run, a serum sentence searched inside the toner document returned the toner passage with the sentence absent. Search returns the nearest passages inside the selected documents and does not apply the answer path's sufficiency floor. The sample's numeric score was not recorded. The defect is the missing floor, not a rule that every question must appear verbatim.
 
 **Independent Test**: Using two documents in one organization and a third organization with no access, search a distinctive sentence once inside the document that lacks it and once inside the document that contains it.
 
 **Acceptance Scenarios**:
 
-1. **Given** a distinctive phrase that is absent from the selected document, **When** the member searches or asks inside that document only, **Then** the evidence list and the citation list are empty and the response says the selected document did not support the question.
-2. **Given** the same phrase in the document that contains it, **When** the member selects only that document, **Then** every evidence item and citation belongs to that document and at least one contains the phrase.
+1. **Given** every passage in the selected document is below the sufficiency floor, **When** the member searches or asks inside that document only, **Then** the evidence list and the citation list are empty and the response says the selected document did not support the question.
+2. **Given** a passage at or above the floor in the selected document, **When** the member selects only that document, **Then** that passage can be returned even when the question is not copied verbatim, and every evidence item belongs to that document.
 3. **Given** a member of another organization, **When** they search either document, **Then** they receive no evidence, no citation, and no graph path from the first organization.
-4. **Given** one low-scoring passage is the only candidate, **When** its retrieval score is below the sufficiency floor, **Then** rescaling that single score does not make it sufficient.
+4. **Given** one below-floor passage is the only candidate, **When** its scores are rescaled or replaced by a rank score, **Then** it still does not become sufficient.
 
 ---
 
@@ -72,8 +73,8 @@ After processing, the member can ask for the graph paths behind an answer. If th
 **Acceptance Scenarios**:
 
 1. **Given** graph indexing finished for a document, **When** the member requests graph paths for a question about that document, **Then** the response includes a path whose nodes belong to that document or a reason that no path was walked.
-2. **Given** the stored graph is only the document, its version, and its passages, **When** paths are requested, **Then** a structural path among those nodes is a valid path.
-3. **Given** entity relationships were stored, **When** the question names one of those entities, **Then** the path may follow those relationships and still stays inside the selected document and organization.
+2. **Given** the stored graph is only the document, its version, and its passages, **When** paths are requested for that document, **Then** a structural path among those nodes is a valid path and does not include another document.
+3. **Given** entity relationships were stored and two documents share an entity, **When** the question is limited to one document, **Then** the path may follow that entity and must not add the other document's passages.
 4. **Given** a member of another organization, **When** they request paths, **Then** no node from the first organization is returned.
 
 ---
@@ -90,7 +91,7 @@ A member or operator reading a finished run can tell an optional step that was i
 
 1. **Given** a run that completes every required step and skips only optional steps, **When** the member reads the run, **Then** the run status is completed and the latest warning is empty.
 2. **Given** an optional step that was not requested or is disabled, **When** it is skipped, **Then** its stage status is skipped and its reason stays on that stage.
-3. **Given** a genuine enrichment or parse failure, **When** the run finishes, **Then** the run status is completed with warnings and the latest warning is that failure, not an optional skip reason.
+3. **Given** a genuine enrichment or parse failure, **When** the run finishes, **Then** the stage that detected it is completed with warnings, the run status is completed with warnings, and the latest warning is that failure rather than an optional skip reason.
 4. **Given** a document that needs review because parsing or vision was incomplete, **When** the member reads the document, **Then** its status is partial, which is a different outcome from a skipped optional step.
 
 ---
@@ -101,7 +102,7 @@ A reviewer can run one browser journey against the DEV site. It signs in, upload
 
 **Why this priority**: The current browser tests target a local site, use local demo credentials when none are supplied, and upload a hand-built one-page PDF. A GitHub-hosted runner that calls the public API is rejected before login. Feature 001's accepted page checks ran inside the cluster, not in the browser. The hand-built PDF also produced the wrong page map.
 
-**Independent Test**: With the DEV web address and credentials supplied outside the repository, run the browser journey once and keep its trace. Run it again with the address removed and confirm it fails.
+**Independent Test**: After this feature's web build is deployed, run the browser journey once against DEV with credentials supplied outside the repository. Run it again with the address removed and confirm it fails. The web image serving today is not that build.
 
 **Acceptance Scenarios**:
 
@@ -129,39 +130,45 @@ An operator can read two identities for each deployed part: the image that is se
 
 ### Edge Cases
 
-- The liveness check and a long parse happen together. The check still returns. Readiness may still fail when a dependency is down.
-- A parent passage and a child passage contain the same sentence. Each citation uses its own page range, and neither range drops the page that contains the sentence.
+- The liveness check and a long parse happen together, including when synchronous work occupies the worker for longer than 5 seconds. The check still returns. Readiness may still fail when a dependency is down. A trial that only waits on an asynchronous lock does not prove this.
+- A parent passage and a child passage contain the same sentence. Each citation uses its own page range. The page-exact child remains beside the parent. A neighboring passage keeps its own pages.
 - The selected document contains the phrase on a page the parser merged into a neighbor page. The citation follows the stored page of the passage that contains the phrase. A hand-built PDF is not the fixture used to judge that.
-- The question has no distinctive token and every score is low. The response is no evidence rather than the first passage in the document.
+- The question is a paraphrase and a selected passage is at or above the floor. That passage may be returned. Absence of a verbatim copy is not, by itself, no evidence.
+- Every selected passage is below the floor. The response is no evidence rather than the nearest passage, including when a below-floor child would otherwise expand into its parent.
+- One candidate list is rescaled to 1.0, or its score is replaced by a rank contribution. A below-floor retriever score stays below the floor.
 - Graph indexing was skipped because the graph store was disabled. The response reason says the graph was not stored. It does not say a path was walked.
-- Two optional skips and one genuine warning occur in the same run. The latest warning is the genuine warning.
-- The browser runner is refused by the edge in front of the public API. The browser job fails. The in-cluster upload check from Feature 001 remains available and is not renamed as the browser result.
-- A workflow file on the default branch is the file a repository dispatch executes. A fix to that file is a workflow-only change and does not build or promote an image.
+- Two documents share an entity and the question is limited to one of them. The path and its passages stay inside that document.
+- Two optional skips and one genuine warning occur in the same run. The latest warning is the genuine warning. Step status decides that, not a fixed list of warning prefixes.
+- A semantic graph failure is visible on the graph step as completed with warnings, even when a later step would otherwise copy a different warning first.
+- The browser runner is refused by the edge in front of the public API. The browser job fails. The in-cluster upload check from Feature 001 remains available and is not renamed as the browser result. The web image serving on 2 November 2026 is not this feature's browser build.
+- A workflow file on the default branch is the file a repository dispatch executes. A fix to that file is a workflow-only change and does not build or promote an image. A heredoc check on this branch includes a fixture of the historical mismatched closer, because that workflow file is not on this branch.
+- A stage runs longer than two minutes. The persisted heartbeat stays fresh. The run is not shown as stalled and is not reclaimed while that worker is alive. The heartbeat write does not share the pipeline session.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The worker MUST answer its liveness check within 5 seconds while a document is parsing. The check MUST NOT wait on the ingestion lock or on the parse.
+- **FR-001**: The worker MUST answer its liveness check within 5 seconds while a document is parsing, including while synchronous work occupies the worker for longer than 5 seconds. The check MUST succeed without waiting for that work to finish. Serving the check on the same loop that this work is blocking does not meet the requirement. A trial that only holds an asynchronous lock does not prove it.
 - **FR-002**: Three consecutive CPU-heavy parses MUST leave the worker process in place. A process that has exited MUST be unhealthy.
-- **FR-003**: An intentional worker stop MUST remain a clean stop. A liveness timeout during a healthy parse MUST NOT be required for the worker to stay in service.
+- **FR-003**: An intentional worker stop MUST remain a clean stop. A healthy parse MUST NOT depend on a liveness timeout. A platform kill and an operator stop arrive as the same signal, so the product MUST NOT require them to be distinguished after the fact.
 - **FR-004**: Feature 001's upload session, direct object write, completion, duplicate detection, and isolated parser child MUST stay in place. This feature MUST NOT add a second upload path or a second queue.
 - **FR-005**: A citation MUST name a page range that contains the quoted passage. Search evidence and the answer citation for the same passage MUST name the same document and the same page range.
-- **FR-006**: A parent passage that spans more than one page MUST keep a range that covers the quoted page. The product MUST NOT rewrite that range to the first page alone.
+- **FR-006**: A parent passage that spans more than one page MUST keep a range that covers the quoted page. The product MUST NOT rewrite that range to the first page alone. The page-exact child MUST remain available beside that parent. A neighboring passage MUST keep its own page range.
 - **FR-007**: A child passage MUST keep the page range of the elements it was built from.
-- **FR-008**: Search and answer MUST apply the same evidence floor. A passage below that floor MUST NOT be returned as evidence or as a citation.
-- **FR-009**: When the question contains a distinctive phrase that is absent from every passage in the selected documents, search and answer MUST return no evidence and no citation and MUST say that the selected documents did not support the question.
-- **FR-010**: Rescaling the scores of a single candidate list MUST NOT turn a below-floor passage into a sufficient passage.
+- **FR-008**: Search and answer MUST apply the same evidence floor of 0.12 to the retriever score of each passage before parent or neighbor expansion. A passage below that floor MUST NOT be returned as evidence or as a citation. A fused rank score and a rescaled score are not the retriever score.
+- **FR-009**: When no passage in the selected documents remains at or above the floor, search and answer MUST return no evidence and no citation and MUST say that the selected documents did not support the question. A passage at or above the floor MAY be returned even when the question is not copied verbatim in that passage.
+- **FR-010**: Rescaling the scores of a candidate list, and replacing a score with a reciprocal-rank contribution, MUST NOT turn a below-floor retriever score into a sufficient passage.
 - **FR-011**: Evidence, citations, and graph paths MUST stay inside the caller's organization and inside the selected documents. A caller outside that organization MUST receive none of them.
-- **FR-012**: A request for graph paths after a finished graph step MUST return either a path inside the selected document or a reason no path was walked. An empty path with no reason MUST NOT be treated as proof that the graph was used.
+- **FR-012**: A request for graph paths after a finished graph step MUST return either a path whose nodes and supporting passages belong only to the selected documents, or a reason no path was walked. An empty path with no reason MUST NOT be treated as proof that the graph was used. A shared entity MUST NOT add another document's passages when documents were selected.
 - **FR-013**: A stored structural map of the document and its passages MUST be a valid path when no entity relationship is available. Entity relationships MUST remain available when they were stored.
 - **FR-014**: A skipped optional step MUST keep stage status skipped and MUST NOT by itself set the run status to completed with warnings or set the latest warning.
-- **FR-015**: A genuine enrichment or parse failure MUST set the run to completed with warnings, MUST be visible on the failing step, and MUST be the latest warning in preference to any skip reason. Document status partial MUST remain the needs-review outcome.
+- **FR-015**: A genuine enrichment or parse failure MUST set the detecting step to completed with warnings, MUST set the run to completed with warnings, and MUST be the latest warning in preference to any skip reason. Step status is authoritative. Example warning prefixes are illustrations, not a closed list. A semantic graph failure MUST be recorded on the graph step as completed with warnings, not only as text that a later step may or may not copy. Document status partial MUST remain the needs-review outcome.
 - **FR-016**: Optional steps that stay idle on the accepted path are table enrichment, equation enrichment, context build, unrequested document intelligence, entity resolution, and community summarization. This feature MUST NOT enable community summarization in order to clear the warning.
-- **FR-017**: One browser journey MUST be runnable against the DEV web origin with credentials supplied outside the repository. It MUST upload a generated multipage PDF, wait until ready, and show a page-level citation for that document only.
+- **FR-017**: One browser journey MUST be runnable against the DEV web origin after this feature's web build is deployed, with credentials supplied outside the repository. It MUST upload a generated multipage PDF, wait until ready, and show a page-level citation for that document only. The web image serving on 2 November 2026 is not that build, and a pass against it is not this requirement.
 - **FR-018**: The DEV browser journey MUST fail when the origin or the credentials are missing, MUST NOT fall back to a built-in demo member, MUST NOT print secrets, and MUST NOT report success when the browser could not open the site.
 - **FR-019**: The acceptance job result MUST be the product-check result. Serving image identities and rollback image identities MUST both be recorded. A promotion MUST change the serving identity and MUST leave the previous serving identity as the rollback identity. An explicit rollback MUST say that a rollback is in effect.
-- **FR-020**: This feature MUST reuse the current API, the Redis-backed worker, Qdrant, Neo4j, the Next.js application, and the OVH Kubernetes delivery path. It MUST NOT add a second worker framework. The admin console already records that Celery is unused.
+- **FR-020**: This feature MUST reuse the current API, the Redis Streams worker, Qdrant, Neo4j, the Next.js application, and the OVH Kubernetes delivery path. It MUST NOT add a second worker framework, a second queue, or a second upload path. The admin console already records that Celery is unused. Parser isolation stays a child process. Stream acknowledgement, pending entries, and the Redis dead-letter stream stay as they are. Postgres dead-letter rows stay the record of an exhausted ingest.
+- **FR-021**: While a stage runs inside a live worker, the persisted heartbeat used for the member stall decision and for reclaim MUST be refreshed at least every 60 seconds. That write MUST NOT use the pipeline session concurrently with the stage. A parse longer than the 120-second stall window, or longer than the 90-second reclaim window, MUST NOT be shown as stalled or reclaimed solely because an in-memory heartbeat was not saved.
 
 ### Non-Functional Requirements
 
@@ -169,36 +176,40 @@ An operator can read two identities for each deployed part: the image that is se
 - **NFR-002**: Page citations for the four-page fixture are exact for pages 2, 3, and 4 in every automated trial of that fixture.
 - **NFR-003**: No-evidence and cross-organization trials fail closed in 100% of automated trials.
 - **NFR-004**: Automated tests use generated PDFs and local stand-ins. They do not read production documents or production secrets.
-- **NFR-005**: No database schema change is required for the warning rule, the page rule, or the evidence floor. A new Alembic revision is out of scope unless a later review finds a stored field that cannot represent the reason codes.
+- **NFR-005**: No database schema change is required for the warning rule, the page rule, the evidence floor, or the heartbeat. A new Alembic revision is out of scope unless a later review finds a stored field that cannot represent the reason codes. The heartbeat already exists on the run.
+- **NFR-006**: A live worker that is still inside one stage is not reported stalled, and is not reclaimed, solely because that stage has run longer than two minutes.
 
 ### Key Entities
 
-- **Worker health**: The liveness answer, the readiness answer, the process start time, and the restart count. Liveness is independent of the document being parsed.
+- **Worker health**: The liveness answer, the readiness answer, the process start time, the restart count, and the persisted heartbeat. Liveness is answered even while parsing occupies the worker. The persisted heartbeat stays fresh during a long stage.
 - **Passage**: A parent or child chunk with text, document, version, and a page range. The page range is the provenance of that text.
 - **Citation**: The page range, document, and quoted text shown for one passage. It matches the passage it quotes.
-- **Evidence floor**: The lowest retrieval score that still counts as support. A single-item rescaling is not a score.
+- **Evidence floor**: The lowest retriever score that still counts as support. The floor is 0.12 and is applied before parent or neighbor expansion. A rescaled score and a rank score are not that score. An above-floor passage does not have to repeat the question verbatim.
 - **Graph path**: An ordered set of nodes and relationships inside one organization and, when documents were selected, inside those documents. It has a kind of structural or entity, or it is absent with a reason.
-- **Step outcome**: Completed, skipped, or completed with a genuine warning. The run status is derived from genuine warnings only.
+- **Step outcome**: Completed, skipped, or completed with a genuine warning. Step status is authoritative. The run status is derived from steps that completed with warnings, not from skip reasons and not from a closed prefix list.
 - **Release identity**: The serving image digest and the rollback image digest for the API, the worker, and the web application, plus whether a rollback is in effect.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: In an automated worker trial, liveness answers within 5 seconds during each of three CPU-heavy parses, and the restart count is unchanged. After the process exits, the health check fails.
-- **SC-002**: On the four-page fixture, a query for the sentence that exists only on page 2, page 3, or page 4 returns a citation whose range includes that page and whose quoted text contains the sentence, in 100% of trials. No citation reports only page 1 for a sentence that is absent from page 1.
-- **SC-003**: A distinctive sentence searched inside a document that lacks it returns an empty evidence list, an empty citation list, and an unsupported-selection message, in 100% of trials. The same sentence inside the document that contains it returns only that document. A second organization receives none of those passages.
-- **SC-004**: After graph indexing finishes, a path request returns either an in-document path or a non-empty reason, in 100% of trials. Paths from another organization are absent.
+- **SC-001**: In an automated worker trial, liveness answers within 5 seconds while synchronous work occupies the worker for longer than 5 seconds, during each of three CPU-heavy parses, and the restart count is unchanged. A trial that only holds an asynchronous lock does not satisfy this criterion. After the process exits, the health check fails.
+- **SC-002**: On the four-page fixture, a query for the sentence that exists only on page 2, page 3, or page 4 returns a citation whose range includes that page and whose quoted text contains the sentence, in 100% of trials. No citation reports only page 1 for a sentence that is absent from page 1. The page-exact child remains beside a multipage parent, and a neighbor keeps its own pages. Search and the answer agree.
+- **SC-003**: When every passage in the selected document is below the 0.12 retriever-score floor, search and answer return an empty evidence list, an empty citation list, and an unsupported-selection message, in 100% of trials. The trial assigns those scores, or uses passages known to be below the floor, and it asserts that the other document's sentence is absent. An above-floor passage may be returned without a verbatim copy of the question, and it belongs only to the selected document. A one-item rescaling to 1.0 and a reciprocal-rank score do not make a below-floor passage sufficient. A second organization receives none of those passages.
+- **SC-004**: After graph indexing finishes, a path request returns either a path limited to the selected documents or a non-empty reason, in 100% of trials. A shared entity does not add another document's passages. Paths from another organization are absent.
 - **SC-005**: A run with only optional skips has status completed and an empty latest warning. A run with one genuine enrichment failure has status completed with warnings and that failure as the latest warning, in 100% of classification trials.
-- **SC-006**: One documented browser command against DEV uploads a generated multipage PDF and shows a page citation for that document only. The same command fails when the DEV address or credentials are omitted.
-- **SC-007**: The acceptance job conclusion matches the product checks in a local fixture of both a passing and a failing check. Serving and rollback identities are both asserted, and a promotion fixture leaves the rollback identity unchanged.
-- **SC-008**: The feature is not releasable while any of SC-001 through SC-007 fail. Releasing it requires a reviewed change on the existing delivery path. This specification does not deploy it.
+- **SC-006**: One documented browser command, run after this feature's web image is deployed, uploads a generated multipage PDF and shows a page citation for that document only. The same command fails when the DEV address or credentials are omitted. It is not expected to pass against the web image serving on 2 November 2026.
+- **SC-007**: The acceptance job conclusion matches the product checks in a local fixture of both a passing and a failing check, including a fixture whose Python block opens with one token and closes with another. Serving and rollback identities are both asserted, and a promotion fixture leaves the rollback identity unchanged. Equality of those identities is valid only when a rollback is in effect.
+- **SC-008**: The feature is not releasable while any of SC-001 through SC-007 or SC-009 fail. Releasing it requires a reviewed change on the existing delivery path. This specification does not deploy it.
+- **SC-009**: During a stage that runs longer than 120 seconds, the persisted heartbeat stays newer than 60 seconds, member progress is not stalled, and another worker does not reclaim the run while the first worker is alive, in 100% of trials. The heartbeat write does not share the pipeline session.
 
 ## Assumptions
 
 - Feature 001 remains the upload, isolation, and ingestion path. Its accepted DEV digests stay in service until this feature is reviewed and deliberately promoted.
 - The worker remains one replica. The queue remains the Redis stream already used by that worker.
-- The evidence floor stays the existing sufficiency floor of 0.12 on the retrieval score. This feature applies that floor to search and stops single-list rescaling from replacing it. Raising or lowering the floor is a measured evaluation change, not part of the first correction.
+- The evidence floor stays the existing sufficiency floor of 0.12 on the retriever score, applied before parent or neighbor expansion. A fused rank score and a one-list rescaling are not that score. Raising or lowering the floor is a measured evaluation change, not part of the first correction. The DEV toner hit's numeric score was not recorded, so acceptance tests assign scores rather than depending on a live cosine.
+- Dropping below-floor hits, and changing a skip-only run from completed with warnings to completed with an empty latest warning, are intentional behavior changes. The warning field remains. Feature 001's acceptance check accepts both completed and completed with warnings. A client that keys off the exact text "community summarization disabled" will see an empty latest warning instead.
+- Tests that currently expect the citation collapse, a below-floor hit in the evidence list, or a skip-driven completed-with-warnings run are updated and named in the tasks. `test_vector_search_hides_other_tenant_chunks`, `test_local_graph_retrieval_respects_document_scope`, and `test_local_graph_retrieval_returns_mentioned_chunks` stay green. `test_happy_path_progress_and_finalize_gate` still warns because of its parse warning, not because of the skip. `test_release_gate_stays_closed_and_records_rollback_digests` stays green when `rollback_in_effect` is added without changing promotion switches or rollback digests.
 - Community summarization, unrequested document intelligence, table enrichment, equation enrichment, context build, and entity resolution stay optional and idle on the ordinary PDF path.
 - Parser library versions stay as they are. A liveness fix MUST NOT depend on upgrading PDFium, Torch, or Marker.
 - The DEV browser journey runs from a network that can open the DEV web origin. A hosted runner that is refused by the edge fails the job. Credentials stay in the existing secret store.
@@ -211,18 +222,21 @@ An operator can read two identities for each deployed part: the image that is se
 
 These are visible in the product and in the Feature 001 DEV acceptance on 2 November 2026. They are the gaps this feature closes.
 
-- The worker liveness check is answered by the same process that is busy parsing, and it can time out during that work. The check waits 5 seconds and repeats every 15 seconds. A timeout restarts the worker. The process treats that stop as a clean exit, so the restart is recorded as completed with exit 0. One such restart happened at 11:44 Europe/Paris, before the three acceptance uploads. Those uploads did not restart the worker again.
+- The worker liveness check is an asyncio callback on the same loop that runs ingestion. The ingestion lock is held around `process_one`, but a lock held across an await does not stop that callback. Isolated parsing already waits on a child process from a worker thread, so a healthy isolated parse does not by itself block the loop. The 5-second check can still time out when synchronous work on that loop is not awaiting. A timeout restarts the worker. The process treats SIGTERM as a clean exit, whether the probe or an operator sent it, so the restart is recorded as completed with exit 0. One such restart happened at 11:44 Europe/Paris, before the three acceptance uploads. Those uploads did not restart the worker again. Skipping the lock while leaving the check on the blocked loop does not close this gap.
+- The in-memory heartbeat updates about every 15 seconds and is not written, because that loop shares the pipeline session. The persisted heartbeat moves at stage boundaries. Member progress treats a run as stalled after 120 seconds without a persisted heartbeat. Another replica may reclaim after 90 seconds. A parse longer than those windows looks stalled while the worker is alive. The queue remains the Redis stream `ingestion-jobs` with group `ingestion-workers`. Pending entries and the Redis dead-letter stream are not the Postgres dead-letter rows. This feature does not change acknowledgement or add Celery.
 - Parent passages record the first and last page of their elements. Child passages record their own elements' pages. When a citation is built, a range of three or more pages is rewritten so the end page equals the start page. A parent spanning pages 1–4 becomes a citation of page 1. The DEV page-2 query showed that citation while the quoted text was the page-2 sentence. Search evidence for the same passage still said pages 2–2.
-- Search returns the nearest passages inside the selected documents and does not apply the sufficiency floor. The answer path classifies a top score below 0.12 as insufficient, and it blocks only when the evidence list is already empty. The toner search for the serum sentence returned the toner. Min-max rescaling of a one-item list becomes 1.0 and is stored beside the score; the decision must keep using the retrieval score.
-- Graph indexing can store a structural map or a semantic entity map, and the step still completes when semantic extraction fails over to the structural map. Path retrieval looks up entity names and otherwise returns no path. The accepted searches asked for paths and received none, with graph indexing completed and no semantic failure marker.
-- A skip stores its reason in the same field as a warning. Any such text makes the run completed with warnings, and the latest warning is the last of those texts. On the accepted runs that text was "community summarization disabled." The stage status was skipped. Genuine markers already used by the acceptance check are `semantic_graph_failed`, `vision_failed`, `needs_review`, `parser_fallback`, and `parser_routing`.
-- Browser coverage is local. The DEV page proof was an in-cluster API script. A hand-built PDF made Docling assign the last page incorrectly. A generated PDF assigned pages 1, 2, 3, and 4 correctly.
-- The release gate stores rollback digests and keeps promotion switches closed. The serving digests live in the Kubernetes kustomization and are different. The unit test checks the gate file only. The acceptance job printed a passing product result and then exited because a Python block was closed with the wrong token.
+- Search returns the nearest passages inside the selected documents and does not apply the sufficiency floor. The answer path classifies a top retriever score below 0.12 as insufficient, and it blocks only when the evidence list is already empty. The toner search for the serum sentence returned the toner. That hit's numeric score was not recorded. The defect is the missing floor, not a rule that the question must appear verbatim. Min-max rescaling of a one-item list becomes 1.0 and is stored beside the score. Reciprocal-rank fusion replaces the score with a rank contribution near 0.016 for the first rank, which is always below 0.12, and keeps the retriever score as a component. The floor must use the retriever score and must run before parent or neighbor expansion. An above-floor semantic match may be returned without a verbatim copy of the question.
+- Graph indexing can store a structural map or a semantic entity map, and the graph step still returns completed when semantic extraction fails over to the structural map. The failure text is appended to the raw warning list and is not the graph step's own warning. Path retrieval looks up entity names and otherwise returns no path. The accepted searches asked for paths and received none, with graph indexing completed and no semantic failure marker. A structural neighborhood must be limited to the caller's organization and to the selected documents. A shared entity must not add another document's passages. Empty paths need exactly one reason: the graph was not stored, no entity matched, or no structural path was found.
+- A skip stores its reason in the same field as a warning. Any such text makes the run completed with warnings, and the latest warning is the last of those texts. On the accepted runs that text was "community summarization disabled." The stage status was skipped. Step status is the rule that separates a skip from a genuine warning. Prefixes such as `semantic_graph_failed`, `vision_failed`, `needs_review`, `parser_fallback`, and `parser_routing` are examples, not a closed list. A document-intelligence miss can warn with other text and still be genuine because its step completed with warnings. A semantic graph failure is genuine only when the graph step itself is completed with warnings. Optional idle reasons that must not warn the run include "handled in parse/vision/chunk", "document_intelligence not requested", the document-intelligence disabled reasons, "community summarization disabled", and "graph store disabled".
+- Browser coverage is local. The DEV page proof was an in-cluster API script. A hand-built PDF made Docling assign the last page incorrectly. A generated PDF assigned pages 1, 2, 3, and 4 correctly. The public site from a GitHub-hosted runner can be refused before login. That refusal is a failed browser job, not a successful in-cluster upload. The web image serving on 2 November 2026 is not this feature's browser build.
+- The release gate stores rollback digests and keeps promotion switches closed. The serving digests live in the Kubernetes kustomization and are different. The unit test checks the gate file only. Equality of serving and rollback is valid only when a rollback is in effect. The acceptance job printed a passing product result and then exited because a Python block was closed with the wrong token. That workflow file lives on the default branch, not on this branch, so a scan of this branch's workflow files cannot see it. The guard includes a fixture of that mismatched closer. Copying a corrected workflow onto the default branch is a later workflow-only change, not a feature merge and not an image promotion.
 
-### Requires a review before any deploy
+### Residual questions
 
-This specification does not change the running DEV deployment. Until the feature is reviewed, the serving digests stay the Feature 001 images recorded in `specs/001-reliable-upload-ingestion/acceptance.md`.
+These do not change the required behavior and do not block implementation. This specification does not change the running DEV deployment. The serving digests stay the Feature 001 images recorded in `specs/001-reliable-upload-ingestion/acceptance.md`.
 
-- Whether the 11:44 Europe/Paris restart was the event loop blocked by parsing, or a readiness dependency that only surfaced on the shared loop. The required behavior is the same: liveness answers during a healthy parse.
-- Whether the serum sentence's retrieval score was below 0.12. The required behavior does not depend on that sample: absence of the distinctive phrase from the selected document is no evidence.
-- Whether the stored cosmetics graph contains entity nodes or only structural nodes. The required behavior covers both: return the path that exists, or the reason none was walked.
+- Whether the 11:44 Europe/Paris restart was synchronous work on the loop, the GIL, or another stall. The filtered log does not prove which. Liveness must answer while synchronous work occupies the loop, and a healthy parse must not need that kill.
+- The serum sentence's retriever score was not recorded. Tests assign scores. The required behavior is the floor, not a verbatim-copy rule.
+- Whether the stored cosmetics graph contains entity nodes or only structural nodes. The required behavior covers both: return the path that exists, limited to the selected documents, or the reason none was walked.
+- A multipage parent citation's element identifier may still point at the first element. The page range is the member-facing fix. Element-level highlighting is out of scope.
+- Neighbor expansion may return an adjacent page. That hit is valid when its own page range matches its text.

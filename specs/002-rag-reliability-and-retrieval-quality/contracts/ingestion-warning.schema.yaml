@@ -22,8 +22,9 @@ properties:
         warning: {type: [string, "null"]}
 
 rules:
-  - A stage with status skipped may carry a reason in warning. That reason does not set run status and does not become latest_warning.
+  - Stage status is authoritative. A stage with status skipped may carry a reason in warning. That reason does not set run status and does not become latest_warning.
   - latest_warning is the warning of the latest stage whose status is completed_with_warnings, or empty when no such stage exists.
   - Run status is completed_with_warnings only when at least one stage has status completed_with_warnings. Optional skips alone finish as completed.
-  - Genuine warning text uses the prefixes semantic_graph_failed, vision_failed, needs_review, parser_fallback, and parser_routing.
+  - A completed_with_warnings stage counts even when its text is not in an example prefix list. Example prefixes are semantic_graph_failed, vision_failed, needs_review, parser_fallback, and parser_routing.
+  - semantic_graph_failed is the graph stage's own warning and that stage is completed_with_warnings. It is not only a raw warning that finalize may copy.
   - Document status partial remains the needs-review outcome and is independent of a skipped optional stage.
