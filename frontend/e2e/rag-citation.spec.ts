@@ -90,5 +90,5 @@ test("uploaded four-page PDF cites page 2 of that document only", async ({ page 
   await expect(answer.getByText(`${title} - p.${covering!.page_start}`)).toBeVisible();
   await answer.getByRole("button", { name: /Show \d+ evidence chunk/ }).click();
   await expect(answer.getByText(new RegExp(`Page ${covering!.page_start}\\b`))).toBeVisible();
-  await expect(answer.getByText(title)).toBeVisible();
+  await expect(answer.getByText(title).first()).toBeVisible();
 });
