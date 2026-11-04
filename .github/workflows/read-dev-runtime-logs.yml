@@ -65,6 +65,9 @@ jobs:
           kubectl -n chatwithdocs-api get deploy api -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
           kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          echo "=== web and api poll lines ==="
+          kubectl -n chatwithdocs-web logs deploy/web --since=40m --tail=300 | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/<email>/g; s/(Authorization|Bearer)[^ ]*/\1 redacted/g' | grep -Ei 'ingestion-runs|error|500|TypeError' | tail -n 40 || true
+          kubectl -n chatwithdocs-api logs deploy/api --since=40m --tail=400 | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/<email>/g; s/(Authorization|Bearer)[^ ]*/\1 redacted/g' | grep -Ei 'ingestion-runs|01a1a555' | tail -n 40 || true
           echo "=== worker log tail ==="
           kubectl -n chatwithdocs-api logs deploy/ingestion-worker --tail=400 | sed -E "s/as '[^']*'/as '<redacted>'/g; s#rediss?://[^ ]*#redis://<redacted>#g" | grep -vE 'File "|site-packages|azure/' | tail -n 50 || true
           pod=$(kubectl -n chatwithdocs-api get pods -l app.kubernetes.io/name=chatwithdocs-api -o jsonpath='{range .items[?(@.status.containerStatuses[0].ready==true)]}{.metadata.name}{"\n"}{end}' | head -n 1)
