@@ -167,7 +167,7 @@ jobs:
           worker_image=$(kubectl -n chatwithdocs-api get deploy ingestion-worker -o jsonpath='{.spec.template.spec.containers[0].image}')
           web_image=$(kubectl -n chatwithdocs-web get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}')
           case "$api_image" in
-            *sha256:86330a637b8c6ea35ac581387ffe9f0af20e785d1990d13fa1adc67040e2a370) ;;
+            *sha256:10db1217d63466acfc5ae5084b808917fbe2947ee8fbe4e6ab849806c9048fd6) ;;
             *) echo "unexpected api image" >&2; exit 1 ;;
           esac
           case "$worker_image" in
