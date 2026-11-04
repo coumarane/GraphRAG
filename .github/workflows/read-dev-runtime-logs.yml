@@ -120,6 +120,28 @@ jobs:
           print("search_code", payload.get("code"))
           print("search_error_type", (payload.get("metadata") or {}).get("error_type"))
           print("search_evidence", len(payload.get("evidence") or []))
+          status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents?limit=30", headers=auth)
+          listed = json.loads(raw) if status == 200 else {}
+          print("documents_http", status, "count", len(listed.get("items") or []) if isinstance(listed, dict) else 0)
+          for item in (listed.get("items") or []) if isinstance(listed, dict) else []:
+              title = str(item.get("title") or "")
+              if not title.startswith("citrine-serum"):
+                  continue
+              did = item.get("document_id") or item.get("id")
+              print("serum_doc", did, item.get("status"), title[:48])
+              st, raw2 = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + str(did) + "/ingestion-runs/latest", headers=auth)
+              latest = json.loads(raw2) if st == 200 else {}
+              print(
+                  "serum_run", st,
+                  "status", latest.get("status") if isinstance(latest, dict) else None,
+                  "progress", latest.get("progress_state") if isinstance(latest, dict) else None,
+                  "stage", latest.get("current_stage") if isinstance(latest, dict) else None,
+                  "parser", latest.get("parser_used") if isinstance(latest, dict) else None,
+                  "warning", redact(latest.get("latest_warning") or "") if isinstance(latest, dict) else "",
+                  "error", redact(latest.get("error_message") or "") if isinstance(latest, dict) else "",
+              )
+              for stage in (latest.get("stages") or []) if isinstance(latest, dict) else []:
+                  print("serum_stage", stage.get("stage"), stage.get("status"), redact(stage.get("error_message") or ""))
           DOC = "01a19bcc-5666-7174-8c64-d751bfa710f7"
           status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC, headers=auth)
           doc = json.loads(raw) if status == 200 else {}
