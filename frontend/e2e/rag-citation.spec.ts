@@ -84,10 +84,11 @@ test("uploaded four-page PDF cites page 2 of that document only", async ({ page 
       citation.page_end >= 2,
   );
   expect(covering).toBeTruthy();
-  // The answer shows a compact "p.N" badge. The "Page N" label is inside the
-  // evidence cards, which stay closed until the member opens them.
-  await expect(page.getByText(new RegExp(`p\\.${covering!.page_start}\\b`))).toBeVisible();
-  await page.getByRole("button", { name: /Show \d+ evidence chunk/ }).click();
-  await expect(page.getByText(new RegExp(`Page ${covering!.page_start}\\b`))).toBeVisible();
-  await expect(page.getByText(title)).toBeVisible();
+  // Earlier DEV uploads stay in this account's chat, so page badges from
+  // those answers are still on screen. Scope every visible check to this PDF.
+  const answer = page.locator("div.group").filter({ hasText: title });
+  await expect(answer.getByText(`${title} - p.${covering!.page_start}`)).toBeVisible();
+  await answer.getByRole("button", { name: /Show \d+ evidence chunk/ }).click();
+  await expect(answer.getByText(new RegExp(`Page ${covering!.page_start}\\b`))).toBeVisible();
+  await expect(answer.getByText(title)).toBeVisible();
 });
