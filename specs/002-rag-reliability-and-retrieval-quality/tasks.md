@@ -123,7 +123,7 @@
 - [x] T027 [US7] Add `rollback_in_effect: false` to `infra/dev/release-gate.json` without changing `promote` or `rollback_digests`. This specification review does not edit that file
 - [x] T028 [P] [US7] Add `backend/tests/unit/test_workflow_heredoc.py` that every Python heredoc in `.github/workflows/*.yml` closes with the token that opened it, and that an in-test fixture opened with `CHK` and closed with `PY` fails. `accept-dev-feature-001.yml` is on the default branch and is not on this branch, so a directory scan alone cannot see that bug
 - [x] T029 [US7] Add `.github/workflows/accept-dev-feature-002.yml` whose final exit status is the product-check status, which generates the PDF with a standard library, and which does not promote an image
-- [ ] T030 [US7] When that workflow is dispatched, copy only the workflow file to the default branch. Do not merge this feature and do not promote an image
+- [x] T030 [US7] When that workflow is dispatched, copy only the workflow file to the default branch. Do not merge this feature and do not promote an image. The workflow is on `main` and was dispatched. Acceptance run [41799205702](https://github.com/coumarane/GraphRAG/actions/runs/41799205702) passed on 4 November 2026. The later decision to merge and promote is recorded in [acceptance.md](acceptance.md)
 
 **Checkpoint**: SC-007 passes locally. SC-008 stays blocked until a reviewed promotion.
 
@@ -166,7 +166,7 @@
 - This task list does not authorize a DEV deploy or a merge.
 - Parser package versions stay pinned.
 - Community summarization stays skipped.
-- T027 and T029 are done. T030 is not: the workflow was not dispatched and was not copied to the default branch.
+- T027, T029, and T030 are done. The DEV result is in [acceptance.md](acceptance.md).
 
 ## Completion evidence
 
@@ -238,3 +238,14 @@ Every functional requirement and success criterion maps to a task. Tests are wri
 | SC-007 | T026, T027, T028, T029 |
 | SC-008 | T030, T031, T033 |
 | SC-009 | T034 |
+
+## DEV acceptance
+
+Recorded 4 November 2026, 09:27 Europe/Paris. Feature 002 is accepted on DEV. The dated notes above describe the state before promotion. [acceptance.md](acceptance.md) is the acceptance record.
+
+| Check | Result |
+|---|---|
+| Product check and browser journey | Passed. Run [41799205702](https://github.com/coumarane/GraphRAG/actions/runs/41799205702). Playwright `1 passed (1.6m)` |
+| In-cluster ingestion | `dev_acceptance_checks_passed`. Document `01a1a5aa-0d79-707e-8ffb-569d16b88609` ready, run completed, pages 2–2, `INDEX_GRAPH` completed, heartbeat set, skip text not stored as `latest_warning` |
+| Argo CD | API, worker, and web Synced and Healthy at `9d84ba76` |
+| T030 | Checked. The acceptance workflow is on `main` and this run dispatched it |

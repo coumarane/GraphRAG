@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-02
 
-**Status**: Reviewed 2026-11-02. Critical and high inconsistencies from the pre-implementation analysis are resolved here. Implementation has not started, and this specification does not deploy.
+**Status**: Accepted on DEV, 4 November 2026. Evidence is in [acceptance.md](acceptance.md). Limitations that did not fail acceptance stay recorded there and are not part of this feature.
 
 **Input**: User description: "Create Spec Kit feature 002-rag-reliability-and-retrieval-quality. Feature 001 is accepted on DEV. Do not redesign or reimplement its upload architecture. Focus on worker liveness under CPU-intensive parsing, page-level citation provenance for parent and child chunks, retrieval relevance and no-evidence behavior, Neo4j indexing versus graph traversal, skipped optional stages versus genuine warnings, reproducible browser end-to-end tests against DEV, and CI/CD acceptance plus deployed/rollback digest consistency. Use the existing architecture. Do not modify the running DEV deployment until this feature is reviewed."
 
