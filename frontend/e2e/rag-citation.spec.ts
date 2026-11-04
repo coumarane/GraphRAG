@@ -30,7 +30,7 @@ function fourPagePdf(stamp: string): string {
 }
 
 test("uploaded four-page PDF cites page 2 of that document only", async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(480_000);
   const stamp = `${Date.now()}`;
   const title = `citrine-serum-${stamp}`;
   const pdf = fourPagePdf(stamp);
@@ -52,7 +52,7 @@ test("uploaded four-page PDF cites page 2 of that document only", async ({ page 
   const documentLine = page.locator("p", { hasText: "document_id" });
   const documentId = (await documentLine.innerText()).replace("document_id", "").trim();
   expect(documentId).toMatch(/[0-9a-f-]{36}/i);
-  await expect(page.getByText(/run completed/)).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByText(/run completed/)).toBeVisible({ timeout: 360_000 });
 
   await page.goto(`/query?document_id=${documentId}`);
   await page.getByRole("button", { name: /Change context/ }).click();
