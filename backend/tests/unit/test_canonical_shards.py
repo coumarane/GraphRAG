@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from graph_rag.domain.elements import (
 from graph_rag.domain.elements.geometry import BoundingBox
 from graph_rag.domain.ids import content_sha256_hex, new_id
 from graph_rag.domain.storage.object_keys import (
+    parse_current_pointer_key,
+    parse_document_key,
     parse_page_json_key,
     parse_page_render_key,
 )
@@ -287,3 +290,60 @@ async def test_extract_assets_skips_rasterization_for_text() -> None:
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_corrupt_current_pointer_is_treated_as_missing() -> None:
+    inner = InMemoryObjectStore()
+    store = CanonicalStore(inner)
+    tenant, document = _three_page_document()
+    key = parse_current_pointer_key(
+        tenant_id=tenant.tenant_id,
+        document_id=document.document_id,
+        version_id=document.version_id,
+    )
+    payload = b'{"attempt_id": "not-a-uuid", "manifest_key": "x", "document_key": "y"}'
+    await inner.put_bytes(
+        tenant,
+        object_key=key,
+        data=payload,
+        content_type="application/json",
+        content_hash=content_sha256_hex(payload),
+    )
+    assert (
+        await store.load_current_pointer(
+            tenant, document_id=document.document_id, version_id=document.version_id
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_load_complete_tolerates_page_count_mismatch() -> None:
+    inner = InMemoryObjectStore()
+    store = CanonicalStore(inner)
+    tenant, document = _three_page_document()
+    attempt_id = new_id()
+    await store.write_from_document(tenant, document, attempt_id=attempt_id)
+    key = parse_document_key(
+        tenant_id=tenant.tenant_id,
+        document_id=document.document_id,
+        version_id=document.version_id,
+        attempt_id=attempt_id,
+    )
+    raw = await inner.get_bytes(tenant, object_key=key)
+    payload = json.loads(raw.decode("utf-8"))
+    payload["page_count"] = 99
+    updated = json.dumps(payload).encode("utf-8")
+    await inner.put_bytes(
+        tenant,
+        object_key=key,
+        data=updated,
+        content_type="application/json",
+        content_hash=content_sha256_hex(updated),
+    )
+    rebuilt = await store.load_complete_canonical_document(
+        tenant, document_id=document.document_id, version_id=document.version_id
+    )
+    assert len(rebuilt.pages) == rebuilt.page_count
+    assert rebuilt.elements

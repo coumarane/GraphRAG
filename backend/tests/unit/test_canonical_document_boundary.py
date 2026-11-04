@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from graph_rag.application.ingestion import stage_pipeline as stage_pipeline_module
 from graph_rag.application.ingestion.canonical_store import CanonicalStore
@@ -23,14 +24,14 @@ from graph_rag.application.ingestion.stage_pipeline import (
 )
 from graph_rag.application.runtime import build_local_container
 from graph_rag.domain.documents import CanonicalDocument, NormalizedDocument
-from graph_rag.domain.ingestion.handlers import StageContext
-from graph_rag.domain.ingestion.retry import RetryPolicy
+from graph_rag.domain.ingestion.handlers import StageContext, StageOutcomeStatus
+from graph_rag.domain.ingestion.retry import RetryPolicy, is_retryable_exception
 from graph_rag.domain.ingestion.stages import (
     IngestionRunStatus,
     IngestionStageName,
     StageStatus,
 )
-from graph_rag.domain.storage.object_keys import parse_document_key
+from graph_rag.domain.storage.object_keys import parse_current_pointer_key, parse_document_key
 from graph_rag.infrastructure.models import FakeEmbeddingModel
 from graph_rag.shared.exceptions import TransientError
 
@@ -207,3 +208,85 @@ async def test_downstream_embed_failure_retry_does_not_reparse(
     }
     assert IngestionStageName.PARSE in second.skipped_in_session
     assert IngestionStageName.NORMALIZE in second.skipped_in_session
+
+
+class _RecordingObjectStore:
+    def __init__(self, inner: object) -> None:
+        self.inner = inner
+        self.gets: list[str] = []
+
+    async def ensure_bucket(self) -> None:
+        await self.inner.ensure_bucket()  # type: ignore[union-attr]
+
+    async def put_bytes(self, tenant, **kwargs):  # type: ignore[no-untyped-def]
+        return await self.inner.put_bytes(tenant, **kwargs)  # type: ignore[union-attr]
+
+    async def get_bytes(self, tenant, *, object_key: str):  # type: ignore[no-untyped-def]
+        self.gets.append(object_key)
+        return await self.inner.get_bytes(tenant, object_key=object_key)  # type: ignore[union-attr]
+
+    async def delete_prefix(self, tenant, *, prefix: str) -> int:  # type: ignore[no-untyped-def]
+        return await self.inner.delete_prefix(tenant, prefix=prefix)  # type: ignore[union-attr]
+
+    async def presign_get(self, tenant, **kwargs) -> str:  # type: ignore[no-untyped-def]
+        return await self.inner.presign_get(tenant, **kwargs)  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_validate_does_not_fetch_original_or_canonical(container, tmp_path: Path) -> None:
+    tenant, result = await _register_text(container, tmp_path)
+    inner = container.require_object_store()
+    recorder = _RecordingObjectStore(inner)
+    service = container.require_process_ingestion()
+    service.object_store = recorder
+    pipeline = DocumentPipeline(PipelineWorkspace(service))
+    outcome = await pipeline.stage_preregistered(_stage_context(tenant, result))
+    assert outcome.status is StageOutcomeStatus.COMPLETED
+    assert recorder.gets == []
+    assert pipeline.w.data is None
+
+
+@pytest.mark.asyncio
+async def test_inspect_does_not_download_original_bytes(container, tmp_path: Path) -> None:
+    tenant, result = await _register_text(container, tmp_path)
+    inner = container.require_object_store()
+    recorder = _RecordingObjectStore(inner)
+    service = container.require_process_ingestion()
+    service.object_store = recorder
+    pipeline = DocumentPipeline(PipelineWorkspace(service))
+    await pipeline.stage_inspect(_stage_context(tenant, result))
+    assert pipeline.w.data is None
+    assert not any("/original/" in key for key in recorder.gets)
+
+
+@pytest.mark.asyncio
+async def test_ensure_loaded_treats_unreadable_canonical_as_missing(
+    container, tmp_path: Path
+) -> None:
+    tenant, result = await _register_text(container, tmp_path)
+    key = parse_current_pointer_key(
+        tenant_id=tenant.tenant_id,
+        document_id=result.document_id,
+        version_id=result.version_id,
+    )
+    await container.require_object_store().put_bytes(
+        tenant,
+        object_key=key,
+        data=b'{"attempt_id": "not-a-uuid", "extra": true}',
+        content_type="application/json",
+        content_hash="a" * 64,
+    )
+    service = container.require_process_ingestion()
+    workspace = PipelineWorkspace(service)
+    pipeline = DocumentPipeline(workspace)
+    await pipeline.ensure_loaded(_stage_context(tenant, result))
+    assert workspace.normalized is None
+    assert workspace.data is None
+    loaded = await workspace.load_canonical_document()
+    assert loaded is None
+
+
+def test_pydantic_validation_error_is_not_retryable() -> None:
+    with pytest.raises(PydanticValidationError) as caught:
+        CanonicalDocument.model_validate({"title": "broken"})
+    assert is_retryable_exception(caught.value) is False
