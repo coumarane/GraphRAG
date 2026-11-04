@@ -21,14 +21,24 @@ def derive_progress_state(
     *,
     now: datetime | None = None,
     stall_after: timedelta = timedelta(seconds=120),
+    created_at: datetime | None = None,
 ) -> str:
+    """Report a stall only after the stall window with no heartbeat.
+
+    A run that has just been accepted has no heartbeat yet. That gap is the
+    worker picking up the job, not a stall. Callers that know when the run was
+    created pass ``created_at`` so the window starts there. Callers that pass
+    neither a heartbeat nor a creation time still report stalled.
+    """
     mapped = _TERMINAL.get(status)
     if mapped is not None:
         return mapped
     current = now or datetime.now(UTC)
-    if heartbeat_at is None:
+    stamp = heartbeat_at if heartbeat_at is not None else created_at
+    if stamp is None:
         return "stalled"
-    stamp = heartbeat_at if heartbeat_at.tzinfo else heartbeat_at.replace(tzinfo=UTC)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=UTC)
     if current - stamp >= stall_after:
         return "stalled"
     return "running"

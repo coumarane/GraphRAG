@@ -53,7 +53,11 @@ def _run_response(run, stages) -> IngestionRunResponse:
         worker_id=run.worker_id,
         heartbeat_at=run.heartbeat_at,
         current_stage=progress.current_stage.value if progress.current_stage else None,
-        progress_state=derive_progress_state(run.status.value, run.heartbeat_at),
+        progress_state=derive_progress_state(
+            run.status.value,
+            run.heartbeat_at,
+            created_at=run.created_at,
+        ),
         last_completed_stage=last_completed_stage(stages) or "",
         estimated_completion_percent=progress.estimated_completion_percent,
         stages=[

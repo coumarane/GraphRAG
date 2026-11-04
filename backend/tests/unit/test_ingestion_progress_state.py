@@ -17,6 +17,28 @@ def test_stalled_when_heartbeat_is_old_or_missing() -> None:
     assert derive_progress_state("running", now - timedelta(seconds=10), now=now) == "running"
 
 
+def test_fresh_run_without_a_heartbeat_is_not_stalled() -> None:
+    now = datetime.now(UTC)
+    assert (
+        derive_progress_state(
+            "running",
+            None,
+            now=now,
+            created_at=now - timedelta(seconds=1),
+        )
+        == "running"
+    )
+    assert (
+        derive_progress_state(
+            "pending",
+            None,
+            now=now,
+            created_at=now - timedelta(seconds=121),
+        )
+        == "stalled"
+    )
+
+
 def test_terminal_statuses_map() -> None:
     now = datetime.now(UTC)
     assert derive_progress_state("completed", now, now=now) == "ready"

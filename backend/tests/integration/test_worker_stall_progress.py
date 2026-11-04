@@ -35,3 +35,7 @@ def test_stopped_worker_is_stalled_with_last_completed_stage() -> None:
     body = _run_response(run, stages)
     assert body.progress_state == "stalled"
     assert body.last_completed_stage == "VALIDATE"
+    fresh = run.model_copy(
+        update={"heartbeat_at": None, "created_at": datetime.now(UTC)}
+    )
+    assert _run_response(fresh, stages).progress_state == "running"
