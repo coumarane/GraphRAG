@@ -76,15 +76,18 @@ test("uploaded four-page PDF cites page 2 of that document only", async ({ page 
   }>;
   expect(citations.length).toBeGreaterThan(0);
   expect(citations.every((citation) => citation.document_id === documentId)).toBeTruthy();
-  expect(
-    citations.some(
-      (citation) =>
-        typeof citation.page_start === "number" &&
-        typeof citation.page_end === "number" &&
-        citation.page_start <= 2 &&
-        citation.page_end >= 2,
-    ),
-  ).toBeTruthy();
-  await expect(page.getByText(/Page 2/)).toBeVisible();
+  const covering = citations.find(
+    (citation) =>
+      typeof citation.page_start === "number" &&
+      typeof citation.page_end === "number" &&
+      citation.page_start <= 2 &&
+      citation.page_end >= 2,
+  );
+  expect(covering).toBeTruthy();
+  // The answer shows a compact "p.N" badge. The "Page N" label is inside the
+  // evidence cards, which stay closed until the member opens them.
+  await expect(page.getByText(new RegExp(`p\\.${covering!.page_start}\\b`))).toBeVisible();
+  await page.getByRole("button", { name: /Show \d+ evidence chunk/ }).click();
+  await expect(page.getByText(new RegExp(`Page ${covering!.page_start}\\b`))).toBeVisible();
   await expect(page.getByText(title)).toBeVisible();
 });
