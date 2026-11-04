@@ -137,11 +137,22 @@ jobs:
                   "progress", latest.get("progress_state") if isinstance(latest, dict) else None,
                   "stage", latest.get("current_stage") if isinstance(latest, dict) else None,
                   "parser", latest.get("parser_used") if isinstance(latest, dict) else None,
+                  "pages", latest.get("pages_processed") if isinstance(latest, dict) else None,
+                  "created", latest.get("created_at") if isinstance(latest, dict) else None,
+                  "updated", latest.get("updated_at") if isinstance(latest, dict) else None,
+                  "heartbeat", latest.get("heartbeat_at") if isinstance(latest, dict) else None,
                   "warning", redact(latest.get("latest_warning") or "") if isinstance(latest, dict) else "",
                   "error", redact(latest.get("error_message") or "") if isinstance(latest, dict) else "",
               )
               for stage in (latest.get("stages") or []) if isinstance(latest, dict) else []:
-                  print("serum_stage", stage.get("stage"), stage.get("status"), redact(stage.get("error_message") or ""))
+                  if stage.get("stage") not in {"PARSE", "CHUNK", "EMBED", "INDEX_GRAPH", "FINALIZE"}:
+                      continue
+                  print(
+                      "serum_stage", stage.get("stage"), stage.get("status"),
+                      "started", stage.get("started_at"),
+                      "completed", stage.get("completed_at"),
+                      redact(stage.get("error_message") or ""),
+                  )
           DOC = "01a19bcc-5666-7174-8c64-d751bfa710f7"
           status, raw = request("GET", "http://127.0.0.1:8000/api/v1/documents/" + DOC, headers=auth)
           doc = json.loads(raw) if status == 200 else {}
